@@ -288,11 +288,44 @@ class Preview(unittest.TestCase):
         self.assertIn("freed for a new pile", html)
         self.assertIn("DUPLICATE x2", html)
         self.assertIn("Model: A.rvt", html)
-        self.assertNotIn("<script", html)
+        self.assertNotIn("Plan</button>", html)       # no points, no plan tab
+        self.assertNotIn("src=", html)                # nothing loaded from outside
+        self.assertNotIn("http", html.replace("http://www.w3.org/2000/svg", ""))
         # escaping
         html2 = PS.preview_html("<b>", [], PS.plan_insertions(
             entries("P1"), []))
         self.assertIn("&lt;b&gt;", html2)
+
+    def test_plan_tab(self):
+        groups, _ig = PS.group_marks([(1, "P1"), (2, "P2"), (3, "P2"), (4, "P5")])
+        plan = PS.plan_insertions(groups["P"], [1])
+        points = {1: (100.0, 200.0), 2: (110.0, 200.0), 3: (110.0, 205.0),
+                  4: (120.0, 260.0)}
+        html = PS.preview_html("t", [], plan, points=points)
+        self.assertIn("Plan</button>", html)
+        self.assertIn("<svg id='plan'", html)
+        self.assertEqual(html.count("<circle"), 4)
+        self.assertIn("class='plan-renamed plan-dup'", html)
+        self.assertIn("class='plan-renamed'", html)
+        self.assertIn("class='plan-kept'", html)
+        self.assertIn("data-old='P1' data-nw='P2' data-change='renamed (+1)'", html)
+        self.assertIn("<title>P2  (P1) - renamed (+1)</title>", html)
+        import re
+        cys = dict((m.group(2), float(m.group(1))) for m in
+                   re.finditer(r"cy='([\d.]+)' r='[\d.]+' data-old='([^']*)'", html))
+        self.assertLess(cys["P5"], cys["P1"])          # north up
+        self.assertIn("Freed numbers have no pile yet", html)
+        self.assertIn("plan-labels", html)
+        html2 = PS.preview_html("t", [], plan, points={1: (0.0, 0.0)})
+        self.assertEqual(html2.count("<circle"), 1)
+        self.assertEqual(PS.plan_markup(plan["rows"], {}), "")
+
+    def test_plan_tab_suffixed(self):
+        plan = PS.plan_insertions(entries("P1", "P1"), [], suffix_duplicates=True)
+        html = PS.preview_html("t", [], plan, points={1: (0, 0), 2: (1, 0)})
+        self.assertEqual(html.count("class='plan-suffixed'"), 2)
+        self.assertNotIn("plan-dup'", html.split("<svg")[1])
+        self.assertIn("given the suffix -2", html)
 
     def test_hide_unchanged(self):
         plan = PS.plan_insertions(entries("P1", "P2", "P9"), [2])

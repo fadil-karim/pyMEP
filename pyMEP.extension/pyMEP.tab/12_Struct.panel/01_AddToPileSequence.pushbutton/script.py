@@ -28,9 +28,12 @@ ignored mark already carries there is skipped. That can run on its own
 with no numbers typed.
 
 PREVIEW IN BROWSER writes a self-contained page to the model's pyMEP
-folder and opens it: the full sequence in number order, renames in
-yellow, freed numbers in green, duplicate marks in red, remaining gaps
-in grey, ignored marks below. APPLY renames in one transaction,
+folder and opens it. The Table tab is the full sequence in number
+order, renames in yellow, freed numbers in green, duplicate marks in
+red, remaining gaps in grey, ignored marks below. The Plan tab draws
+every pile where it stands (north up, internal metres), coloured by
+what happens to it, with the old and new mark and the change on hover,
+wheel zoom, drag pan and optional labels. APPLY renames in one transaction,
 highest number first so no two piles share a mark part-way through,
 and writes a CSV of what changed.
 
@@ -85,7 +88,30 @@ def _mark(el):
         return u""
 
 
+FT_TO_M = 0.3048
+
+
+def _plan_xy(el):
+    """(x, y) in metres of where the pile stands: its location point,
+    else the centre of its bounding box; None when neither reads."""
+    try:
+        pt = getattr(el.Location, "Point", None)
+        if pt is not None:
+            return (pt.X * FT_TO_M, pt.Y * FT_TO_M)
+    except Exception:
+        pass
+    try:
+        bb = el.get_BoundingBox(None)
+        if bb is not None:
+            return ((bb.Min.X + bb.Max.X) * 0.5 * FT_TO_M,
+                    (bb.Min.Y + bb.Max.Y) * 0.5 * FT_TO_M)
+    except Exception:
+        pass
+    return None
+
+
 by_category = {}
+points = {}
 for el in FilteredElementCollector(doc).WhereElementIsNotElementType():
     try:
         cat = el.Category
@@ -97,7 +123,11 @@ for el in FilteredElementCollector(doc).WhereElementIsNotElementType():
     mark = _mark(el)
     if not mark or PS.parse_mark(mark) is None:
         continue
-    by_category.setdefault(name, []).append((id_value(el.Id), mark))
+    eid = id_value(el.Id)
+    by_category.setdefault(name, []).append((eid, mark))
+    xy = _plan_xy(el)
+    if xy is not None:
+        points[eid] = xy
 
 if not by_category:
     forms.alert("No model element in this document has a Mark with a "
@@ -382,7 +412,9 @@ def write_preview(plan, ignored, category, prefix, bounds, show_unchanged,
         [(u"Category", category), (u"Prefix", prefix or u"(none)"),
          (u"Set", u"{0}-{1}".format(bounds[0], bounds[1]) if bounds else u"-"),
          (u"Written", datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))],
-        plan, ignored=ignored, show_unchanged=show_unchanged)
+        plan, ignored=ignored, show_unchanged=show_unchanged,
+        points=dict((r["id"], points[r["id"]]) for r in plan["rows"]
+                    if r["id"] is not None and r["id"] in points))
     with io.open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(html)
     return path

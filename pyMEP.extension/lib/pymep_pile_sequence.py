@@ -372,14 +372,120 @@ tr.gap td{color:#999;font-style:italic;background:#fafafa}
 tr.ignored td{color:#777}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
 h2{font-size:14px;margin:22px 0 4px 0}
+.tabs{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid #ddd;margin-top:6px}
+.tabs button{border:1px solid #ddd;border-bottom:none;background:#f4f4f4;padding:6px 16px;cursor:pointer;font-size:13px;border-radius:4px 4px 0 0}
+.tabs button.on{background:#fff;font-weight:600}
+.pane{display:none}.pane.on{display:block}
+.planwrap{display:flex;gap:14px;align-items:flex-start;margin-top:10px}
+.planbox{flex:1;border:1px solid #ddd;background:#fbfbfb;position:relative;min-height:420px}
+.planbox svg{width:100%;height:72vh;display:block;cursor:grab;touch-action:none}
+.planside{width:280px;font-size:12px}
+.planside .info{border:1px solid #ddd;border-radius:4px;padding:8px 10px;min-height:120px;background:#fff}
+.planside .info b{display:block;font-size:14px;margin-bottom:4px}
+.planside .k{color:#666}
+.pl{display:flex;align-items:center;gap:6px;margin:3px 0}
+.pl i{display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid #999}
+.plan-kept{fill:#cfd8e3;stroke:#8d99a8;stroke-width:1}
+.plan-renamed{fill:#f2a900;stroke:#8a6100;stroke-width:1}
+.plan-suffixed{fill:#d9534f;stroke:#7a1f1c;stroke-width:1}
+.plan-dup{stroke:#b00020 !important;stroke-width:3 !important}
+svg .lbl{font-family:Segoe UI,Arial,sans-serif;fill:#333;pointer-events:none;display:none}
+svg.labels .lbl{display:block}
+svg circle:hover{stroke:#000;stroke-width:2}
+"""
+
+_PLAN_JS = u"""
+(function(){
+  var tabs=document.querySelectorAll('.tabs button'),panes=document.querySelectorAll('.pane');
+  function show(name){for(var i=0;i<tabs.length;i++){tabs[i].classList.toggle('on',tabs[i].dataset.tab===name);}
+    for(var j=0;j<panes.length;j++){panes[j].classList.toggle('on',panes[j].id==='pane-'+name);}}
+  for(var t=0;t<tabs.length;t++){tabs[t].addEventListener('click',function(){show(this.dataset.tab);});}
+  show(location.hash==='#plan'&&document.getElementById('pane-plan')?'plan':'table');
+  var svg=document.getElementById('plan');if(!svg){return;}
+  var info=document.getElementById('plan-info'),def=info.innerHTML;
+  var vb=svg.getAttribute('viewBox').split(' ').map(Number),home=vb.slice();
+  function apply(){svg.setAttribute('viewBox',vb.join(' '));}
+  svg.addEventListener('mouseover',function(e){var c=e.target;if(c.tagName!=='circle'){return;}var d=c.dataset;
+    info.innerHTML='<b>'+(d.nw||'')+'</b><span class=k>was</span> '+(d.old||'-')+'<br><span class=k>change</span> '+d.change+
+      '<br><span class=k>element id</span> '+d.id+'<br><span class=k>x, y</span> '+d.x+' m, '+d.y+' m';});
+  svg.addEventListener('mouseout',function(e){if(e.target.tagName==='circle'){info.innerHTML=def;}});
+  svg.addEventListener('wheel',function(e){e.preventDefault();var r=svg.getBoundingClientRect();
+    var px=vb[0]+(e.clientX-r.left)/r.width*vb[2],py=vb[1]+(e.clientY-r.top)/r.height*vb[3];
+    var f=e.deltaY>0?1.2:1/1.2;vb[0]=px-(px-vb[0])*f;vb[1]=py-(py-vb[1])*f;vb[2]*=f;vb[3]*=f;apply();},{passive:false});
+  var drag=null;
+  svg.addEventListener('pointerdown',function(e){drag=[e.clientX,e.clientY,vb[0],vb[1]];svg.setPointerCapture(e.pointerId);});
+  svg.addEventListener('pointermove',function(e){if(!drag){return;}var r=svg.getBoundingClientRect();
+    vb[0]=drag[2]-(e.clientX-drag[0])/r.width*vb[2];vb[1]=drag[3]-(e.clientY-drag[1])/r.height*vb[3];apply();});
+  svg.addEventListener('pointerup',function(){drag=null;});svg.addEventListener('pointercancel',function(){drag=null;});
+  var lab=document.getElementById('plan-labels');if(lab){lab.addEventListener('change',function(){svg.classList.toggle('labels',lab.checked);});}
+  var fit=document.getElementById('plan-fit');if(fit){fit.addEventListener('click',function(){vb=home.slice();apply();});}
+})();
 """
 
 
-def preview_html(title, meta, plan, ignored=None, show_unchanged=True):
-    """A self-contained page: the sequence after the plan, one row per
-    pile, changed rows highlighted, duplicates in red, freed numbers in
-    green, remaining gaps as muted rows, ignored marks listed below."""
+def plan_markup(rows, points):
+    """The plan view: an SVG of every pile that has a location in
+    points {id: (x, y) metres}, north up, coloured by what happens to
+    it, each circle carrying its details for the hover panel and a
+    <title> as the plain tooltip. '' when nothing can be drawn."""
+    pts = []
+    for r in rows:
+        if r["id"] is None or r["id"] not in (points or {}):
+            continue
+        x, y = points[r["id"]]
+        pts.append((r, float(x), float(y)))
+    if not pts:
+        return u""
+    xs = [p[1] for p in pts]
+    ys = [p[2] for p in pts]
+    minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
+    span = max(maxx - minx, maxy - miny, 1.0)
+    pad = span * 0.06
+    W = (maxx - minx) + 2 * pad
+    H = (maxy - miny) + 2 * pad
+    r = span / 150.0
+    out = [u"<svg id='plan' xmlns='http://www.w3.org/2000/svg' "
+           u"viewBox='0 0 {0:.3f} {1:.3f}' preserveAspectRatio='xMidYMid meet'>"
+           .format(W, H)]
+    order = {"kept": 0, "renamed": 1, "suffixed": 2}
+    for rw, x, y in sorted(pts, key=lambda p: order.get(p[0]["kind"], 0)):
+        sx = x - minx + pad
+        sy = (maxy - y) + pad
+        cls = u"plan-" + rw["kind"]
+        if rw["duplicate"] and rw["kind"] != "suffixed":
+            cls += u" plan-dup"
+        if rw["kind"] == "renamed":
+            change = u"renamed ({0:+d})".format(rw["number_new"] - rw["number_old"])
+        elif rw["kind"] == "suffixed":
+            change = u"duplicate - given the suffix {0}".format(
+                rw["new"][rw["new"].rfind(u"-"):])
+        else:
+            change = u"unchanged"
+        if rw["duplicate"] and rw["kind"] != "suffixed":
+            change += u" - DUPLICATE"
+        out.append(u"<circle class='{0}' cx='{1:.3f}' cy='{2:.3f}' r='{3:.3f}' "
+                   u"data-old='{4}' data-nw='{5}' data-change='{6}' data-id='{7}' "
+                   u"data-x='{8:.2f}' data-y='{9:.2f}'><title>{5}  ({4}) - {6}"
+                   u"</title></circle>".format(
+                       cls, sx, sy, r, _esc(rw["old"]), _esc(rw["new"]),
+                       _esc(change), _esc(rw["id"]), x, y))
+        out.append(u"<text class='lbl' x='{0:.3f}' y='{1:.3f}' font-size='{2:.3f}'>"
+                   u"{3}</text>".format(sx + r * 1.3, sy + r * 0.5, r * 1.8,
+                                       _esc(rw["new"])))
+    out.append(u"</svg>")
+    return u"".join(out)
+
+
+def preview_html(title, meta, plan, ignored=None, show_unchanged=True,
+                 points=None):
+    """A self-contained page: the sequence after the plan as a table -
+    one row per pile, changed rows highlighted, duplicates in red, freed
+    numbers in green, remaining gaps as muted rows, ignored marks listed
+    below - and, when points {id: (x, y) metres} are given, a Plan tab
+    drawing the piles where they stand with hover details, zoom and
+    labels. No external resources."""
     rows = plan["rows"]
+    svg = plan_markup(rows, points) if points else u""
     renamed = plan["renamed"]
     suffixed = plan.get("suffixed", 0)
     kept = len([r for r in rows if r["kind"] == "kept"])
@@ -406,7 +512,11 @@ def preview_html(title, meta, plan, ignored=None, show_unchanged=True):
            u"<span style='color:#b00020;border:1px solid #b00020'>duplicate "
            u"mark</span><span style='background:#fde2e4'>duplicate given a "
            u"suffix</span><span style='color:#999;border:1px solid #ddd'>gap"
-           u"</span></div><main>"]
+           u"</span></div>"]
+    if svg:
+        out.append(u"<div class='tabs'><button data-tab='table' class='on'>"
+                   u"Table</button><button data-tab='plan'>Plan</button></div>")
+    out.append(u"<main><div id='pane-table' class='pane on'>")
     if plan["new_numbers"]:
         out.append(u"<p>Freed: <b>{0}</b></p>".format(
             _esc(u", ".join(u"{0}".format(n) for n in plan["new_numbers"]))))
@@ -460,5 +570,27 @@ def preview_html(title, meta, plan, ignored=None, show_unchanged=True):
                        u"</td></tr>".format(_esc(g["mark"]), _esc(g["reason"]),
                                             _esc(g["id"])))
         out.append(u"</table>")
-    out.append(u"</main></body></html>")
+    out.append(u"</div>")
+    if svg:
+        freed = plan["new_numbers"]
+        out.append(u"<div id='pane-plan' class='pane'><div class='planwrap'>"
+                   u"<div class='planbox'>{0}</div><div class='planside'>"
+                   u"<div class='info' id='plan-info'><b>Hover a pile</b>"
+                   u"old and new mark, the change and the element id show "
+                   u"here. Wheel to zoom, drag to pan.</div>"
+                   u"<div style='margin:10px 0'><label><input type='checkbox' "
+                   u"id='plan-labels'> show new marks as labels</label> &nbsp; "
+                   u"<button id='plan-fit'>Fit</button></div>"
+                   u"<div class='pl'><i style='background:#cfd8e3'></i>unchanged</div>"
+                   u"<div class='pl'><i style='background:#f2a900'></i>renamed</div>"
+                   u"<div class='pl'><i style='background:#d9534f'></i>duplicate "
+                   u"given a suffix</div>"
+                   u"<div class='pl'><i style='border:3px solid #b00020'></i>"
+                   u"duplicate left as it is</div>"
+                   u"<p class='meta'>North up, internal coordinates in metres. "
+                   u"Freed numbers have no pile yet, so they are not drawn"
+                   u"{1}.</p></div></div></div>".format(
+                       svg, u": " + _esc(u", ".join(u"{0}".format(n) for n in freed))
+                       if freed else u""))
+    out.append(u"</main><script>{0}</script></body></html>".format(_PLAN_JS))
     return u"".join(out)

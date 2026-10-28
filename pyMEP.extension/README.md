@@ -806,9 +806,12 @@ number is refused. Type the numbers to add (`1605, 1606`,
 in use moves the piles at it and above up by one - as far as the next
 free number by default, so a gap above absorbs the move, or every higher
 pile. Marks with a suffix such as `P1604-1`, and marks without a number,
-are left alone and listed. **Preview in browser** opens a page of the
-whole sequence with renames (yellow), freed numbers (green), duplicate
-marks (red) and gaps (grey). A tick gives every duplicate a suffix -
+are left alone and listed. **Preview in browser** opens a page with two
+tabs: the Table of the whole sequence with renames (yellow), freed numbers
+(green), duplicate marks (red) and gaps (grey), and the Plan - every pile
+drawn where it stands, north up, coloured by what happens to it, with the
+old and new mark and the change on hover, wheel zoom, drag pan and optional
+labels. A tick gives every duplicate a suffix -
 `P1608-1`, `P1608-2`, ... in element id order, the first one included,
 skipping a suffix already in use there - and can run on its own with no
 numbers typed. **Apply** renames in one undo step, highest
