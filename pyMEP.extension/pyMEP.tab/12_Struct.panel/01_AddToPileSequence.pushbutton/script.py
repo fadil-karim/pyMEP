@@ -72,6 +72,7 @@ XAML_PATH = os.path.join(os.path.dirname(os.path.abspath(PS.__file__)),
 DEFAULT_CATEGORY = "Structural Foundations"
 SETTINGS_CATEGORY = "pile_sequence_category"
 SETTINGS_ALLGAPS = "pile_sequence_all_gaps"
+NOTHING_TYPED = u"Nothing typed - nothing is filled until you type the missing number(s)."
 SETTINGS_SHOW = "pile_sequence_show_unchanged"
 SETTINGS_SUFFIX = "pile_sequence_suffix_duplicates"
 
@@ -322,10 +323,12 @@ class SequenceWindow(forms.WPFWindow):
                               u"set at a time.")
             if target != self.bounds():
                 self._select_set(target)
-        if self.all_gaps():
-            nums = sorted(set(nums) | set(PS.sequence_summary(self.entries())["gaps"]))
+        # Nothing typed means nothing is filled - the "every gap" tick only
+        # widens a typed list, it never fills gaps on its own.
+        nums = PS.numbers_to_fill(
+            nums, PS.sequence_summary(self.entries())["gaps"], self.all_gaps())
         if not nums and not self.suffix():
-            return None, u"Type the missing number(s) to fill."
+            return None, NOTHING_TYPED
         try:
             plan = PS.plan_fill(
                 self.entries(), nums, bounds=self.bounds(),
@@ -340,8 +343,7 @@ class SequenceWindow(forms.WPFWindow):
             return
         plan, err = self.plan()
         if plan is None:
-            self.TxtPlan.Text = (u"" if err == u"Type the missing number(s) to fill."
-                                 else err)
+            self.TxtPlan.Text = err
             return
         self.TxtPlan.Text = (u"Fills {0}; renames {1} pile(s); frees {5} at the "
                              u"top; suffixes {4} duplicate(s); {2} duplicate "

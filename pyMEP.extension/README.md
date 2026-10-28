@@ -803,10 +803,12 @@ kept when a mark is rewritten. Each set of foundations is one leading digit
 (1000-1999, 2000-2999, 6000-6999) and the tool works on one set at a time:
 only that set's piles move, and a move that would run past the set's last
 number is refused. Type the missing numbers (`1605, 1606`, `P1605 P1606`
-or `1605-1608`, or tick "fill every gap"): every pile above them moves
+or `1605-1608`): every pile above them moves
 down by one for each typed number below it - with 1605 and 1606 missing,
 P1607 becomes P1605, P1608 becomes P1606, P1609 becomes P1607 - and the
-old top numbers come free for new piles. A typed number that is in use or
+old top numbers come free for new piles. A tick can widen the typed list to every other gap in the set, but
+an empty box always fills nothing - the tool never closes gaps on
+its own. A typed number that is in use or
 above the last pile is refused. Marks with a suffix such as `P1604-1`, and marks without a number,
 are left alone and listed. **Preview in browser** opens a page with two
 tabs: the Table of the whole sequence with renames (yellow), freed numbers

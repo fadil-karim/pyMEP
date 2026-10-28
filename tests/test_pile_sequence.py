@@ -168,6 +168,23 @@ class Plan(unittest.TestCase):
         self.assertEqual(plan["filled"], [])
 
 
+class NumbersToFill(unittest.TestCase):
+    """What a run fills - nothing typed means nothing filled."""
+
+    def test_nothing_typed_fills_nothing_even_with_the_tick(self):
+        self.assertEqual(PS.numbers_to_fill([], [2, 5], all_gaps=True), [])
+        self.assertEqual(PS.numbers_to_fill(None, [2, 5], all_gaps=True), [])
+        self.assertEqual(PS.numbers_to_fill("", [2, 5], all_gaps=False), [])
+
+    def test_typed_numbers_only(self):
+        self.assertEqual(PS.numbers_to_fill([5, 2, 2], [2, 5, 7]), [2, 5])
+
+    def test_tick_widens_a_typed_list_to_the_other_gaps(self):
+        self.assertEqual(PS.numbers_to_fill([2], [2, 5, 7], all_gaps=True),
+                         [2, 5, 7])
+        self.assertEqual(PS.numbers_to_fill([9], [], all_gaps=True), [9])
+
+
 class Sets(unittest.TestCase):
 
     def test_bounds(self):

@@ -215,6 +215,19 @@ def group_label(key, entries):
 # ---------------------------------------------------------------------------
 # the plan
 # ---------------------------------------------------------------------------
+def numbers_to_fill(typed, gaps, all_gaps=False):
+    """The numbers a run fills: the typed ones, plus every other gap in
+    the set when all_gaps is ticked - but only when something was typed.
+    Nothing typed means nothing is filled; the tool never decides on
+    its own to close gaps."""
+    typed = sorted(set(int(n) for n in (typed or [])))
+    if not typed:
+        return []
+    if all_gaps:
+        return sorted(set(typed) | set(int(g) for g in (gaps or [])))
+    return typed
+
+
 def plan_fill(entries, numbers, bounds=None, suffix_duplicates=False,
               taken=None):
     """Where every pile ends up once the typed (missing) numbers are
