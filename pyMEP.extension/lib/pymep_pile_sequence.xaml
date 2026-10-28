@@ -1,0 +1,110 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Add to Pile Sequence"
+        Width="620" Height="600" MinWidth="560" MinHeight="520"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False"
+        Background="White">
+    <Window.Resources>
+        <Style TargetType="GroupBox">
+            <Setter Property="Margin" Value="0,0,0,12"/>
+            <Setter Property="Padding" Value="10,8,10,10"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,3,0,0"/>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Margin" Value="0,3,0,0"/>
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,6,10,0"/>
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#888888"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style x:Key="DialogButton" TargetType="Button">
+            <Setter Property="MinWidth" Value="96"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
+            <Setter Property="Padding" Value="10,4"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#F4F4F4" Padding="14,10">
+            <StackPanel>
+                <TextBlock FontSize="15" FontWeight="SemiBold" Text="Add to Pile Sequence"/>
+                <TextBlock x:Name="TxtInfo" Style="{StaticResource Hint}"
+                           Text="Frees numbers in the mark sequence by moving the piles above them up. The letters in a mark are ignored for the order and kept in the new mark."/>
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="14,12,14,0">
+            <StackPanel>
+                <GroupBox Header="Piles">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Category"/>
+                            <ComboBox x:Name="CmbCategory" Grid.Row="0" Grid.Column="1"
+                                      SelectionChanged="on_category_changed"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Prefix"/>
+                            <ComboBox x:Name="CmbPrefix" Grid.Row="1" Grid.Column="1"
+                                      SelectionChanged="on_prefix_changed"/>
+                        </Grid>
+                        <TextBlock x:Name="TxtSummary" Style="{StaticResource Hint}" Margin="0,8,0,0" Text=""/>
+                        <TextBlock Style="{StaticResource Hint}"
+                                   Text="Marks with a suffix such as P1604-1, and marks without a number, are ignored and listed in the preview."/>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="Numbers to add">
+                    <StackPanel>
+                        <TextBox x:Name="TxtNumbers" TextChanged="on_numbers_changed"/>
+                        <TextBlock Style="{StaticResource Hint}"
+                                   Text="For example 1605, 1606  or  P1605 P1606  or  1605-1608. Each number is freed for a new pile; the piles at that number and above move up by one."/>
+                        <RadioButton x:Name="RbFill" GroupName="Shift" Margin="0,10,0,0"
+                                     Content="move piles up only as far as the next free number (a gap above absorbs the move)"/>
+                        <RadioButton x:Name="RbAll" GroupName="Shift" Margin="0,6,0,0"
+                                     Content="move every higher pile up (gaps above are kept where they are)"/>
+                        <CheckBox x:Name="ChkShowUnchanged" Margin="0,10,0,0"
+                                  Content="show unchanged piles in the preview too"/>
+                        <TextBlock x:Name="TxtPlan" Style="{StaticResource Hint}" Margin="0,8,0,0" Text=""/>
+                    </StackPanel>
+                </GroupBox>
+
+                <TextBlock x:Name="StatusText" Foreground="#B00020" TextWrapping="Wrap" Margin="0,0,0,8" Text=""/>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="2" Background="#F4F4F4" Padding="14,10">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="BtnPreview" Content="Preview in browser"
+                        Style="{StaticResource DialogButton}" Click="on_preview"/>
+                <Button x:Name="BtnApply" Content="Apply"
+                        Style="{StaticResource DialogButton}" IsDefault="True" Click="on_apply"/>
+                <Button x:Name="BtnCancel" Content="Cancel"
+                        Style="{StaticResource DialogButton}" IsCancel="True" Click="on_cancel"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

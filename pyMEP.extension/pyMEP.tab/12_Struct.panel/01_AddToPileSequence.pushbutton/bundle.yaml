@@ -1,0 +1,2 @@
+title: "Add to Pile\nSequence"
+tooltip: "Free numbers in a pile mark sequence: type the numbers to add (1605, 1606 or P1605-P1608) and the piles at those numbers and above move up by one, keeping their prefix and zero padding. Preview in browser shows the whole sequence with renames, freed numbers, duplicates and gaps highlighted; Apply renames in one undo step. Marks with a suffix such as -1 are left alone."

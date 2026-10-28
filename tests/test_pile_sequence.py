@@ -1,0 +1,195 @@
+#!/usr/bin/env python3
+"""Unit tests for pymep_pile_sequence - mark parsing, the number box,
+grouping, the insertion plan and the preview page.
+
+Run:  python3 tests/test_pile_sequence.py
+"""
+
+import os
+import sys
+import unittest
+
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..",
+    "pyMEP.extension", "lib"))
+
+import pymep_pile_sequence as PS
+
+
+def marks(*texts):
+    return [(i + 1, t) for i, t in enumerate(texts)]
+
+
+def entries(*texts):
+    groups, _ignored = PS.group_marks(marks(*texts))
+    assert len(groups) == 1, groups
+    return list(groups.values())[0]
+
+
+def final(plan):
+    """{old mark: new mark} for the piles, plus 'NEW' entries."""
+    out = {}
+    for r in plan["rows"]:
+        if r["kind"] == "new":
+            out.setdefault("NEW", []).append(r["new"])
+        else:
+            out[r["old"]] = r["new"]
+    return out
+
+
+class Marks(unittest.TestCase):
+
+    def test_parse(self):
+        self.assertEqual(PS.parse_mark("P1604"),
+                         {"prefix": "P", "number": 1604, "width": 4, "suffix": ""})
+        self.assertEqual(PS.parse_mark("P1604-1")["suffix"], "-1")
+        self.assertEqual(PS.parse_mark("p0012")["width"], 4)
+        self.assertEqual(PS.parse_mark("1604")["prefix"], "")
+        self.assertEqual(PS.parse_mark("TP-07")["prefix"], "TP-")
+        self.assertEqual(PS.parse_mark(" P 1604 ")["number"], 1604)
+        self.assertEqual(PS.parse_mark("P1604 A")["suffix"], "A")
+        self.assertIsNone(PS.parse_mark("ABC"))
+        self.assertIsNone(PS.parse_mark(""))
+        self.assertIsNone(PS.parse_mark(None))
+
+    def test_format_keeps_prefix_and_padding(self):
+        self.assertEqual(PS.format_mark("P", 1605, 4), "P1605")
+        self.assertEqual(PS.format_mark("p", 13, 4), "p0013")
+        self.assertEqual(PS.format_mark("TP-", 8, 2), "TP-08")
+        self.assertEqual(PS.format_mark("", 10000, 4), "10000")
+
+    def test_numbers_box(self):
+        self.assertEqual(PS.parse_numbers("1605, 1606"), [1605, 1606])
+        self.assertEqual(PS.parse_numbers("P1606 p1605 1605"), [1605, 1606])
+        self.assertEqual(PS.parse_numbers("1605-1608"), [1605, 1606, 1607, 1608])
+        self.assertEqual(PS.parse_numbers("P1608-P1606;1"), [1, 1606, 1607, 1608])
+        self.assertEqual(PS.parse_numbers(""), [])
+        with self.assertRaises(ValueError):
+            PS.parse_numbers("1605, next")
+        with self.assertRaises(ValueError):
+            PS.parse_numbers("1-99999")
+
+    def test_grouping_and_ignored(self):
+        groups, ignored = PS.group_marks(marks("P1604", "p1606", "TP01",
+                                               "P1604-1", "Pile", "", None))
+        self.assertEqual(sorted(groups), ["P", "TP"])
+        self.assertEqual([e["number"] for e in groups["P"]], [1604, 1606])
+        self.assertEqual([(g["mark"], g["reason"]) for g in ignored],
+                         [("P1604-1", "suffix '-1'"), ("Pile", "no number"),
+                          ("", "no number"), ("", "no number")])
+        self.assertIn("P  -  2 mark(s), 1604 to 1606, 1 gap(s)",
+                      PS.group_label("P", groups["P"]))
+
+    def test_summary(self):
+        s = PS.sequence_summary(entries("P1", "P2", "P2", "P5"))
+        self.assertEqual((s["count"], s["low"], s["high"]), (4, 1, 5))
+        self.assertEqual(s["gaps"], [3, 4])
+        self.assertEqual(s["duplicates"], {2: 2})
+        self.assertEqual(PS.sequence_summary([])["count"], 0)
+
+
+class Plan(unittest.TestCase):
+
+    def test_the_example_from_the_brief(self):
+        # P1604 and P1606 exist (1605 is a gap); add 1605 and 1606
+        e = entries("P1604", "P1606", "P1607", "P1608")
+        plan = PS.plan_insertions(e, [1605, 1606])
+        self.assertEqual(final(plan), {"P1604": "P1604", "P1606": "P1607",
+                                       "P1607": "P1608", "P1608": "P1609",
+                                       "NEW": ["P1605", "P1606"]})
+        self.assertEqual(plan["new_numbers"], [1605, 1606])
+        self.assertEqual(plan["renamed"], 3)
+        self.assertEqual(plan["gaps_after"], [])
+        self.assertEqual(plan["duplicates_after"], {})
+
+    def test_a_gap_is_simply_reserved(self):
+        plan = PS.plan_insertions(entries("P1", "P3"), [2])
+        self.assertEqual(final(plan), {"P1": "P1", "P3": "P3", "NEW": ["P2"]})
+        self.assertEqual(plan["renamed"], 0)
+
+    def test_fill_gaps_stops_at_the_first_free_number(self):
+        e = entries("P1", "P2", "P3", "P5", "P6")        # gap at 4
+        plan = PS.plan_insertions(e, [2], fill_gaps=True)
+        self.assertEqual(final(plan), {"P1": "P1", "P2": "P3", "P3": "P4",
+                                       "P5": "P5", "P6": "P6", "NEW": ["P2"]})
+        self.assertEqual(plan["gaps_after"], [])
+
+    def test_shift_everything_keeps_the_gap(self):
+        e = entries("P1", "P2", "P3", "P5", "P6")
+        plan = PS.plan_insertions(e, [2], fill_gaps=False)
+        self.assertEqual(final(plan), {"P1": "P1", "P2": "P3", "P3": "P4",
+                                       "P5": "P6", "P6": "P7", "NEW": ["P2"]})
+        self.assertEqual(plan["gaps_after"], [5])
+
+    def test_duplicates_move_together_and_stay_flagged(self):
+        e = entries("P1", "P2", "P2", "P3")
+        plan = PS.plan_insertions(e, [2])
+        news = [r for r in plan["rows"] if r["number_new"] == 3]
+        self.assertEqual(sorted(r["old"] for r in news), ["P2", "P2"])
+        self.assertTrue(all(r["duplicate"] for r in news))
+        self.assertEqual(plan["duplicates_before"], {2: 2})
+        self.assertEqual(plan["duplicates_after"], {3: 2})
+        self.assertEqual(final(plan)["P3"], "P4")
+
+    def test_padding_and_case_survive_a_rename(self):
+        plan = PS.plan_insertions(entries("p0009", "P0010"), [9])
+        self.assertEqual(final(plan), {"p0009": "p0010", "P0010": "P0011",
+                                       "NEW": ["P0009"]})
+
+    def test_number_beyond_the_end_and_several_numbers(self):
+        e = entries("P1", "P2")
+        plan = PS.plan_insertions(e, [1, 5])
+        self.assertEqual(final(plan), {"P1": "P2", "P2": "P3",
+                                       "NEW": ["P1", "P5"]})
+        self.assertEqual(plan["gaps_after"], [4])
+
+    def test_freed_numbers_are_not_pushed_by_a_later_insertion(self):
+        # 2 is reserved first; adding 3 then moves P3 and P4 only
+        e = entries("P1", "P3", "P4")
+        plan = PS.plan_insertions(e, [2, 3])
+        self.assertEqual(final(plan), {"P1": "P1", "P3": "P4", "P4": "P5",
+                                       "NEW": ["P2", "P3"]})
+
+    def test_apply_order_is_highest_first(self):
+        plan = PS.plan_insertions(entries("P1", "P2", "P3"), [1])
+        self.assertEqual([r["old"] for r in PS.apply_order(plan["rows"])],
+                         ["P3", "P2", "P1"])
+
+    def test_no_numbers_changes_nothing(self):
+        plan = PS.plan_insertions(entries("P1", "P2"), [])
+        self.assertEqual(plan["renamed"], 0)
+        self.assertEqual(plan["new_numbers"], [])
+
+
+class Preview(unittest.TestCase):
+
+    def test_page_marks_up_changes_duplicates_gaps_and_ignored(self):
+        e = entries("P1", "P2", "P2", "P5")
+        plan = PS.plan_insertions(e, [1])
+        html = PS.preview_html("Piles", [("Model", "A.rvt"), ("Prefix", "P")],
+                               plan, ignored=[{"id": 9, "mark": "P7-1",
+                                               "reason": "suffix '-1'"}])
+        self.assertIn("<tr class='new'>", html)
+        self.assertIn("<tr class='renamed dup'>", html)
+        self.assertIn("<tr class='gap'>", html)
+        self.assertIn("P7-1", html)
+        self.assertIn("suffix &#39;-1&#39;".replace("&#39;", "'"), html)
+        self.assertIn("freed for a new pile", html)
+        self.assertIn("DUPLICATE x2", html)
+        self.assertIn("Model: A.rvt", html)
+        self.assertNotIn("<script", html)
+        # escaping
+        html2 = PS.preview_html("<b>", [], PS.plan_insertions(
+            entries("P1"), []))
+        self.assertIn("&lt;b&gt;", html2)
+
+    def test_hide_unchanged(self):
+        plan = PS.plan_insertions(entries("P1", "P2", "P9"), [2])
+        html = PS.preview_html("t", [], plan, show_unchanged=False)
+        self.assertNotIn(">P1<", html)       # unchanged, hidden
+        self.assertIn("Unchanged piles are hidden", html)
+        self.assertIn(">P3<", html)          # the renamed P2
+
+
+if __name__ == "__main__":
+    unittest.main()

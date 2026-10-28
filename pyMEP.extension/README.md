@@ -793,6 +793,22 @@ imported.
 no / unset, flagged elements without a Mark, Pr or Ss code, and Marks
 shared by several flagged elements. Two CSVs.
 
+### Struct
+
+**Add to Pile Sequence** - free numbers in a pile mark sequence. Marks are
+read as a letter prefix plus a number (P1604 -> P, 1604), grouped by
+prefix; the number alone is the order and the prefix and zero padding are
+kept when a mark is rewritten. Type the numbers to add (`1605, 1606`,
+`P1605 P1606` or `1605-1608`): a number not in use is reserved, a number
+in use moves the piles at it and above up by one - as far as the next
+free number by default, so a gap above absorbs the move, or every higher
+pile. Marks with a suffix such as `P1604-1`, and marks without a number,
+are left alone and listed. **Preview in browser** opens a page of the
+whole sequence with renames (yellow), freed numbers (green), duplicate
+marks (red) and gaps (grey); **Apply** renames in one undo step, highest
+number first, and writes a CSV and an as-applied page to the model's pyMEP
+folder.
+
 ## Lib modules
 
 | module | purpose |
