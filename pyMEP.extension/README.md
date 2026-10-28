@@ -808,7 +808,10 @@ free number by default, so a gap above absorbs the move, or every higher
 pile. Marks with a suffix such as `P1604-1`, and marks without a number,
 are left alone and listed. **Preview in browser** opens a page of the
 whole sequence with renames (yellow), freed numbers (green), duplicate
-marks (red) and gaps (grey); **Apply** renames in one undo step, highest
+marks (red) and gaps (grey). A tick gives every duplicate a suffix -
+`P1608-1`, `P1608-2`, ... in element id order, the first one included,
+skipping a suffix already in use there - and can run on its own with no
+numbers typed. **Apply** renames in one undo step, highest
 number first, and writes a CSV and an as-applied page to the model's pyMEP
 folder.
 

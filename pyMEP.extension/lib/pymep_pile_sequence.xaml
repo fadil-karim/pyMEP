@@ -90,6 +90,11 @@
                                      Content="move piles up only as far as the next free number (a gap above absorbs the move)"/>
                         <RadioButton x:Name="RbAll" GroupName="Shift" Margin="0,6,0,0"
                                      Content="move every higher pile up (gaps above are kept where they are)"/>
+                        <CheckBox x:Name="ChkSuffix" Margin="0,10,0,0"
+                                  Checked="on_numbers_changed" Unchecked="on_numbers_changed"
+                                  Content="give duplicate marks a suffix: -1, -2, ... (the first one included), in element id order"/>
+                        <TextBlock Style="{StaticResource Hint}" Margin="22,2,0,0"
+                                   Text="Applied at the number each duplicate ends up on; a suffix already in use there (an earlier P1608-1) is skipped. Can run on its own with no numbers typed."/>
                         <CheckBox x:Name="ChkShowUnchanged" Margin="0,10,0,0"
                                   Content="show unchanged piles in the preview too"/>
                         <TextBlock x:Name="TxtPlan" Style="{StaticResource Hint}" Margin="0,8,0,0" Text=""/>

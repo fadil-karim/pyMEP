@@ -218,6 +218,60 @@ class Sets(unittest.TestCase):
                                fill_gaps=False, bounds=(1000, 1999))
 
 
+class Duplicates(unittest.TestCase):
+
+    def test_suffixes_in_id_order_including_the_first(self):
+        groups, _ig = PS.group_marks([(50, "P1607"), (12, "P1607"), (7, "P1608"),
+                                      (31, "P1607")])
+        plan = PS.plan_insertions(groups["P"], [], suffix_duplicates=True)
+        got = dict((r["id"], r["new"]) for r in plan["rows"])
+        self.assertEqual(got, {12: "P1607-1", 31: "P1607-2", 50: "P1607-3",
+                               7: "P1608"})
+        self.assertEqual(plan["suffixed"], 3)
+        self.assertEqual(plan["duplicates_after"], {})
+        self.assertEqual([r["kind"] for r in plan["rows"] if r["id"] == 7],
+                         ["kept"])
+
+    def test_suffix_after_a_move(self):
+        e = entries("P1606", "P1607", "P1607")
+        plan = PS.plan_insertions(e, [1606], suffix_duplicates=True)
+        news = sorted(r["new"] for r in plan["rows"] if r["kind"] == "suffixed")
+        self.assertEqual(news, ["P1608-1", "P1608-2"])
+        self.assertEqual(final(plan)["P1606"], "P1607")
+        self.assertEqual(plan["renamed"], 1)
+
+    def test_taken_suffixes_are_skipped(self):
+        ignored = [{"id": 1, "mark": "P1607-1", "reason": "suffix '-1'"},
+                   {"id": 2, "mark": "p1607-3", "reason": "suffix '-3'"},
+                   {"id": 3, "mark": "TP1607-2", "reason": "suffix '-2'"},
+                   {"id": 4, "mark": "P1607-A", "reason": "suffix '-A'"}]
+        taken = PS.taken_suffixes(ignored, "P")
+        self.assertEqual(taken, {1607: set([1, 3])})
+        e = entries("P1607", "P1607", "P1607")
+        plan = PS.plan_insertions(e, [], suffix_duplicates=True, taken=taken)
+        self.assertEqual(sorted(r["new"] for r in plan["rows"]),
+                         ["P1607-2", "P1607-4", "P1607-5"])
+
+    def test_off_by_default_keeps_flagging(self):
+        plan = PS.plan_insertions(entries("P1", "P1"), [])
+        self.assertEqual(plan["suffixed"], 0)
+        self.assertEqual(plan["duplicates_after"], {1: 2})
+
+    def test_apply_order_includes_suffixed(self):
+        plan = PS.plan_insertions(entries("P1", "P2", "P2"), [1],
+                                  suffix_duplicates=True)
+        self.assertEqual([r["new"] for r in PS.apply_order(plan["rows"])],
+                         ["P3-1", "P3-2", "P2"])
+
+    def test_preview_marks_suffixed_rows(self):
+        plan = PS.plan_insertions(entries("P1", "P1"), [], suffix_duplicates=True)
+        html = PS.preview_html("t", [], plan)
+        self.assertIn("<tr class='suffixed'>", html)
+        self.assertIn("given the suffix -1", html)
+        self.assertIn("given the suffix -2", html)
+        self.assertNotIn("DUPLICATE x", html)
+
+
 class Preview(unittest.TestCase):
 
     def test_page_marks_up_changes_duplicates_gaps_and_ignored(self):

@@ -33,6 +33,15 @@ INSERTING NUMBERS
   Example: P1604, P1606, P1607, P1608 exist; add 1605 and 1606.
   1605 is a gap and is reserved; 1606 is in use, so 1606-1608 become
   1607-1609. Result: P1605 and P1606 free, P1607..P1609 renamed.
+
+DUPLICATES
+  Two piles with the same mark move together and are flagged. With
+  suffix_duplicates on, every pile sharing a number is given a suffix
+  instead - P1608-1, P1608-2, ... in element id order, the first one
+  included - at the number it ends up on. A suffix already carried by
+  an ignored mark at that number (an earlier P1608-1) is skipped, so
+  the pass never makes a new clash. Suffixed marks are ignored by the
+  next run, like every other suffix.
 """
 
 import re
@@ -106,6 +115,23 @@ def group_marks(items):
         e["mark"] = mark
         groups.setdefault(p["prefix"].strip().upper(), []).append(e)
     return groups, ignored
+
+
+SUFFIX_RE = re.compile(r"^-(\d+)$")
+
+
+def taken_suffixes(ignored, prefix_key):
+    """{number: set(suffix ints)} of the ignored marks of one prefix
+    group that carry a -N suffix, so new suffixes can skip them."""
+    out = {}
+    for g in ignored or []:
+        p = parse_mark(g.get("mark"))
+        if p is None or p["prefix"].strip().upper() != (prefix_key or u"").upper():
+            continue
+        m = SUFFIX_RE.match(p["suffix"])
+        if m:
+            out.setdefault(p["number"], set()).add(int(m.group(1)))
+    return out
 
 
 def _dominant(values):
@@ -195,18 +221,22 @@ def group_label(key, entries):
 # ---------------------------------------------------------------------------
 # the plan
 # ---------------------------------------------------------------------------
-def plan_insertions(entries, numbers, fill_gaps=True, bounds=None):
+def plan_insertions(entries, numbers, fill_gaps=True, bounds=None,
+                    suffix_duplicates=False, taken=None):
     """Where every pile ends up after the numbers are freed.
 
     entries are ONE set's piles. With bounds (low, high) given, a typed
     number outside the set, or a move that would carry a pile past the
     set's last number, raises ValueError saying so - nothing ever spills
-    into the next set.
+    into the next set. With suffix_duplicates, piles sharing a number
+    get -1, -2, ... (element id order, first included), skipping the
+    suffixes in taken {number: set(ints)}.
 
-    Returns {'rows', 'new_numbers', 'renamed', 'duplicates_before',
-    'duplicates_after', 'gaps_after'}. A row is {id, old, new,
-    number_old, number_new, changed, kind, duplicate} with kind 'kept',
-    'renamed' or 'new' (a freed number, id None, old '')."""
+    Returns {'rows', 'new_numbers', 'renamed', 'suffixed',
+    'duplicates_before', 'duplicates_after', 'gaps_after'}. A row is
+    {id, old, new, number_old, number_new, changed, kind, duplicate}
+    with kind 'kept', 'renamed', 'suffixed' or 'new' (a freed number,
+    id None, old '')."""
     wanted = sorted(set(int(n) for n in (numbers or [])))
     if bounds is not None:
         low, high = bounds
@@ -243,17 +273,45 @@ def plan_insertions(entries, numbers, fill_gaps=True, bounds=None):
                          .format(u", ".join(pushed) or u"a pile", bounds[1]))
     rows = []
     dup_after = {}
+    taken = taken or {}
+
+    def _id_key(o):
+        try:
+            return (0, int(o["id"]))
+        except Exception:
+            return (1, u"{0}".format(o["id"]))
+
     for k in sorted(occ):
         occupants = occ[k]
         real = [o for o in occupants if not o.get("reserved")]
-        if len(real) > 1:
+        suffixing = suffix_duplicates and len(real) > 1
+        if len(real) > 1 and not suffixing:
             dup_after[k] = len(real)
+        suffix_of = {}
+        if suffixing:
+            used = set(taken.get(k, ()))
+            nxt = 1
+            for o in sorted(real, key=_id_key):
+                while nxt in used:
+                    nxt += 1
+                suffix_of[id(o)] = nxt
+                used.add(nxt)
+                nxt += 1
         for o in occupants:
             if o.get("reserved"):
                 rows.append({"id": None, "old": u"", "number_old": None,
                              "new": format_mark(prefix, k, width),
                              "number_new": k, "changed": True,
                              "kind": "new", "duplicate": False})
+                continue
+            if suffixing:
+                rows.append({"id": o["id"], "old": o["mark"],
+                             "number_old": o["number"],
+                             "new": u"{0}-{1}".format(
+                                 format_mark(o["prefix"], k, o["width"]),
+                                 suffix_of[id(o)]),
+                             "number_new": k, "changed": True,
+                             "kind": "suffixed", "duplicate": True})
                 continue
             changed = (k != o["number"])
             rows.append({"id": o["id"], "old": o["mark"],
@@ -269,6 +327,7 @@ def plan_insertions(entries, numbers, fill_gaps=True, bounds=None):
     return {"rows": rows,
             "new_numbers": [r["number_new"] for r in rows if r["kind"] == "new"],
             "renamed": len([r for r in rows if r["kind"] == "renamed"]),
+            "suffixed": len([r for r in rows if r["kind"] == "suffixed"]),
             "duplicates_before": before["duplicates"],
             "duplicates_after": dup_after,
             "gaps_after": gaps_after}
@@ -277,7 +336,7 @@ def plan_insertions(entries, numbers, fill_gaps=True, bounds=None):
 def apply_order(rows):
     """The renames, highest new number first, so no two piles share a
     mark part-way through the write."""
-    return sorted([r for r in rows if r["kind"] == "renamed"],
+    return sorted([r for r in rows if r["kind"] in ("renamed", "suffixed")],
                   key=lambda r: -r["number_new"])
 
 
@@ -308,6 +367,7 @@ tr.renamed td{background:#fff3b0}
 tr.new td{background:#d9f2d9;font-weight:600}
 tr.dup td{color:#b00020;font-weight:600}
 tr.dup td.mark{border-left:4px solid #b00020}
+tr.suffixed td{background:#fde2e4;color:#222;font-weight:600}
 tr.gap td{color:#999;font-style:italic;background:#fafafa}
 tr.ignored td{color:#777}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
@@ -321,6 +381,7 @@ def preview_html(title, meta, plan, ignored=None, show_unchanged=True):
     green, remaining gaps as muted rows, ignored marks listed below."""
     rows = plan["rows"]
     renamed = plan["renamed"]
+    suffixed = plan.get("suffixed", 0)
     kept = len([r for r in rows if r["kind"] == "kept"])
     newn = len(plan["new_numbers"])
     dups = plan["duplicates_after"]
@@ -335,13 +396,16 @@ def preview_html(title, meta, plan, ignored=None, show_unchanged=True):
            u"<div class='sum'>"
            u"<div><b>{0}</b>renamed</div><div><b>{1}</b>unchanged</div>"
            u"<div><b>{2}</b>number(s) freed</div><div><b>{3}</b>duplicate "
-           u"number(s)</div><div><b>{4}</b>gap(s) left</div><div><b>{5}</b>"
+           u"number(s) left</div><div><b>{6}</b>duplicate(s) suffixed</div>"
+           u"<div><b>{4}</b>gap(s) left</div><div><b>{5}</b>"
            u"ignored</div></div>".format(renamed, kept, newn, len(dups),
-                                         len(gaps), len(ignored or [])),
+                                         len(gaps), len(ignored or []),
+                                         suffixed),
            u"<div class='legend'><span style='background:#fff3b0'>renamed</span>"
            u"<span style='background:#d9f2d9'>freed for a new pile</span>"
            u"<span style='color:#b00020;border:1px solid #b00020'>duplicate "
-           u"mark</span><span style='color:#999;border:1px solid #ddd'>gap"
+           u"mark</span><span style='background:#fde2e4'>duplicate given a "
+           u"suffix</span><span style='color:#999;border:1px solid #ddd'>gap"
            u"</span></div><main>"]
     if plan["new_numbers"]:
         out.append(u"<p>Freed: <b>{0}</b></p>".format(
@@ -361,15 +425,21 @@ def preview_html(title, meta, plan, ignored=None, show_unchanged=True):
             if r["kind"] == "kept" and not show_unchanged:
                 continue
             cls = [r["kind"]] if r["kind"] != "kept" else []
-            if r["duplicate"]:
+            if r["duplicate"] and r["kind"] != "suffixed":
                 cls.append(u"dup")
             if r["kind"] == "new":
                 change = u"freed for a new pile"
             elif r["kind"] == "renamed":
                 change = u"renamed ({0:+d})".format(r["number_new"] - r["number_old"])
+            elif r["kind"] == "suffixed":
+                change = u"duplicate - given the suffix {0}".format(
+                    r["new"][r["new"].rfind(u"-"):])
+                if r["number_new"] != r["number_old"]:
+                    change += u" after moving {0:+d}".format(
+                        r["number_new"] - r["number_old"])
             else:
                 change = u"unchanged"
-            if r["duplicate"]:
+            if r["duplicate"] and r["kind"] != "suffixed":
                 change += u" - DUPLICATE x{0}".format(dups.get(n, 2))
             out.append(u"<tr class='{0}'><td class='num'>{1}</td><td class='mark'>"
                        u"{2}</td><td class='mark'>{3}</td><td>{4}</td><td>{5}"
