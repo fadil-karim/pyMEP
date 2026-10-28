@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Add to Pile Sequence - free numbers in a mark sequence by moving the
-piles above them up, with a browser preview first.
+"""Add to Pile Sequence - close missing numbers in a mark sequence by
+moving the piles above them down, with a browser preview first.
 
 WHAT it reads: every model element of the chosen category that has a
 Mark with a number in it, grouped by letter prefix (P1604 -> prefix P,
@@ -14,12 +14,13 @@ on at a time: the numbers typed must lie in it, only its piles move,
 and a move that would carry a pile past the set's last number is
 refused instead of spilling into the next set.
 
-WHAT it does: for each number typed - 1605, 1606 or P1605-P1608 - the
-number is freed for a new pile. A number not in use is simply
-reserved; a number in use moves the piles at it and above up by one,
-either as far as the next free number (the default: a gap above
-absorbs the move) or every higher pile. Lowest number first, each on
-the result of the previous one.
+WHAT it does: the numbers typed - 1605, 1606 or P1605-P1608 - are the
+MISSING ones. Every pile above a typed number moves down by one for
+each typed number below it, so the holes close and the order is kept:
+with 1605 and 1606 missing, P1607 becomes P1605, P1608 becomes P1606,
+P1609 becomes P1607 and so on, and the old top numbers come free for
+new piles. A typed number that is in use, or above the last pile, is
+refused. 'Fill every gap in the set' types them all for you.
 
 DUPLICATES move together and are flagged red. With the suffix box
 ticked every pile sharing a number gets -1, -2, ... in element id order,
@@ -70,7 +71,7 @@ XAML_PATH = os.path.join(os.path.dirname(os.path.abspath(PS.__file__)),
                          "pymep_pile_sequence.xaml")
 DEFAULT_CATEGORY = "Structural Foundations"
 SETTINGS_CATEGORY = "pile_sequence_category"
-SETTINGS_FILL = "pile_sequence_fill_gaps"
+SETTINGS_ALLGAPS = "pile_sequence_all_gaps"
 SETTINGS_SHOW = "pile_sequence_show_unchanged"
 SETTINGS_SUFFIX = "pile_sequence_suffix_duplicates"
 
@@ -158,8 +159,7 @@ class SequenceWindow(forms.WPFWindow):
         remembered = settings.get(SETTINGS_CATEGORY) or DEFAULT_CATEGORY
         idx = category_names.index(remembered) if remembered in category_names else 0
         self.CmbCategory.SelectedIndex = idx
-        (self.RbFill if settings.get(SETTINGS_FILL, True)
-         else self.RbAll).IsChecked = True
+        self.ChkAllGaps.IsChecked = bool(settings.get(SETTINGS_ALLGAPS, False))
         self.ChkShowUnchanged.IsChecked = bool(settings.get(SETTINGS_SHOW, True))
         self.ChkSuffix.IsChecked = bool(settings.get(SETTINGS_SUFFIX, False))
         self._ready = True
@@ -297,11 +297,11 @@ class SequenceWindow(forms.WPFWindow):
                          u"or a range 1605-1608.".format(ex)
         return nums, u""
 
-    def fill_gaps(self):
+    def all_gaps(self):
         try:
-            return bool(self.RbFill.IsChecked)
+            return bool(self.ChkAllGaps.IsChecked)
         except Exception:
-            return True
+            return False
 
     def suffix(self):
         try:
@@ -313,8 +313,6 @@ class SequenceWindow(forms.WPFWindow):
         nums, err = self.numbers()
         if nums is None:
             return None, err
-        if not nums and not self.suffix():
-            return None, u"Type the number(s) to add."
         if not self.prefix_entries():
             return None, u"No numbered marks to work on."
         if nums:
@@ -324,9 +322,13 @@ class SequenceWindow(forms.WPFWindow):
                               u"set at a time.")
             if target != self.bounds():
                 self._select_set(target)
+        if self.all_gaps():
+            nums = sorted(set(nums) | set(PS.sequence_summary(self.entries())["gaps"]))
+        if not nums and not self.suffix():
+            return None, u"Type the missing number(s) to fill."
         try:
-            plan = PS.plan_insertions(
-                self.entries(), nums, self.fill_gaps(), bounds=self.bounds(),
+            plan = PS.plan_fill(
+                self.entries(), nums, bounds=self.bounds(),
                 suffix_duplicates=self.suffix(),
                 taken=PS.taken_suffixes(self.ignored, self.prefix_key()))
         except ValueError as ex:
@@ -338,16 +340,18 @@ class SequenceWindow(forms.WPFWindow):
             return
         plan, err = self.plan()
         if plan is None:
-            self.TxtPlan.Text = u"" if err == u"Type the number(s) to add." else err
+            self.TxtPlan.Text = (u"" if err == u"Type the missing number(s) to fill."
+                                 else err)
             return
-        self.TxtPlan.Text = (u"Frees {0}; renames {1} pile(s); suffixes {4} "
-                             u"duplicate(s); {2} duplicate number(s) left; {3} "
-                             u"gap(s) left.".format(
-                                 u", ".join(u"{0}".format(n)
-                                            for n in plan["new_numbers"])
+        self.TxtPlan.Text = (u"Fills {0}; renames {1} pile(s); frees {5} at the "
+                             u"top; suffixes {4} duplicate(s); {2} duplicate "
+                             u"number(s) left; {3} gap(s) left.".format(
+                                 u", ".join(u"{0}".format(n) for n in plan["filled"])
                                  or u"nothing",
                                  plan["renamed"], len(plan["duplicates_after"]),
-                                 len(plan["gaps_after"]), plan["suffixed"]))
+                                 len(plan["gaps_after"]), plan["suffixed"],
+                                 u", ".join(u"{0}".format(n) for n in plan["freed"])
+                                 or u"nothing"))
 
     # -- handlers -------------------------------------------------------------------
     def on_category_changed(self, sender, args):
@@ -388,7 +392,7 @@ class SequenceWindow(forms.WPFWindow):
             return
         self.result = {"plan": plan, "category": self.category(),
                        "prefix": self.prefix_key(), "set": self.bounds(),
-                       "fill": self.fill_gaps(), "suffix": self.suffix(),
+                       "all_gaps": self.all_gaps(), "suffix": self.suffix(),
                        "show": bool(self.ChkShowUnchanged.IsChecked)}
         self.Close()
 
@@ -428,7 +432,7 @@ res = win.result
 plan = res["plan"]
 try:
     settings[SETTINGS_CATEGORY] = res["category"]
-    settings[SETTINGS_FILL] = bool(res["fill"])
+    settings[SETTINGS_ALLGAPS] = bool(res["all_gaps"])
     settings[SETTINGS_SHOW] = bool(res["show"])
     settings[SETTINGS_SUFFIX] = bool(res["suffix"])
     save_settings(settings)
@@ -437,21 +441,17 @@ except Exception:
 
 renames = PS.apply_order(plan["rows"])
 if not renames:
-    forms.alert("Nothing to rename{0}.\n\nFreed: {1}".format(
-        u": the number(s) were free already, so they are simply available "
-        u"for new piles" if plan["new_numbers"] else u" - no duplicates to "
-        u"suffix and no numbers typed",
-        u", ".join(u"{0}".format(n) for n in plan["new_numbers"]) or u"nothing"),
-        title="Add to Pile Sequence")
+    forms.alert("Nothing to rename - no pile sits above the typed numbers and "
+                "there are no duplicates to suffix.", title="Add to Pile Sequence")
     script.exit()
 
 # ---------------------------------------------------------------------------
-# 3. Rename - one transaction, highest number first
+# 3. Rename - one transaction, lowest new number first
 # ---------------------------------------------------------------------------
 done = []
 failed = []
 t = Transaction(doc, "pyMEP: Add to pile sequence ({0} rename(s))".format(
-    len(renames)))
+    len(renames)))   # lowest new number first - see apply_order
 quiet(t)
 t.Start()
 try:
@@ -501,16 +501,18 @@ except Exception:
 
 output.print_md("### Add to Pile Sequence")
 output.print_md("**Category:** {0}  |  **Prefix:** {1}  |  **Set:** {6}  |  "
-                "**Freed:** {2}  |  **Renamed:** {3}  |  **Suffixed:** {7}  |  "
-                "**Failed:** {4}  |  **Duplicate numbers left:** {5}".format(
+                "**Filled:** {2}  |  **Freed at the top:** {8}  |  **Renamed:** "
+                "{3}  |  **Suffixed:** {7}  |  **Failed:** {4}  |  **Duplicate "
+                "numbers left:** {5}".format(
                     res["category"], res["prefix"] or "(none)",
-                    u", ".join(u"{0}".format(n) for n in plan["new_numbers"])
+                    u", ".join(u"{0}".format(n) for n in plan["filled"])
                     or "nothing",
                     len([r for r in done if r["kind"] == "renamed"]),
                     len(failed), len(plan["duplicates_after"]),
                     u"{0}-{1}".format(res["set"][0], res["set"][1])
                     if res["set"] else "-",
-                    len([r for r in done if r["kind"] == "suffixed"])))
+                    len([r for r in done if r["kind"] == "suffixed"]),
+                    u", ".join(u"{0}".format(n) for n in plan["freed"]) or "none"))
 rows = [[output.linkify(make_id(r["id"])), r["old"], r["new"],
          "suffixed (duplicate)" if r["kind"] == "suffixed" else "renamed"]
         for r in sorted(done, key=lambda r: (r["number_new"], r["new"]))]
@@ -526,13 +528,13 @@ for p in (csv_path, record):
     if p:
         output.print_md("Report: `{0}`".format(p))
 
-forms.alert("Add to Pile Sequence\n\nFreed {0}.\n{1} pile(s) renamed, {4} "
-            "duplicate(s) suffixed, {2} failed.{3}".format(
-                u", ".join(u"{0}".format(n) for n in plan["new_numbers"])
-                or u"nothing",
+forms.alert("Add to Pile Sequence\n\nFilled {0}; {5} now free at the top.\n"
+            "{1} pile(s) renamed, {4} duplicate(s) suffixed, {2} failed.{3}".format(
+                u", ".join(u"{0}".format(n) for n in plan["filled"]) or u"nothing",
                 len([r for r in done if r["kind"] == "renamed"]), len(failed),
                 u"\n\n{0} duplicate number(s) remain - see the output window."
                 .format(len(plan["duplicates_after"]))
                 if plan["duplicates_after"] else u"",
-                len([r for r in done if r["kind"] == "suffixed"])),
+                len([r for r in done if r["kind"] == "suffixed"]),
+                u", ".join(u"{0}".format(n) for n in plan["freed"]) or u"nothing"),
             title="Add to Pile Sequence")

@@ -795,27 +795,29 @@ shared by several flagged elements. Two CSVs.
 
 ### Struct
 
-**Add to Pile Sequence** - free numbers in a pile mark sequence. Marks are
+**Add to Pile Sequence** - close missing numbers in a pile mark sequence.
+Marks are
 read as a letter prefix plus a number (P1604 -> P, 1604), grouped by
 prefix; the number alone is the order and the prefix and zero padding are
 kept when a mark is rewritten. Each set of foundations is one leading digit
 (1000-1999, 2000-2999, 6000-6999) and the tool works on one set at a time:
 only that set's piles move, and a move that would run past the set's last
-number is refused. Type the numbers to add (`1605, 1606`,
-`P1605 P1606` or `1605-1608`): a number not in use is reserved, a number
-in use moves the piles at it and above up by one - as far as the next
-free number by default, so a gap above absorbs the move, or every higher
-pile. Marks with a suffix such as `P1604-1`, and marks without a number,
+number is refused. Type the missing numbers (`1605, 1606`, `P1605 P1606`
+or `1605-1608`, or tick "fill every gap"): every pile above them moves
+down by one for each typed number below it - with 1605 and 1606 missing,
+P1607 becomes P1605, P1608 becomes P1606, P1609 becomes P1607 - and the
+old top numbers come free for new piles. A typed number that is in use or
+above the last pile is refused. Marks with a suffix such as `P1604-1`, and marks without a number,
 are left alone and listed. **Preview in browser** opens a page with two
 tabs: the Table of the whole sequence with renames (yellow), freed numbers
 (green), duplicate marks (red) and gaps (grey), and the Plan - every pile
 drawn where it stands, north up, coloured by what happens to it, with the
 old and new mark and the change on hover, wheel zoom, drag pan and optional
-labels. A tick gives every duplicate a suffix -
+labels, changes and suffixes highlighted. A tick gives every duplicate a suffix -
 `P1608-1`, `P1608-2`, ... in element id order, the first one included,
 skipping a suffix already in use there - and can run on its own with no
-numbers typed. **Apply** renames in one undo step, highest
-number first, and writes a CSV and an as-applied page to the model's pyMEP
+numbers typed. **Apply** renames in one undo step, lowest new number
+first, and writes a CSV and an as-applied page to the model's pyMEP
 folder.
 
 ## Lib modules

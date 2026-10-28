@@ -27,13 +27,13 @@ def entries(*texts):
 
 
 def final(plan):
-    """{old mark: new mark} for the piles, plus 'NEW' entries."""
+    """{old mark: new mark} for the piles - freed numbers are not piles
+    and are left out (they are in plan["freed"])."""
     out = {}
     for r in plan["rows"]:
-        if r["kind"] == "new":
-            out.setdefault("NEW", []).append(r["new"])
-        else:
-            out[r["old"]] = r["new"]
+        if r["kind"] == "freed":
+            continue
+        out[r["old"]] = r["new"]
     return out
 
 
@@ -91,74 +91,81 @@ class Marks(unittest.TestCase):
 class Plan(unittest.TestCase):
 
     def test_the_example_from_the_brief(self):
-        # P1604 and P1606 exist (1605 is a gap); add 1605 and 1606
-        e = entries("P1604", "P1606", "P1607", "P1608")
-        plan = PS.plan_insertions(e, [1605, 1606])
-        self.assertEqual(final(plan), {"P1604": "P1604", "P1606": "P1607",
-                                       "P1607": "P1608", "P1608": "P1609",
-                                       "NEW": ["P1605", "P1606"]})
-        self.assertEqual(plan["new_numbers"], [1605, 1606])
-        self.assertEqual(plan["renamed"], 3)
+        # 1605 and 1606 are missing; 1608 is duplicated
+        e = entries("P1604", "P1607", "P1608", "P1608", "P1609", "P1610")
+        plan = PS.plan_fill(e, [1605, 1606])
+        self.assertEqual(final(plan), {"P1604": "P1604", "P1607": "P1605",
+                                       "P1608": "P1606", "P1609": "P1607",
+                                       "P1610": "P1608"})
+        self.assertEqual(plan["filled"], [1605, 1606])
+        self.assertEqual(plan["freed"], [1609, 1610])
+        self.assertEqual(plan["renamed"], 5)
+        self.assertEqual(plan["duplicates_after"], {1606: 2})
         self.assertEqual(plan["gaps_after"], [])
+        both = [r for r in plan["rows"] if r["old"] == "P1608"]
+        self.assertEqual([r["new"] for r in both], ["P1606", "P1606"])
+        self.assertTrue(all(r["duplicate"] for r in both))
+        freed_rows = [r for r in plan["rows"] if r["kind"] == "freed"]
+        self.assertEqual([r["new"] for r in freed_rows], ["P1609", "P1610"])
+
+    def test_then_the_duplicates_get_suffixes(self):
+        groups, _ig = PS.group_marks([(1, "P1604"), (2, "P1607"), (9, "P1608"),
+                                      (3, "P1608"), (4, "P1609")])
+        plan = PS.plan_fill(groups["P"], [1605, 1606], suffix_duplicates=True)
+        got = dict((r["id"], r["new"]) for r in plan["rows"] if r["id"])
+        self.assertEqual(got, {1: "P1604", 2: "P1605", 3: "P1606-1",
+                               9: "P1606-2", 4: "P1607"})
+        self.assertEqual(plan["suffixed"], 2)
         self.assertEqual(plan["duplicates_after"], {})
 
-    def test_a_gap_is_simply_reserved(self):
-        plan = PS.plan_insertions(entries("P1", "P3"), [2])
-        self.assertEqual(final(plan), {"P1": "P1", "P3": "P3", "NEW": ["P2"]})
-        self.assertEqual(plan["renamed"], 0)
+    def test_piles_below_a_filled_number_do_not_move(self):
+        plan = PS.plan_fill(entries("P1", "P2", "P4", "P5"), [3])
+        self.assertEqual(final(plan), {"P1": "P1", "P2": "P2", "P4": "P3",
+                                       "P5": "P4"})
+        self.assertEqual(plan["freed"], [5])
 
-    def test_fill_gaps_stops_at_the_first_free_number(self):
-        e = entries("P1", "P2", "P3", "P5", "P6")        # gap at 4
-        plan = PS.plan_insertions(e, [2], fill_gaps=True)
-        self.assertEqual(final(plan), {"P1": "P1", "P2": "P3", "P3": "P4",
-                                       "P5": "P5", "P6": "P6", "NEW": ["P2"]})
-        self.assertEqual(plan["gaps_after"], [])
+    def test_each_pile_moves_by_the_count_of_filled_numbers_below_it(self):
+        plan = PS.plan_fill(entries("P1", "P3", "P5", "P7"), [2, 4, 6])
+        self.assertEqual(final(plan), {"P1": "P1", "P3": "P2", "P5": "P3",
+                                       "P7": "P4"})
+        self.assertEqual(plan["freed"], [5, 6, 7])
 
-    def test_shift_everything_keeps_the_gap(self):
-        e = entries("P1", "P2", "P3", "P5", "P6")
-        plan = PS.plan_insertions(e, [2], fill_gaps=False)
-        self.assertEqual(final(plan), {"P1": "P1", "P2": "P3", "P3": "P4",
-                                       "P5": "P6", "P6": "P7", "NEW": ["P2"]})
-        self.assertEqual(plan["gaps_after"], [5])
+    def test_other_gaps_move_down_but_stay(self):
+        plan = PS.plan_fill(entries("P1", "P3", "P4", "P7"), [2])
+        self.assertEqual(final(plan), {"P1": "P1", "P3": "P2", "P4": "P3",
+                                       "P7": "P6"})
+        self.assertEqual(plan["gaps_after"], [4, 5])
 
-    def test_duplicates_move_together_and_stay_flagged(self):
-        e = entries("P1", "P2", "P2", "P3")
-        plan = PS.plan_insertions(e, [2])
-        news = [r for r in plan["rows"] if r["number_new"] == 3]
-        self.assertEqual(sorted(r["old"] for r in news), ["P2", "P2"])
-        self.assertTrue(all(r["duplicate"] for r in news))
-        self.assertEqual(plan["duplicates_before"], {2: 2})
-        self.assertEqual(plan["duplicates_after"], {3: 2})
-        self.assertEqual(final(plan)["P3"], "P4")
+    def test_filling_below_the_first_pile_renumbers_from_there(self):
+        plan = PS.plan_fill(entries("P1604", "P1605"), [1601, 1602, 1603])
+        self.assertEqual(final(plan), {"P1604": "P1601", "P1605": "P1602"})
 
-    def test_padding_and_case_survive_a_rename(self):
-        plan = PS.plan_insertions(entries("p0009", "P0010"), [9])
-        self.assertEqual(final(plan), {"p0009": "p0010", "P0010": "P0011",
-                                       "NEW": ["P0009"]})
+    def test_padding_and_case_survive(self):
+        plan = PS.plan_fill(entries("p0009", "P0011"), [10])
+        self.assertEqual(final(plan), {"p0009": "p0009", "P0011": "P0010"})
 
-    def test_number_beyond_the_end_and_several_numbers(self):
-        e = entries("P1", "P2")
-        plan = PS.plan_insertions(e, [1, 5])
-        self.assertEqual(final(plan), {"P1": "P2", "P2": "P3",
-                                       "NEW": ["P1", "P5"]})
-        self.assertEqual(plan["gaps_after"], [4])
+    def test_refusals(self):
+        e = entries("P1604", "P1607")
+        with self.assertRaises(ValueError) as cm:
+            PS.plan_fill(e, [1607])
+        self.assertIn("in use", str(cm.exception))
+        with self.assertRaises(ValueError) as cm:
+            PS.plan_fill(e, [1620])
+        self.assertIn("above the last pile", str(cm.exception))
+        with self.assertRaises(ValueError) as cm:
+            PS.plan_fill(e, [2001], bounds=(1000, 1999))
+        self.assertIn("outside this set", str(cm.exception))
 
-    def test_freed_numbers_are_not_pushed_by_a_later_insertion(self):
-        # 2 is reserved first; adding 3 then moves P3 and P4 only
-        e = entries("P1", "P3", "P4")
-        plan = PS.plan_insertions(e, [2, 3])
-        self.assertEqual(final(plan), {"P1": "P1", "P3": "P4", "P4": "P5",
-                                       "NEW": ["P2", "P3"]})
-
-    def test_apply_order_is_highest_first(self):
-        plan = PS.plan_insertions(entries("P1", "P2", "P3"), [1])
+    def test_apply_order_is_lowest_first(self):
+        plan = PS.plan_fill(entries("P1", "P3", "P4", "P5"), [2])
         self.assertEqual([r["old"] for r in PS.apply_order(plan["rows"])],
-                         ["P3", "P2", "P1"])
+                         ["P3", "P4", "P5"])
 
     def test_no_numbers_changes_nothing(self):
-        plan = PS.plan_insertions(entries("P1", "P2"), [])
+        plan = PS.plan_fill(entries("P1", "P2"), [])
         self.assertEqual(plan["renamed"], 0)
-        self.assertEqual(plan["new_numbers"], [])
+        self.assertEqual(plan["freed"], [])
+        self.assertEqual(plan["filled"], [])
 
 
 class Sets(unittest.TestCase):
@@ -167,9 +174,9 @@ class Sets(unittest.TestCase):
         self.assertEqual(PS.set_bounds(1604, 4), (1000, 1999))
         self.assertEqual(PS.set_bounds(2001, 4), (2000, 2999))
         self.assertEqual(PS.set_bounds(6350, 4), (6000, 6999))
-        self.assertEqual(PS.set_bounds(12, 3), (0, 99))      # P012
+        self.assertEqual(PS.set_bounds(12, 3), (0, 99))
         self.assertEqual(PS.set_bounds(7, 1), (0, 9))
-        self.assertEqual(PS.set_bounds(1604, 2), (1000, 1999))  # width never shrinks a number
+        self.assertEqual(PS.set_bounds(1604, 2), (1000, 1999))
 
     def test_split_and_labels(self):
         e = entries("P1001", "P1002", "P2001", "P2003", "P6001")
@@ -188,34 +195,12 @@ class Sets(unittest.TestCase):
         self.assertIsNone(PS.numbers_set([], 4))
 
     def test_only_the_chosen_set_moves(self):
-        e = entries("P1998", "P1999", "P2000", "P2001")
+        e = entries("P1001", "P1003", "P2000", "P2002")
         sets = dict(PS.split_sets(e))
-        one = sets[(1000, 1999)]
-        with self.assertRaises(ValueError):      # P1999 -> 2000 refused
-            PS.plan_insertions(one, [1998], bounds=(1000, 1999))
-        two = sets[(2000, 2999)]
-        plan2 = PS.plan_insertions(two, [2000], bounds=(2000, 2999))
-        self.assertEqual(final(plan2), {"P2000": "P2001", "P2001": "P2002",
-                                        "NEW": ["P2000"]})
-
-    def test_refusals(self):
-        e = entries("P1998", "P1999")
-        with self.assertRaises(ValueError) as cm:
-            PS.plan_insertions(e, [1998], bounds=(1000, 1999))
-        self.assertIn("past the end of this set", str(cm.exception))
-        self.assertIn("1999", str(cm.exception))
-        with self.assertRaises(ValueError) as cm:
-            PS.plan_insertions(e, [2001], bounds=(1000, 1999))
-        self.assertIn("outside this set", str(cm.exception))
-        # with a gap to absorb it, the same insertion is fine
-        plan = PS.plan_insertions(entries("P1997", "P1999"), [1997],
-                                  bounds=(1000, 1999))
-        self.assertEqual(final(plan), {"P1997": "P1998", "P1999": "P1999",
-                                       "NEW": ["P1997"]})
-        # shift-all into a full set end is refused too
-        with self.assertRaises(ValueError):
-            PS.plan_insertions(entries("P1997", "P1999"), [1997],
-                               fill_gaps=False, bounds=(1000, 1999))
+        plan = PS.plan_fill(sets[(1000, 1999)], [1002], bounds=(1000, 1999))
+        self.assertEqual(final(plan), {"P1001": "P1001", "P1003": "P1002"})
+        plan2 = PS.plan_fill(sets[(2000, 2999)], [2001], bounds=(2000, 2999))
+        self.assertEqual(final(plan2), {"P2000": "P2000", "P2002": "P2001"})
 
 
 class Duplicates(unittest.TestCase):
@@ -223,22 +208,12 @@ class Duplicates(unittest.TestCase):
     def test_suffixes_in_id_order_including_the_first(self):
         groups, _ig = PS.group_marks([(50, "P1607"), (12, "P1607"), (7, "P1608"),
                                       (31, "P1607")])
-        plan = PS.plan_insertions(groups["P"], [], suffix_duplicates=True)
+        plan = PS.plan_fill(groups["P"], [], suffix_duplicates=True)
         got = dict((r["id"], r["new"]) for r in plan["rows"])
         self.assertEqual(got, {12: "P1607-1", 31: "P1607-2", 50: "P1607-3",
                                7: "P1608"})
         self.assertEqual(plan["suffixed"], 3)
         self.assertEqual(plan["duplicates_after"], {})
-        self.assertEqual([r["kind"] for r in plan["rows"] if r["id"] == 7],
-                         ["kept"])
-
-    def test_suffix_after_a_move(self):
-        e = entries("P1606", "P1607", "P1607")
-        plan = PS.plan_insertions(e, [1606], suffix_duplicates=True)
-        news = sorted(r["new"] for r in plan["rows"] if r["kind"] == "suffixed")
-        self.assertEqual(news, ["P1608-1", "P1608-2"])
-        self.assertEqual(final(plan)["P1606"], "P1607")
-        self.assertEqual(plan["renamed"], 1)
 
     def test_taken_suffixes_are_skipped(self):
         ignored = [{"id": 1, "mark": "P1607-1", "reason": "suffix '-1'"},
@@ -247,24 +222,23 @@ class Duplicates(unittest.TestCase):
                    {"id": 4, "mark": "P1607-A", "reason": "suffix '-A'"}]
         taken = PS.taken_suffixes(ignored, "P")
         self.assertEqual(taken, {1607: set([1, 3])})
-        e = entries("P1607", "P1607", "P1607")
-        plan = PS.plan_insertions(e, [], suffix_duplicates=True, taken=taken)
+        plan = PS.plan_fill(entries("P1607", "P1607", "P1607"), [],
+                            suffix_duplicates=True, taken=taken)
         self.assertEqual(sorted(r["new"] for r in plan["rows"]),
                          ["P1607-2", "P1607-4", "P1607-5"])
 
     def test_off_by_default_keeps_flagging(self):
-        plan = PS.plan_insertions(entries("P1", "P1"), [])
+        plan = PS.plan_fill(entries("P1", "P1"), [])
         self.assertEqual(plan["suffixed"], 0)
         self.assertEqual(plan["duplicates_after"], {1: 2})
 
     def test_apply_order_includes_suffixed(self):
-        plan = PS.plan_insertions(entries("P1", "P2", "P2"), [1],
-                                  suffix_duplicates=True)
+        plan = PS.plan_fill(entries("P1", "P3", "P3"), [2], suffix_duplicates=True)
         self.assertEqual([r["new"] for r in PS.apply_order(plan["rows"])],
-                         ["P3-1", "P3-2", "P2"])
+                         ["P2-1", "P2-2"])
 
     def test_preview_marks_suffixed_rows(self):
-        plan = PS.plan_insertions(entries("P1", "P1"), [], suffix_duplicates=True)
+        plan = PS.plan_fill(entries("P1", "P1"), [], suffix_duplicates=True)
         html = PS.preview_html("t", [], plan)
         self.assertIn("<tr class='suffixed'>", html)
         self.assertIn("given the suffix -1", html)
@@ -275,30 +249,30 @@ class Duplicates(unittest.TestCase):
 class Preview(unittest.TestCase):
 
     def test_page_marks_up_changes_duplicates_gaps_and_ignored(self):
-        e = entries("P1", "P2", "P2", "P5")
-        plan = PS.plan_insertions(e, [1])
+        e = entries("P2", "P3", "P3", "P6")
+        plan = PS.plan_fill(e, [1])
         html = PS.preview_html("Piles", [("Model", "A.rvt"), ("Prefix", "P")],
                                plan, ignored=[{"id": 9, "mark": "P7-1",
                                                "reason": "suffix '-1'"}])
-        self.assertIn("<tr class='new'>", html)
+        self.assertIn("<tr class='freed'>", html)
         self.assertIn("<tr class='renamed dup'>", html)
         self.assertIn("<tr class='gap'>", html)
         self.assertIn("P7-1", html)
-        self.assertIn("suffix &#39;-1&#39;".replace("&#39;", "'"), html)
-        self.assertIn("freed for a new pile", html)
+        self.assertIn("suffix '-1'", html)
+        self.assertIn("Filled: <b>1</b>", html)
+        self.assertIn("freed at the top: <b>6</b>", html)
         self.assertIn("DUPLICATE x2", html)
         self.assertIn("Model: A.rvt", html)
         self.assertNotIn("Plan</button>", html)       # no points, no plan tab
         self.assertNotIn("src=", html)                # nothing loaded from outside
         self.assertNotIn("http", html.replace("http://www.w3.org/2000/svg", ""))
         # escaping
-        html2 = PS.preview_html("<b>", [], PS.plan_insertions(
-            entries("P1"), []))
+        html2 = PS.preview_html("<b>", [], PS.plan_fill(entries("P1"), []))
         self.assertIn("&lt;b&gt;", html2)
 
     def test_plan_tab(self):
-        groups, _ig = PS.group_marks([(1, "P1"), (2, "P2"), (3, "P2"), (4, "P5")])
-        plan = PS.plan_insertions(groups["P"], [1])
+        groups, _ig = PS.group_marks([(1, "P1"), (2, "P3"), (3, "P3"), (4, "P6")])
+        plan = PS.plan_fill(groups["P"], [2])      # P1 stays, the rest move down
         points = {1: (100.0, 200.0), 2: (110.0, 200.0), 3: (110.0, 205.0),
                   4: (120.0, 260.0)}
         html = PS.preview_html("t", [], plan, points=points)
@@ -308,31 +282,33 @@ class Preview(unittest.TestCase):
         self.assertIn("class='plan-renamed plan-dup'", html)
         self.assertIn("class='plan-renamed'", html)
         self.assertIn("class='plan-kept'", html)
-        self.assertIn("data-old='P1' data-nw='P2' data-change='renamed (+1)'", html)
-        self.assertIn("<title>P2  (P1) - renamed (+1)</title>", html)
+        self.assertIn("data-old='P1' data-nw='P1' data-change='unchanged'", html)
+        self.assertIn("data-old='P6' data-nw='P5' data-change='renamed (-1)'", html)
+        self.assertIn("data-old='P3' data-nw='P2' data-change='renamed (-1) - DUPLICATE'", html)
+        self.assertIn("<title>P5  (P6) - renamed (-1)</title>", html)
         import re
         cys = dict((m.group(2), float(m.group(1))) for m in
                    re.finditer(r"cy='([\d.]+)' r='[\d.]+' data-old='([^']*)'", html))
-        self.assertLess(cys["P5"], cys["P1"])          # north up
-        self.assertIn("Freed numbers have no pile yet", html)
+        self.assertLess(cys["P6"], cys["P1"])          # north up
+        self.assertIn("freed at the top have no pile yet", html)
         self.assertIn("plan-labels", html)
         html2 = PS.preview_html("t", [], plan, points={1: (0.0, 0.0)})
         self.assertEqual(html2.count("<circle"), 1)
         self.assertEqual(PS.plan_markup(plan["rows"], {}), "")
 
     def test_plan_tab_suffixed(self):
-        plan = PS.plan_insertions(entries("P1", "P1"), [], suffix_duplicates=True)
+        plan = PS.plan_fill(entries("P1", "P1"), [], suffix_duplicates=True)
         html = PS.preview_html("t", [], plan, points={1: (0, 0), 2: (1, 0)})
         self.assertEqual(html.count("class='plan-suffixed'"), 2)
         self.assertNotIn("plan-dup'", html.split("<svg")[1])
         self.assertIn("given the suffix -2", html)
 
     def test_hide_unchanged(self):
-        plan = PS.plan_insertions(entries("P1", "P2", "P9"), [2])
+        plan = PS.plan_fill(entries("P1", "P3", "P9"), [2])
         html = PS.preview_html("t", [], plan, show_unchanged=False)
         self.assertNotIn(">P1<", html)       # unchanged, hidden
         self.assertIn("Unchanged piles are hidden", html)
-        self.assertIn(">P3<", html)          # the renamed P2
+        self.assertIn(">P2<", html)          # the renamed P3
 
 
 if __name__ == "__main__":
