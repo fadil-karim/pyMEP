@@ -161,6 +161,63 @@ class Plan(unittest.TestCase):
         self.assertEqual(plan["new_numbers"], [])
 
 
+class Sets(unittest.TestCase):
+
+    def test_bounds(self):
+        self.assertEqual(PS.set_bounds(1604, 4), (1000, 1999))
+        self.assertEqual(PS.set_bounds(2001, 4), (2000, 2999))
+        self.assertEqual(PS.set_bounds(6350, 4), (6000, 6999))
+        self.assertEqual(PS.set_bounds(12, 3), (0, 99))      # P012
+        self.assertEqual(PS.set_bounds(7, 1), (0, 9))
+        self.assertEqual(PS.set_bounds(1604, 2), (1000, 1999))  # width never shrinks a number
+
+    def test_split_and_labels(self):
+        e = entries("P1001", "P1002", "P2001", "P2003", "P6001")
+        sets = PS.split_sets(e)
+        self.assertEqual([b for b, _ in sets], [(1000, 1999), (2000, 2999),
+                                                (6000, 6999)])
+        self.assertEqual([len(x) for _, x in sets], [2, 2, 1])
+        self.assertEqual(PS.set_label((2000, 2999), sets[1][1]),
+                         "2000-2999  (set 2)  -  2 pile(s), 2001 to 2003, 1 gap(s)")
+        self.assertEqual(PS.set_label((3000, 3999), []),
+                         "3000-3999  (set 3)  -  empty")
+
+    def test_numbers_set(self):
+        self.assertEqual(PS.numbers_set([1605, 1606], 4), (1000, 1999))
+        self.assertIsNone(PS.numbers_set([1605, 2001], 4))
+        self.assertIsNone(PS.numbers_set([], 4))
+
+    def test_only_the_chosen_set_moves(self):
+        e = entries("P1998", "P1999", "P2000", "P2001")
+        sets = dict(PS.split_sets(e))
+        one = sets[(1000, 1999)]
+        with self.assertRaises(ValueError):      # P1999 -> 2000 refused
+            PS.plan_insertions(one, [1998], bounds=(1000, 1999))
+        two = sets[(2000, 2999)]
+        plan2 = PS.plan_insertions(two, [2000], bounds=(2000, 2999))
+        self.assertEqual(final(plan2), {"P2000": "P2001", "P2001": "P2002",
+                                        "NEW": ["P2000"]})
+
+    def test_refusals(self):
+        e = entries("P1998", "P1999")
+        with self.assertRaises(ValueError) as cm:
+            PS.plan_insertions(e, [1998], bounds=(1000, 1999))
+        self.assertIn("past the end of this set", str(cm.exception))
+        self.assertIn("1999", str(cm.exception))
+        with self.assertRaises(ValueError) as cm:
+            PS.plan_insertions(e, [2001], bounds=(1000, 1999))
+        self.assertIn("outside this set", str(cm.exception))
+        # with a gap to absorb it, the same insertion is fine
+        plan = PS.plan_insertions(entries("P1997", "P1999"), [1997],
+                                  bounds=(1000, 1999))
+        self.assertEqual(final(plan), {"P1997": "P1998", "P1999": "P1999",
+                                       "NEW": ["P1997"]})
+        # shift-all into a full set end is refused too
+        with self.assertRaises(ValueError):
+            PS.plan_insertions(entries("P1997", "P1999"), [1997],
+                               fill_gaps=False, bounds=(1000, 1999))
+
+
 class Preview(unittest.TestCase):
 
     def test_page_marks_up_changes_duplicates_gaps_and_ignored(self):

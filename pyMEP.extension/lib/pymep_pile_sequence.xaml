@@ -63,6 +63,7 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Category"/>
                             <ComboBox x:Name="CmbCategory" Grid.Row="0" Grid.Column="1"
@@ -70,10 +71,13 @@
                             <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Prefix"/>
                             <ComboBox x:Name="CmbPrefix" Grid.Row="1" Grid.Column="1"
                                       SelectionChanged="on_prefix_changed"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Set"/>
+                            <ComboBox x:Name="CmbSet" Grid.Row="2" Grid.Column="1"
+                                      SelectionChanged="on_set_changed"/>
                         </Grid>
                         <TextBlock x:Name="TxtSummary" Style="{StaticResource Hint}" Margin="0,8,0,0" Text=""/>
                         <TextBlock Style="{StaticResource Hint}"
-                                   Text="Marks with a suffix such as P1604-1, and marks without a number, are ignored and listed in the preview."/>
+                                   Text="A set is one leading digit: 1000-1999, 2000-2999, 6000-6999. Only the chosen set is touched, and a move that would run past its last number is refused. Typing numbers from another set switches to it. Marks with a suffix such as P1604-1, and marks without a number, are ignored and listed in the preview."/>
                     </StackPanel>
                 </GroupBox>
 

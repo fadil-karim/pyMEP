@@ -8,6 +8,12 @@ number 1604). The order is the number alone; the letters and any zero
 padding are kept when a mark is rewritten. A mark with a suffix such
 as P1604-1, or without a number, is ignored and listed.
 
+SETS: each set of foundations starts at a new leading digit - P1001..
+is set 1 (1000-1999), P2001.. set 2, P6001.. set 6. One set is worked
+on at a time: the numbers typed must lie in it, only its piles move,
+and a move that would carry a pile past the set's last number is
+refused instead of spilling into the next set.
+
 WHAT it does: for each number typed - 1605, 1606 or P1605-P1608 - the
 number is freed for a new pile. A number not in use is simply
 reserved; a number in use moves the piles at it and above up by one,
@@ -107,6 +113,8 @@ class SequenceWindow(forms.WPFWindow):
         self.groups = {}
         self.ignored = []
         self.prefix_keys = []
+        self.sets = []            # [(bounds, entries)] of the chosen prefix
+        self._syncing = False
         for name in category_names:
             self.CmbCategory.Items.Add(u"{0}  ({1})".format(
                 name, len(by_category[name])))
@@ -140,13 +148,70 @@ class SequenceWindow(forms.WPFWindow):
                     want = i
                     break
             self.CmbPrefix.SelectedIndex = want
+        self._load_sets()
         self._describe()
 
-    def entries(self):
+    def prefix_entries(self):
         i = self.CmbPrefix.SelectedIndex
         if i is None or i < 0 or i >= len(self.prefix_keys):
             return []
         return self.groups[self.prefix_keys[i]]
+
+    def width(self):
+        counts = {}
+        for e in self.prefix_entries():
+            counts[e["width"]] = counts.get(e["width"], 0) + 1
+        if not counts:
+            return 4
+        return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+
+    def _load_sets(self, select=None):
+        self.sets = PS.split_sets(self.prefix_entries())
+        self._syncing = True
+        try:
+            self.CmbSet.Items.Clear()
+            for bounds, ents in self.sets:
+                self.CmbSet.Items.Add(PS.set_label(bounds, ents))
+            idx = 0
+            for i, (bounds, _e) in enumerate(self.sets):
+                if bounds == select:
+                    idx = i
+            if self.sets:
+                self.CmbSet.SelectedIndex = idx
+        finally:
+            self._syncing = False
+
+    def set_index(self):
+        i = self.CmbSet.SelectedIndex
+        if i is None or i < 0 or i >= len(self.sets):
+            return None
+        return i
+
+    def bounds(self):
+        i = self.set_index()
+        return self.sets[i][0] if i is not None else None
+
+    def entries(self):
+        i = self.set_index()
+        return self.sets[i][1] if i is not None else []
+
+    def _select_set(self, bounds):
+        """Point the Set combo at these bounds (adding an empty set when
+        no pile is numbered there yet)."""
+        for i, (b, _e) in enumerate(self.sets):
+            if b == bounds:
+                if self.CmbSet.SelectedIndex != i:
+                    self._syncing = True
+                    try:
+                        self.CmbSet.SelectedIndex = i
+                    finally:
+                        self._syncing = False
+                    self._describe(plan=False)
+                return
+        self.sets.append((bounds, []))
+        self.sets.sort(key=lambda kv: kv[0])
+        self._load_sets(select=bounds)
+        self._describe(plan=False)
 
     def prefix_key(self):
         i = self.CmbPrefix.SelectedIndex
@@ -154,14 +219,20 @@ class SequenceWindow(forms.WPFWindow):
             return u""
         return self.prefix_keys[i]
 
-    def _describe(self):
+    def _describe(self, plan=True):
         e = self.entries()
         s = PS.sequence_summary(e)
+        b = self.bounds()
         if not s["count"]:
-            self.TxtSummary.Text = u"No numbered marks in this category."
+            self.TxtSummary.Text = (u"No piles numbered in this set yet - "
+                                    u"numbers typed here are simply reserved."
+                                    if b else u"No numbered marks in this "
+                                    u"category.")
+            if plan:
+                self._plan_text()
             return
-        bits = [u"{0} pile(s) numbered {1} to {2}".format(s["count"], s["low"],
-                                                           s["high"])]
+        bits = [u"Set {0}-{1}: {2} pile(s) numbered {3} to {4}".format(
+            b[0], b[1], s["count"], s["low"], s["high"])]
         if s["gaps"]:
             shown = u", ".join(u"{0}".format(g) for g in s["gaps"][:12])
             bits.append(u"{0} gap(s): {1}{2}".format(
@@ -175,7 +246,8 @@ class SequenceWindow(forms.WPFWindow):
             bits.append(u"{0} mark(s) ignored (suffix or no number)".format(
                 len(self.ignored)))
         self.TxtSummary.Text = u".  ".join(bits) + u"."
-        self._plan_text()
+        if plan:
+            self._plan_text()
 
     # -- the plan -----------------------------------------------------------------
     def numbers(self):
@@ -199,9 +271,20 @@ class SequenceWindow(forms.WPFWindow):
             return None, err
         if not nums:
             return None, u"Type the number(s) to add."
-        if not self.entries():
+        if not self.prefix_entries():
             return None, u"No numbered marks to work on."
-        return PS.plan_insertions(self.entries(), nums, self.fill_gaps()), u""
+        target = PS.numbers_set(nums, self.width())
+        if target is None:
+            return None, (u"The numbers span more than one set - do one set "
+                          u"at a time.")
+        if target != self.bounds():
+            self._select_set(target)
+        try:
+            plan = PS.plan_insertions(self.entries(), nums, self.fill_gaps(),
+                                      bounds=self.bounds())
+        except ValueError as ex:
+            return None, u"{0}".format(ex)
+        return plan, u""
 
     def _plan_text(self):
         if not getattr(self, "_ready", False):
@@ -224,6 +307,11 @@ class SequenceWindow(forms.WPFWindow):
 
     def on_prefix_changed(self, sender, args):
         if getattr(self, "_ready", False):
+            self._load_sets()
+            self._describe()
+
+    def on_set_changed(self, sender, args):
+        if getattr(self, "_ready", False) and not self._syncing:
             self._describe()
 
     def on_numbers_changed(self, sender, args):
@@ -236,7 +324,7 @@ class SequenceWindow(forms.WPFWindow):
             return
         try:
             path = write_preview(plan, self.ignored, self.category(),
-                                 self.prefix_key(),
+                                 self.prefix_key(), self.bounds(),
                                  bool(self.ChkShowUnchanged.IsChecked))
             launch_html(path)
             self.StatusText.Foreground = self.TxtSummary.Foreground
@@ -250,7 +338,8 @@ class SequenceWindow(forms.WPFWindow):
             self.StatusText.Text = err
             return
         self.result = {"plan": plan, "category": self.category(),
-                       "prefix": self.prefix_key(), "fill": self.fill_gaps(),
+                       "prefix": self.prefix_key(), "set": self.bounds(),
+                       "fill": self.fill_gaps(),
                        "show": bool(self.ChkShowUnchanged.IsChecked)}
         self.Close()
 
@@ -263,7 +352,8 @@ def _stamp():
     return datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def write_preview(plan, ignored, category, prefix, show_unchanged, stem="preview"):
+def write_preview(plan, ignored, category, prefix, bounds, show_unchanged,
+                  stem="preview"):
     folder = get_export_folder(doc)
     if not os.path.isdir(folder):
         os.makedirs(folder)
@@ -271,6 +361,7 @@ def write_preview(plan, ignored, category, prefix, show_unchanged, stem="preview
     html = PS.preview_html(
         u"Pile sequence - {0}".format(doc.Title),
         [(u"Category", category), (u"Prefix", prefix or u"(none)"),
+         (u"Set", u"{0}-{1}".format(bounds[0], bounds[1]) if bounds else u"-"),
          (u"Written", datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))],
         plan, ignored=ignored, show_unchanged=show_unchanged)
     with io.open(path, "w", encoding="utf-8", newline="\n") as f:
@@ -350,17 +441,19 @@ except Exception:
 record = None
 try:
     record = write_preview(plan, win.ignored, res["category"], res["prefix"],
-                           True, stem="applied")
+                           res["set"], True, stem="applied")
 except Exception:
     record = None
 
 output.print_md("### Add to Pile Sequence")
-output.print_md("**Category:** {0}  |  **Prefix:** {1}  |  **Freed:** {2}  |  "
-                "**Renamed:** {3}  |  **Failed:** {4}  |  **Duplicate numbers "
-                "after:** {5}".format(
+output.print_md("**Category:** {0}  |  **Prefix:** {1}  |  **Set:** {6}  |  "
+                "**Freed:** {2}  |  **Renamed:** {3}  |  **Failed:** {4}  |  "
+                "**Duplicate numbers after:** {5}".format(
                     res["category"], res["prefix"] or "(none)",
                     u", ".join(u"{0}".format(n) for n in plan["new_numbers"]),
-                    len(done), len(failed), len(plan["duplicates_after"])))
+                    len(done), len(failed), len(plan["duplicates_after"]),
+                    u"{0}-{1}".format(res["set"][0], res["set"][1])
+                    if res["set"] else "-"))
 rows = [[output.linkify(make_id(r["id"])), r["old"], r["new"], "renamed"]
         for r in sorted(done, key=lambda r: r["number_new"])]
 rows += [[output.linkify(make_id(r["id"])), r["old"], r["new"],

@@ -798,7 +798,10 @@ shared by several flagged elements. Two CSVs.
 **Add to Pile Sequence** - free numbers in a pile mark sequence. Marks are
 read as a letter prefix plus a number (P1604 -> P, 1604), grouped by
 prefix; the number alone is the order and the prefix and zero padding are
-kept when a mark is rewritten. Type the numbers to add (`1605, 1606`,
+kept when a mark is rewritten. Each set of foundations is one leading digit
+(1000-1999, 2000-2999, 6000-6999) and the tool works on one set at a time:
+only that set's piles move, and a move that would run past the set's last
+number is refused. Type the numbers to add (`1605, 1606`,
 `P1605 P1606` or `1605-1608`): a number not in use is reserved, a number
 in use moves the piles at it and above up by one - as far as the next
 free number by default, so a gap above absorbs the move, or every higher

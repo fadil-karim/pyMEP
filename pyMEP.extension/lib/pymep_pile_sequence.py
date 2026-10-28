@@ -12,6 +12,13 @@ THE SEQUENCE
   gives two sequences. A mark with a suffix, or without a number, is
   left alone and listed as ignored.
 
+SETS
+  Each set of foundations starts at a new leading digit: P1001.. is set
+  1 (1000-1999), P2001.. set 2, P6001.. set 6. The tool works on ONE set
+  at a time: the numbers typed must all lie in the chosen set, only that
+  set's piles move, and a move that would run past the set's last number
+  (P1999 -> P2000) is refused rather than spilling into the next set.
+
 INSERTING NUMBERS
   Adding N frees the number N for a new pile:
     * N not in use (a gap): it is simply reserved - nothing moves.
@@ -130,6 +137,50 @@ def sequence_summary(entries):
             "duplicates": dict((n, c) for n, c in dups.items() if c > 1)}
 
 
+# ---------------------------------------------------------------------------
+# sets - the leading-digit blocks
+# ---------------------------------------------------------------------------
+def set_bounds(number, width):
+    """(low, high) of the set a number sits in: the block of numbers
+    sharing its leading digit at that digit width. 1604 at width 4 ->
+    (1000, 1999); 2 at width 1 -> (0, 9)."""
+    number = int(number)
+    width = max(int(width or 1), len(u"{0}".format(number)))
+    if width <= 1:
+        return (0, 9)
+    block = 10 ** (width - 1)
+    low = (number // block) * block
+    return (low, low + block - 1)
+
+
+def split_sets(entries):
+    """[(bounds, [entries])] of one prefix group, lowest set first."""
+    sets = {}
+    for e in entries:
+        sets.setdefault(set_bounds(e["number"], e["width"]), []).append(e)
+    return sorted(sets.items(), key=lambda kv: kv[0])
+
+
+def set_label(bounds, entries):
+    s = sequence_summary(entries)
+    head = u"{0}-{1}  (set {2})".format(bounds[0], bounds[1],
+                                        u"{0}".format(bounds[0])[0])
+    if not s["count"]:
+        return head + u"  -  empty"
+    return u"{0}  -  {1} pile(s), {2} to {3}{4}{5}".format(
+        head, s["count"], s["low"], s["high"],
+        u", {0} gap(s)".format(len(s["gaps"])) if s["gaps"] else u"",
+        u", {0} duplicate number(s)".format(len(s["duplicates"]))
+        if s["duplicates"] else u"")
+
+
+def numbers_set(numbers, width):
+    """The one set every typed number falls in, or None when they span
+    several sets (or there are none)."""
+    found = set(set_bounds(n, width) for n in (numbers or []))
+    return found.pop() if len(found) == 1 else None
+
+
 def group_label(key, entries):
     s = sequence_summary(entries)
     if not s["count"]:
@@ -144,20 +195,31 @@ def group_label(key, entries):
 # ---------------------------------------------------------------------------
 # the plan
 # ---------------------------------------------------------------------------
-def plan_insertions(entries, numbers, fill_gaps=True):
+def plan_insertions(entries, numbers, fill_gaps=True, bounds=None):
     """Where every pile ends up after the numbers are freed.
+
+    entries are ONE set's piles. With bounds (low, high) given, a typed
+    number outside the set, or a move that would carry a pile past the
+    set's last number, raises ValueError saying so - nothing ever spills
+    into the next set.
 
     Returns {'rows', 'new_numbers', 'renamed', 'duplicates_before',
     'duplicates_after', 'gaps_after'}. A row is {id, old, new,
     number_old, number_new, changed, kind, duplicate} with kind 'kept',
     'renamed' or 'new' (a freed number, id None, old '')."""
+    wanted = sorted(set(int(n) for n in (numbers or [])))
+    if bounds is not None:
+        low, high = bounds
+        for n in wanted:
+            if n < low or n > high:
+                raise ValueError(u"{0} is outside this set ({1}-{2}) - do "
+                                 u"one set at a time".format(n, low, high))
     occ = {}
     for e in entries:
         occ.setdefault(e["number"], []).append(dict(e))
     before = sequence_summary(entries)
     prefix = _dominant([e["prefix"] for e in entries]) if entries else u""
     width = _dominant([e["width"] for e in entries]) if entries else 1
-    wanted = sorted(set(int(n) for n in (numbers or [])))
     for n in wanted:
         if n not in occ:
             occ[n] = [{"reserved": True}]
@@ -173,6 +235,12 @@ def plan_insertions(entries, numbers, fill_gaps=True):
         for k in reversed(keys):
             occ[k + 1] = occ.pop(k)
         occ[n] = [{"reserved": True}]
+    if bounds is not None and occ and max(occ) > bounds[1]:
+        pushed = [o["mark"] for o in occ[max(occ)] if not o.get("reserved")]
+        raise ValueError(u"the move would carry {0} past the end of this "
+                         u"set ({1} is its last number) - the set is full "
+                         u"there; free a gap or use a smaller insertion"
+                         .format(u", ".join(pushed) or u"a pile", bounds[1]))
     rows = []
     dup_after = {}
     for k in sorted(occ):
