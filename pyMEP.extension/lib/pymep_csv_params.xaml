@@ -1,0 +1,166 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="CSV to Parameter"
+        Width="660" Height="700" MinWidth="600" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False"
+        Background="White">
+    <Window.Resources>
+        <Style TargetType="GroupBox">
+            <Setter Property="Margin" Value="0,0,0,12"/>
+            <Setter Property="Padding" Value="10,8,10,10"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,3,0,0"/>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Margin" Value="0,3,0,0"/>
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,6,10,0"/>
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#888888"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style x:Key="DialogButton" TargetType="Button">
+            <Setter Property="MinWidth" Value="96"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
+            <Setter Property="Padding" Value="10,4"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#F4F4F4" Padding="14,10">
+            <StackPanel>
+                <TextBlock FontSize="15" FontWeight="SemiBold" Text="CSV to Parameter"/>
+                <TextBlock Style="{StaticResource Hint}"
+                           Text="Pick the elements, a CSV file, the parameter and column that identify each element (Mark against a Mark column, say), then the parameter to set and the column holding its new values. Instance parameters only. Nothing is written until Apply."/>
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="14,12,14,0">
+            <StackPanel>
+                <GroupBox Header="1. Elements">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Category"/>
+                        <ComboBox Grid.Row="0" Grid.Column="1" x:Name="CmbCategory" SelectionChanged="on_category_changed"/>
+                        <CheckBox Grid.Row="1" Grid.Column="1" x:Name="ChkSelection" Margin="0,8,0,0"
+                                  Checked="on_scope_changed" Unchecked="on_scope_changed"
+                                  Content="only the elements selected in Revit"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="TxtElements" Style="{StaticResource Hint}" Text=""/>
+                    </Grid>
+                </GroupBox>
+
+                <GroupBox Header="2. CSV file">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBox Grid.Row="0" Grid.Column="0" x:Name="TxtCsv" IsReadOnly="True" Background="#FAFAFA"/>
+                        <Button Grid.Row="0" Grid.Column="1" x:Name="BtnBrowse" Content="Browse..."
+                                MinWidth="90" Margin="8,3,0,0" Padding="10,2" Click="on_browse"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" x:Name="TxtCsvInfo"
+                                   Style="{StaticResource Hint}"
+                                   Text="Comma, semicolon or tab separated, with a header row. Excel's CSV and CSV UTF-8 both read."/>
+                    </Grid>
+                </GroupBox>
+
+                <GroupBox Header="3. Match each element to a CSV row">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Element parameter"/>
+                        <ComboBox Grid.Row="0" Grid.Column="1" x:Name="CmbMatchParam" SelectionChanged="on_match_changed"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="CSV column"/>
+                        <ComboBox Grid.Row="1" Grid.Column="1" x:Name="CmbKeyCol" SelectionChanged="on_column_changed"/>
+                        <CheckBox Grid.Row="2" Grid.Column="1" x:Name="ChkIgnoreCase" Margin="0,8,0,0" IsChecked="True"
+                                  Checked="on_option_changed" Unchecked="on_option_changed"
+                                  Content="ignore case when matching (P1604 = p1604)"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource Hint}"
+                                   Text="Spaces around the value are ignored and 1604.0 from Excel reads as 1604. When a key sits on several CSV rows the last row wins; the preview lists them."/>
+                    </Grid>
+                </GroupBox>
+
+                <GroupBox Header="4. Value to set">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Element parameter to set"/>
+                        <ComboBox Grid.Row="0" Grid.Column="1" x:Name="CmbSetParam" SelectionChanged="on_set_changed"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="CSV column with the values"/>
+                        <ComboBox Grid.Row="1" Grid.Column="1" x:Name="CmbValueCol" SelectionChanged="on_column_changed"/>
+                        <CheckBox Grid.Row="2" Grid.Column="1" x:Name="ChkSkipBlank" Margin="0,8,0,0" IsChecked="True"
+                                  Checked="on_option_changed" Unchecked="on_option_changed"
+                                  Content="leave the parameter alone when the CSV cell is blank"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="TxtSetInfo" Style="{StaticResource Hint}"
+                                   Text="Numbers are read in the parameter's project units (1250 into a kN parameter is 1250 kN; 150 kN is accepted too). Yes/No takes yes, no, true, false, 1, 0."/>
+                    </Grid>
+                </GroupBox>
+
+                <GroupBox Header="What will happen">
+                    <StackPanel>
+                        <TextBlock x:Name="TxtSummary" TextWrapping="Wrap" Text=""/>
+                        <CheckBox x:Name="ChkShowUnchanged" Margin="0,10,0,0"
+                                  Content="show elements already equal in the preview too"/>
+                    </StackPanel>
+                </GroupBox>
+
+                <TextBlock x:Name="StatusText" Foreground="#B00020" TextWrapping="Wrap" Margin="0,0,0,8" Text=""/>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="2" Background="#F4F4F4" Padding="14,10">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="BtnPreview" Content="Preview in browser"
+                        Style="{StaticResource DialogButton}" Click="on_preview"/>
+                <Button x:Name="BtnApply" Content="Apply"
+                        Style="{StaticResource DialogButton}" IsDefault="True" Click="on_apply"/>
+                <Button x:Name="BtnCancel" Content="Cancel"
+                        Style="{StaticResource DialogButton}" IsCancel="True" Click="on_cancel"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

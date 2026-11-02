@@ -35,7 +35,7 @@ pyMEP.extension/
     07_PipeNetworks.panel/      # 'Pipe Networks': Lines to Pipes (always creates) + Update Pipes (scoped in-place update) + Connect Inflow to Collector + Sync Input Nodes
     03_Topography.panel/        # Align to Topo, Cut Toposolid, Drape Floor
     04_Chambers.panel/          # 'Chamber Drawing Setup': sections workflow, Chamber Plans
-    05_Parameters.panel/        # Replicate Parameter
+    05_Parameters.panel/        # Replicate Parameter, CSV to Parameter
     06_ProjectDataTransfer.panel/ # 'Project Data Transfer': Export/Import Project Data (view templates + filters as JSON)
     06_Annotate.panel/          # 3 annotation buttons
     08_Electrical.panel/        # Encasement (shown before Drainage on the ribbon)
@@ -509,6 +509,23 @@ whether Apply Edits asks before changing the model. Saved per user.
 source parameter and a writable target parameter; the value is copied onto
 every placed instance of that type, with a preview table and safe type
 coercion.
+
+**CSV to Parameter** - set one instance parameter on the elements of a
+category from a CSV file. Pick the category (or keep to the current
+selection), the CSV, the element parameter and CSV column that identify
+each element - Mark against the file's Mark column - then the parameter
+to set and the column with its new values - Peak Load from a "Peak Load"
+column. The dialog counts the matches as you choose; "Preview in
+browser" lists every element with its current and new value, the CSV
+rows no element claimed and keys that sit on more than one row (the last
+row wins); Apply writes in one undo step and reports what changed, with
+a results CSV in the export folder. Matching ignores case and
+surrounding spaces and reads Excel's 1604.0 as 1604. Text parameters
+take the cell as it is, whole-number and yes/no parameters check the
+cell first, and measured parameters read it in the parameter's project
+units (1250 into a kN parameter is 1250 kN; a unit suffix Revit
+understands is accepted). A blank cell leaves the parameter alone unless
+you untick that.
 
 ### Project Data Transfer
 
