@@ -24,6 +24,7 @@ auto-detected paths:
 
 import os
 import json
+import re
 
 import pymep_json
 import shutil
@@ -421,7 +422,13 @@ def get_hide_output():
 # The GitHub repository the extension is published from. Override with the
 # 'github_repo' settings key; for a private repo set 'github_token' to a
 # personal-access token with repo read access.
-DEFAULT_GITHUB_REPO = "OttomanLabsAI/pyMEP"
+DEFAULT_GITHUB_REPO = "fadil-karim/pyMEP"
+
+# Earlier homes of the repository. The Settings dialog saves the
+# 'github_repo' field every time it saves, so an install made before a
+# move on GitHub carries the old address in its settings file; a saved
+# value naming one of these reads as the current default.
+LEGACY_GITHUB_REPOS = ("OttomanLabsAI/pyMEP",)
 
 # The deployed version marker, written by the release tagging. Missing file
 # (a dev clone) just reads as "(no version.txt)".
@@ -438,11 +445,23 @@ def get_local_version():
         return ""
 
 
+def normalize_github_repo(value):
+    """'owner/repo' out of whatever was typed or saved: a full GitHub
+    URL loses its scheme, host and .git; blank, or an earlier home of
+    the repository (LEGACY_GITHUB_REPOS), reads as the default."""
+    s = u"{0}".format(value or u"").strip()
+    s = re.sub(r"(?i)^https?://(www\.)?github\.com/", u"", s).strip(u"/")
+    if s.lower().endswith(u".git"):
+        s = s[:-4]
+    if not s or s.lower() in [r.lower() for r in LEGACY_GITHUB_REPOS]:
+        return DEFAULT_GITHUB_REPO
+    return s
+
+
 def get_github_repo():
     """'owner/repo' the update buttons talk to ('github_repo' settings
-    key, default DEFAULT_GITHUB_REPO)."""
-    s = load_settings()
-    return (s.get("github_repo") or DEFAULT_GITHUB_REPO).strip()
+    key, default DEFAULT_GITHUB_REPO; an old address maps to it)."""
+    return normalize_github_repo(load_settings().get("github_repo"))
 
 
 def get_github_token():

@@ -749,7 +749,7 @@ Written by the Settings dialog to `%APPDATA%\pyRevit\pyMEP_settings.json`:
 | `chamber_dim_pairs` | reference-plane name pairs dimensioned by Dimension Section |
 | `gully_downpipe_length_mm` / `gully_invert_offset_mm` / `gully_slope_ratio` | remembered by the Gully to MH prompts (not in the Settings dialog) |
 | `networks_filter` / `networks_edits_folder` / `networks_confirm_apply` | Networks dashboard: input-node filter word, edits-file folder (blank = Downloads), ask-before-apply |
-| `github_repo` | `owner/repo` the update buttons talk to (default `OttomanLabsAI/pyMEP`; Settings > Updates) |
+| `github_repo` | `owner/repo` the update buttons talk to (default `fadil-karim/pyMEP`; Settings > Updates). The old `OttomanLabsAI/pyMEP` reads as the default, and a repository moved on GitHub is followed to its new address and the setting updated |
 | `github_token` | optional GitHub personal-access token (private repo / rate limits; Settings > Updates) |
 | `update_downloads_folder` | override the Downloads folder used by Install Update |
 | `auto_close_output` | close each command's output window when it finishes (error reports stay open) - ON by default |

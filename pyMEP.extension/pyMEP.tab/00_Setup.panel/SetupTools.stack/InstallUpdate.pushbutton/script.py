@@ -37,7 +37,7 @@ from pyrevit import forms, script
 
 from pymep_config import (
     get_github_repo, get_github_token, get_downloads_folder,
-    get_local_version,
+    get_local_version, load_settings, save_settings,
 )
 import pymep_update as upd
 from pymep_log import Logger
@@ -53,6 +53,21 @@ local_ver = get_local_version()
 log("### Install Update")
 log("Repo: **{}**".format(repo))
 log("Installed version: **{}**".format(local_ver or "(no version.txt)"))
+
+# A repository renamed or transferred on GitHub answers under its new
+# address; follow it once here and remember it when the settings file
+# named the old one, so the next run goes straight there.
+moved = upd.resolve_repo(repo, token, log=log)
+if moved != repo:
+    repo = moved
+    try:
+        _s = load_settings()
+        if _s.get("github_repo"):
+            _s["github_repo"] = repo
+            save_settings(_s)
+            log("Saved the new address in the settings.")
+    except Exception:
+        pass
 
 if not os.path.isdir(downloads):
     forms.alert(

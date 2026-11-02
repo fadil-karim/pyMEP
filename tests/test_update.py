@@ -67,23 +67,74 @@ class ParseRefTags(unittest.TestCase):
 
 
 class ZipCandidates(unittest.TestCase):
-    REPO = "OttomanLabsAI/pyMEP"
-    API = "https://api.github.com/repos/OttomanLabsAI/pyMEP/zipball/v1.208.0"
+    REPO = "fadil-karim/pyMEP"
+    API = "https://api.github.com/repos/fadil-karim/pyMEP/zipball/v1.208.0"
 
     def test_tag_label_gets_codeload_tag_mirror(self):
         urls = zip_candidates(self.REPO, "v1.208.0", self.API)
         self.assertEqual(urls[0], self.API)
-        self.assertIn("https://codeload.github.com/OttomanLabsAI/pyMEP"
+        self.assertIn("https://codeload.github.com/fadil-karim/pyMEP"
                       "/zip/refs/tags/v1.208.0", urls)
 
     def test_branch_label_gets_head_mirrors(self):
         urls = zip_candidates(self.REPO,
                               "default branch (no releases/tags found)",
                               self.API)
-        self.assertIn("https://codeload.github.com/OttomanLabsAI/pyMEP"
+        self.assertIn("https://codeload.github.com/fadil-karim/pyMEP"
                       "/zip/refs/heads/main", urls)
-        self.assertIn("https://codeload.github.com/OttomanLabsAI/pyMEP"
+        self.assertIn("https://codeload.github.com/fadil-karim/pyMEP"
                       "/zip/refs/heads/master", urls)
+
+
+class MovedRepo(unittest.TestCase):
+    """Following a repository renamed or transferred on GitHub."""
+
+    def setUp(self):
+        self.moved_to = extract_function("pymep_update.py", "moved_to")
+
+    def test_same_address_is_not_a_move(self):
+        self.assertIsNone(self.moved_to("fadil-karim/pyMEP", "fadil-karim/pyMEP"))
+        self.assertIsNone(self.moved_to("Fadil-Karim/pyMEP", "fadil-karim/pyMEP"))
+        self.assertIsNone(self.moved_to("fadil-karim/pyMEP", None))
+        self.assertIsNone(self.moved_to("fadil-karim/pyMEP", ""))
+
+    def test_new_address_is_followed(self):
+        self.assertEqual(self.moved_to("OttomanLabsAI/pyMEP", "fadil-karim/pyMEP"),
+                         "fadil-karim/pyMEP")
+
+
+class RepoSetting(unittest.TestCase):
+    """The 'github_repo' setting: old addresses map to the default."""
+
+    def setUp(self):
+        # Load the real file under a private name: other tests stub a
+        # 'pymep_config' module into sys.modules, and APPDATA must point
+        # somewhere harmless while it computes its paths.
+        import importlib.util
+        import sys
+        import tempfile
+        os.environ["APPDATA"] = tempfile.mkdtemp(prefix="pymep_cfg_")
+        if LIB not in sys.path:
+            sys.path.insert(0, LIB)
+        spec = importlib.util.spec_from_file_location(
+            "pymep_config_upd", os.path.join(LIB, "pymep_config.py"))
+        self.cfg = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.cfg)
+
+    def test_default_and_legacy(self):
+        n = self.cfg.normalize_github_repo
+        self.assertEqual(self.cfg.DEFAULT_GITHUB_REPO, "fadil-karim/pyMEP")
+        self.assertEqual(n(None), "fadil-karim/pyMEP")
+        self.assertEqual(n("  "), "fadil-karim/pyMEP")
+        self.assertEqual(n("OttomanLabsAI/pyMEP"), "fadil-karim/pyMEP")
+        self.assertEqual(n("ottomanlabsai/pymep"), "fadil-karim/pyMEP")
+        self.assertEqual(n("https://github.com/OttomanLabsAI/pyMEP.git"), "fadil-karim/pyMEP")
+
+    def test_other_values_pass_through(self):
+        n = self.cfg.normalize_github_repo
+        self.assertEqual(n("someone/else"), "someone/else")
+        self.assertEqual(n(" https://github.com/Someone/Fork/ "), "Someone/Fork")
+        self.assertEqual(n("Someone/Fork.git"), "Someone/Fork")
 
 
 if __name__ == "__main__":

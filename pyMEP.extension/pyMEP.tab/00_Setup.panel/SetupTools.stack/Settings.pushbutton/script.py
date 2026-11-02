@@ -37,7 +37,7 @@ from pymep_config import (
     get_landxml_survey_transform, get_annotate_pipe_offset_mm,
     get_auto_close_output, get_hide_output,
     get_local_version, get_github_repo, get_github_token,
-    DEFAULT_GITHUB_REPO,
+    DEFAULT_GITHUB_REPO, normalize_github_repo,
 )
 import pymep_update as upd
 
@@ -198,7 +198,7 @@ class SettingsWindow(forms.WPFWindow):
 
         s["annotate_pipe_offset_mm"] = ann_off
 
-        s["github_repo"] = self.TxtRepo.Text.strip()
+        s["github_repo"] = normalize_github_repo(self.TxtRepo.Text)
         s["github_token"] = self.PwdToken.Password.strip()
 
         hidden = [key for chk, key in self._panel_checks()
@@ -262,7 +262,7 @@ class SettingsWindow(forms.WPFWindow):
     # Updates
     # ------------------------------------------------------------------
     def on_load_versions(self, sender, args):
-        repo = self.TxtRepo.Text.strip() or DEFAULT_GITHUB_REPO
+        repo = normalize_github_repo(self.TxtRepo.Text)
         token = self.PwdToken.Password.strip()
         self.StatusText.Text = "Contacting GitHub..."
         try:
@@ -294,7 +294,7 @@ class SettingsWindow(forms.WPFWindow):
             forms.alert("Click 'Load versions' and pick a version first.")
             return
         ver = self._versions[idx]
-        repo = self.TxtRepo.Text.strip() or DEFAULT_GITHUB_REPO
+        repo = normalize_github_repo(self.TxtRepo.Text)
         token = self.PwdToken.Password.strip()
         cur = get_local_version()
         if forms.alert(

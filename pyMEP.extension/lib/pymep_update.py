@@ -69,9 +69,40 @@ def _client(token, accept=None):
 
 
 def _api_json(repo, path, token):
-    url = "https://api.github.com/repos/{}/{}".format(repo, path)
+    url = "https://api.github.com/repos/{}/{}".format(repo, path).rstrip("/")
     wc = _client(token, accept="application/vnd.github+json")
     return json.loads(wc.DownloadString(url))
+
+
+def moved_to(repo, full_name):
+    """The new 'owner/repo' when GitHub reports the repository under a
+    different full_name than the one asked for (a rename or transfer -
+    GitHub redirects the old address and answers with the new one),
+    else None. Pure - unit-tested."""
+    if not full_name or not repo:
+        return None
+    full_name = "{}".format(full_name).strip()
+    return full_name if full_name.lower() != "{}".format(repo).strip().lower() else None
+
+
+def resolve_repo(repo=None, token=None, log=None):
+    """The repository's current address on GitHub: a renamed or
+    transferred repo is followed to its new 'owner/repo' so every later
+    call goes straight there. The given address when GitHub cannot be
+    asked (offline, proxy) - the download ladder still follows the
+    redirects itself."""
+    repo = repo or get_github_repo()
+    token = token if token is not None else get_github_token()
+    try:
+        info = _api_json(repo, "", token) or {}
+        new = moved_to(repo, info.get("full_name"))
+        if new:
+            _say(log, "GitHub has moved **{}** to **{}** - using the new "
+                      "address.".format(repo, new))
+            return new
+    except Exception:
+        pass
+    return repo
 
 
 def version_key(name):
