@@ -39,9 +39,13 @@ pyMEP.extension/
     06_ProjectDataTransfer.panel/ # 'Project Data Transfer': Export/Import Project Data (view templates + filters as JSON)
     06_Annotate.panel/          # 3 annotation buttons
     08_Electrical.panel/        # Encasement (shown before Drainage on the ribbon)
+    09_Conduits.panel/          # Pipes To Conduits
+    10_ManholePlan.panel/       # Export Manholes
+    11_COBie.panel/             # Populate, Check
+    12_Struct.panel/            # Add To Pile Sequence, Place At Coordinates
 ```
 
-10 panels, 35 buttons, every one with its own icon.
+Every button has its own icon.
 
 ## Panels
 
@@ -838,6 +842,20 @@ skipping a suffix already in use there - and can run on its own with no
 numbers typed. **Apply** renames in one undo step, lowest new number
 first, and writes a CSV and an as-applied page to the model's pyMEP
 folder.
+
+**Place at Coordinates** - place a family type at typed coordinates on
+a level. Search the loaded families by any words of the family or type
+name ("pile 600" finds "Pile Cap : 600 dia"), with a category filter;
+pick the level; say what the coordinates are relative to (internal
+origin, project base point, or shared easting / northing) and their
+unit (metres, millimetres, feet); then type one point per line as
+`x, y` or `x, y, z` - z is the offset above the level and 0 when left
+out. Lines paste straight from a spreadsheet, and one extra word on a
+line (`P1605, 12.5, 8.0`) is written to the instance's Mark. Level based
+families take the offset through the placement, columns and work-plane
+based families get it written to their offset parameter. All instances
+go in with one undo step, are left selected, and the output window
+lists each with its element id, typed and internal coordinates.
 
 ## Lib modules
 

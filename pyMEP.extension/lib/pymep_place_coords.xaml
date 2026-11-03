@@ -1,0 +1,131 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Place at Coordinates"
+        Width="640" Height="720" MinWidth="580" MinHeight="620"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False"
+        Background="White">
+    <Window.Resources>
+        <Style TargetType="GroupBox">
+            <Setter Property="Margin" Value="0,0,0,12"/>
+            <Setter Property="Padding" Value="10,8,10,10"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,3,0,0"/>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Margin" Value="0,3,0,0"/>
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,6,10,0"/>
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#888888"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style x:Key="DialogButton" TargetType="Button">
+            <Setter Property="MinWidth" Value="96"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
+            <Setter Property="Padding" Value="10,4"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#F4F4F4" Padding="14,10">
+            <StackPanel>
+                <TextBlock FontSize="15" FontWeight="SemiBold" Text="Place at Coordinates"/>
+                <TextBlock Style="{StaticResource Hint}"
+                           Text="Places one instance of a family type at each x, y typed, on the chosen level. A third number is the offset above the level; without it the instance sits on the level."/>
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="14,12,14,0">
+            <StackPanel>
+                <GroupBox Header="1. Family type">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Category"/>
+                        <ComboBox Grid.Row="0" Grid.Column="1" x:Name="CmbCategory" SelectionChanged="on_category_changed"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Search"/>
+                        <TextBox Grid.Row="1" Grid.Column="1" x:Name="TxtSearch" TextChanged="on_search_changed"/>
+                        <ListBox Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" x:Name="LstFamilies"
+                                 Height="150" Margin="0,6,0,0" SelectionChanged="on_family_changed"/>
+                        <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" x:Name="TxtFamilyInfo"
+                                   Style="{StaticResource Hint}"
+                                   Text="Type any words of the family or type name - 'pile 600' finds 'Pile Cap : 600 dia'. Point-placed families only (level based, column and work-plane based)."/>
+                    </Grid>
+                </GroupBox>
+
+                <GroupBox Header="2. Level">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Level"/>
+                        <ComboBox Grid.Column="1" x:Name="CmbLevel"/>
+                    </Grid>
+                </GroupBox>
+
+                <GroupBox Header="3. Points">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Coordinates are"/>
+                        <ComboBox Grid.Row="0" Grid.Column="1" x:Name="CmbSystem" SelectionChanged="on_points_changed"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Units"/>
+                        <ComboBox Grid.Row="1" Grid.Column="1" x:Name="CmbUnits" SelectionChanged="on_points_changed"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="x, y[, z]" VerticalAlignment="Top" Margin="0,10,10,0"/>
+                        <TextBox Grid.Row="2" Grid.Column="1" x:Name="TxtPoints" Height="130" AcceptsReturn="True" AcceptsTab="True"
+                                 TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
+                                 FontFamily="Consolas" TextChanged="on_points_changed"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="TxtPointsInfo" Style="{StaticResource Hint}" Text=""/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" Style="{StaticResource Hint}"
+                                   Text="One point per line, separated by commas, spaces or tabs - 523100.250, 181200.500  or  12.5, 8.0, 0.3. Lines can be pasted from a spreadsheet. One extra word on a line (P1605, 12.5, 8.0) is written to the instance's Mark. z is the offset above the level, 0 when left out."/>
+                    </Grid>
+                </GroupBox>
+
+                <TextBlock x:Name="StatusText" Foreground="#B00020" TextWrapping="Wrap" Margin="0,0,0,8" Text=""/>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="2" Background="#F4F4F4" Padding="14,10">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="BtnPlace" Content="Place"
+                        Style="{StaticResource DialogButton}" IsDefault="True" Click="on_place"/>
+                <Button x:Name="BtnCancel" Content="Cancel"
+                        Style="{StaticResource DialogButton}" IsCancel="True" Click="on_cancel"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

@@ -1,0 +1,2 @@
+title: "Place at\nCoordinates"
+tooltip: "Place a family type at typed coordinates on a level: search the loaded families by any words of the family or type name (with a category filter), pick the level, then type one point per line as x, y or x, y, z - z is the offset above the level and 0 when left out. Coordinates can be internal, relative to the project base point, or shared easting/northing, in metres, millimetres or feet. An extra word on a line is written to the instance's Mark. One undo step."
