@@ -73,7 +73,7 @@
                                  Height="150" Margin="0,6,0,0" SelectionChanged="on_family_changed"/>
                         <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" x:Name="TxtFamilyInfo"
                                    Style="{StaticResource Hint}"
-                                   Text="Type any words of the family or type name - 'pile 600' finds 'Pile Cap : 600 dia'. Point-placed families only (level based, column and work-plane based)."/>
+                                   Text="Type any words of the family or type name - 'pile 600' finds 'Pile Cap : 600 dia'. Every loaded family is listed; the note after a name says how it is placed - hosted families need their wall or floor at the point, 2D families go in the active view, line based ones take x1, y1, x2, y2."/>
                     </Grid>
                 </GroupBox>
 
@@ -111,7 +111,7 @@
                                  FontFamily="Consolas" TextChanged="on_points_changed"/>
                         <TextBlock Grid.Row="3" Grid.Column="1" x:Name="TxtPointsInfo" Style="{StaticResource Hint}" Text=""/>
                         <TextBlock Grid.Row="4" Grid.Column="1" Style="{StaticResource Hint}"
-                                   Text="One point per line, separated by commas, spaces or tabs - 523100.250, 181200.500  or  12.5, 8.0, 0.3. Lines can be pasted from a spreadsheet. One extra word on a line (P1605, 12.5, 8.0) is written to the instance's Mark. z is the offset above the level, 0 when left out."/>
+                                   Text="One point per line, separated by commas, spaces or tabs - 523100.250, 181200.500  or  12.5, 8.0, 0.3. Lines can be pasted from a spreadsheet. One extra word on a line (P1605, 12.5, 8.0) is written to the instance's Mark. z is the offset above the level, 0 when left out. For a line based family or a beam give both ends: x1, y1, x2, y2 (a fifth number is z); with one point it runs 1 m east."/>
                     </Grid>
                 </GroupBox>
 

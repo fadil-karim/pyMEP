@@ -1,0 +1,2 @@
+title: "Move to\nCoordinates"
+tooltip: "Move the selected elements - families, filled regions, annotations, anything that moves - to typed x, y coordinates (pick them if nothing is selected). One line moves the group so the highlighted element lands on it; one line per element pairs them in order; lines starting with a Mark move that element. Coordinates can be internal, project base point or shared easting/northing in metres, millimetres or feet; an optional z is the new offset above the element's level. A preview lists every move before anything happens; one undo step."

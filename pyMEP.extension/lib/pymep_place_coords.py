@@ -49,11 +49,13 @@ def parse_points(text, default_z=0.0):
     """(points, errors) from text with one point per line.
 
     A line is x, y or x, y, z - z is the offset above the level and
-    is default_z when left out. Commas, semicolons, tabs or spaces
-    separate the values. One extra word on the line, before or after the
-    numbers, is kept as the point's name (written to Mark). Blank lines
-    and lines starting with # are skipped. errors: [(line number, text,
-    why)]."""
+    is default_z when left out. Four numbers are two points, x1, y1,
+    x2, y2 (the start and end of a line based family, or the length
+    and direction of an adaptive one), five add a common z. Commas,
+    semicolons, tabs or spaces separate the values. One extra word on
+    the line, before or after the numbers, is kept as the point's name
+    (written to Mark). Blank lines and lines starting with # are
+    skipped. errors: [(line number, text, why)]."""
     points = []
     errors = []
     for n, raw in enumerate(u"{0}".format(text or u"").splitlines(), 1):
@@ -69,14 +71,18 @@ def parse_points(text, default_z=0.0):
         if len(nums) < 2:
             errors.append((n, raw, u"needs at least x and y"))
             continue
-        if len(nums) > 3:
-            errors.append((n, raw, u"more than three numbers"))
+        if len(nums) > 5:
+            errors.append((n, raw, u"more than five numbers"))
             continue
         x, y = float(nums[0]), float(nums[1])
-        has_z = len(nums) == 3
-        z = float(nums[2]) if has_z else float(default_z)
+        has_end = len(nums) >= 4
+        x2 = float(nums[2]) if has_end else None
+        y2 = float(nums[3]) if has_end else None
+        has_z = len(nums) in (3, 5)
+        z = float(nums[-1]) if has_z else float(default_z)
         points.append({"line": n, "text": raw.strip(), "x": x, "y": y, "z": z,
-                       "has_z": has_z, "name": words[0] if words else u""})
+                       "has_z": has_z, "x2": x2, "y2": y2, "has_end": has_end,
+                       "name": words[0] if words else u""})
     return points, errors
 
 
@@ -204,11 +210,175 @@ def prepare(points, unit, level_elevation_ft, system="internal", **position):
         y_ft = to_feet(p["y"], unit)
         ix, iy = internal_xy(x_ft, y_ft, system, **position)
         off = to_feet(p["z"], unit)
+        ex = ey = None
+        if p.get("has_end"):
+            ex, ey = internal_xy(to_feet(p["x2"], unit), to_feet(p["y2"], unit),
+                                 system, **position)
         out.append({"line": p["line"], "name": p["name"], "typed": p["text"],
                     "x": ix, "y": iy, "z": float(level_elevation_ft) + off,
+                    "x2": ex, "y2": ey, "has_end": bool(p.get("has_end")),
+                    "has_z": bool(p.get("has_z")),
                     "offset": off, "typed_x": p["x"], "typed_y": p["y"],
                     "typed_z": p["z"]})
     return out
+
+
+DEFAULT_LINE_FT = 1.0 / 0.3048      # a line based family with one point: 1 m east
+
+
+def line_end(pt, length_ft=DEFAULT_LINE_FT):
+    """(x2, y2) internal feet for a prepared point: the typed end when
+    there is one, else length_ft due east of the point."""
+    if pt.get("has_end") and pt.get("x2") is not None:
+        return float(pt["x2"]), float(pt["y2"])
+    return float(pt["x"]) + float(length_ft), float(pt["y"])
+
+
+def spread_points(pt, count, spacing_ft=DEFAULT_LINE_FT):
+    """count (x, y) internal points for an adaptive family: the typed
+    point, the typed end when there is one, and the rest carrying on in
+    that direction at spacing_ft (east when no end was typed)."""
+    x, y = float(pt["x"]), float(pt["y"])
+    if count <= 1:
+        return [(x, y)]
+    if pt.get("has_end") and pt.get("x2") is not None:
+        ex, ey = float(pt["x2"]), float(pt["y2"])
+        dx, dy = ex - x, ey - y
+        length = math.hypot(dx, dy)
+        ux, uy = (dx / length, dy / length) if length > 1e-9 else (1.0, 0.0)
+        step = length if length > 1e-9 else spacing_ft
+        pts = [(x, y), (ex, ey)]
+        for i in range(2, count):
+            pts.append((ex + ux * step * (i - 1), ey + uy * step * (i - 1)))
+        return pts
+    return [(x + spacing_ft * i, y) for i in range(count)]
+
+
+# ---------------------------------------------------------------------------
+# Moving elements to typed coordinates
+# ---------------------------------------------------------------------------
+
+
+def plan_moves(elements, targets, reference=0):
+    """Which element goes where.
+
+    elements: dicts with id, name (Mark), x, y, z (internal feet of the
+              element's reference point), level_z (internal z of its
+              level, or None) and flat (True for view-specific 2D
+              elements - regions, annotations - whose z never moves).
+    targets:  prepared points (see prepare) - x, y internal feet, z the
+              level elevation + offset, has_z, name.
+
+    Three ways to pair them: every target named -> matched to the
+    element with that Mark (case aside); one target -> the reference
+    element (index) lands on it and the others move by the same vector;
+    as many targets as elements -> paired in order. Anything else is an
+    error. Returns {"mode", "moves": [...], "warnings": [...], "stay":
+    [elements left alone]}; each move has dx, dy, dz, dist (feet)."""
+    if not elements:
+        raise ValueError(u"nothing selected")
+    if not targets:
+        raise ValueError(u"type where to move to - x, y  or  x, y, z")
+    named = [t for t in targets if t.get("name")]
+    moves = []
+    warnings = []
+    pairs = []
+    if named and len(named) == len(targets):
+        mode = "named"
+        by_mark = {}
+        for e in elements:
+            by_mark.setdefault(norm_name(e.get("name")), []).append(e)
+        for t in targets:
+            key = norm_name(t["name"])
+            hits = by_mark.get(key, [])
+            if not hits:
+                warnings.append(u"no selected element has the Mark '{0}' (line {1})".format(
+                    t["name"], t["line"]))
+                continue
+            if len(hits) > 1:
+                warnings.append(u"{0} selected elements share the Mark '{1}' - all move".format(
+                    len(hits), t["name"]))
+            for e in hits:
+                pairs.append((e, t, None))
+    elif named:
+        raise ValueError(u"either name every line with a Mark or none of them")
+    elif len(targets) == 1:
+        mode = "group"
+        ref = elements[reference] if 0 <= reference < len(elements) else elements[0]
+        t = targets[0]
+        dx = float(t["x"]) - float(ref["x"])
+        dy = float(t["y"]) - float(ref["y"])
+        dz = 0.0
+        if t.get("has_z") and ref.get("level_z") is not None and not ref.get("flat"):
+            dz = (float(ref["level_z"]) + float(t["offset"])) - float(ref["z"])
+        for e in elements:
+            pairs.append((e, t, (dx, dy, dz)))
+    elif len(targets) == len(elements):
+        mode = "ordered"
+        for e, t in zip(elements, targets):
+            pairs.append((e, t, None))
+    else:
+        raise ValueError(u"{0} element(s) but {1} line(s) - give one line to move them "
+                         u"together, one line per element, or name each line with a "
+                         u"Mark".format(len(elements), len(targets)))
+    moved_ids = set()
+    for e, t, vec in pairs:
+        if vec is None:
+            dx = float(t["x"]) - float(e["x"])
+            dy = float(t["y"]) - float(e["y"])
+            dz = 0.0
+            if t.get("has_z") and not e.get("flat"):
+                if e.get("level_z") is not None:
+                    dz = (float(e["level_z"]) + float(t["offset"])) - float(e["z"])
+                else:
+                    warnings.append(u"'{0}' has no level - its z is left alone".format(
+                        e.get("name") or e.get("label") or e.get("id")))
+        else:
+            dx, dy, dz = vec
+        if e.get("flat"):
+            dz = 0.0
+        moves.append({"id": e["id"], "name": e.get("name") or u"", "label": e.get("label") or u"",
+                      "flat": bool(e.get("flat")),
+                      "from": (float(e["x"]), float(e["y"]), float(e["z"])),
+                      "to": (float(e["x"]) + dx, float(e["y"]) + dy, float(e["z"]) + dz),
+                      "dx": dx, "dy": dy, "dz": dz,
+                      "dist": math.sqrt(dx * dx + dy * dy + dz * dz), "line": t["line"]})
+        moved_ids.add(e["id"])
+    stay = [e for e in elements if e["id"] not in moved_ids]
+    return {"mode": mode, "moves": moves, "warnings": warnings, "stay": stay}
+
+
+def norm_name(text):
+    return u" ".join(u"{0}".format(text or u"").split()).lower()
+
+
+def moves_text(plan, system, unit, decimals=None, **position):
+    """The move plan as lines for the dialog: each element, where it is
+    and where it goes in the chosen system and unit, and how far."""
+    mode = {"named": u"matched by Mark", "group": u"moved together - the reference "
+            u"element lands on the point", "ordered": u"paired in list order"}.get(
+                plan["mode"], plan["mode"])
+    lines = [u"{0} element(s) move ({1}).".format(len(plan["moves"]), mode)]
+    for m in plan["moves"]:
+        fx, fy, fz = coords_in(system, m["from"][0], m["from"][1], m["from"][2], **position)
+        tx, ty, tz = coords_in(system, m["to"][0], m["to"][1], m["to"][2], **position)
+        who = m["name"] or m["label"] or u"{0}".format(m["id"])
+        if abs(m["dz"]) > 1e-9:
+            lines.append(u"  {0}: {1}, {2}, {3}  ->  {4}, {5}, {6}   ({7} {8})".format(
+                who, _fmt(fx, unit, decimals), _fmt(fy, unit, decimals), _fmt(fz, unit, decimals),
+                _fmt(tx, unit, decimals), _fmt(ty, unit, decimals), _fmt(tz, unit, decimals),
+                _fmt(m["dist"], unit, decimals), unit))
+        else:
+            lines.append(u"  {0}: {1}, {2}  ->  {3}, {4}   ({5} {6})".format(
+                who, _fmt(fx, unit, decimals), _fmt(fy, unit, decimals),
+                _fmt(tx, unit, decimals), _fmt(ty, unit, decimals),
+                _fmt(m["dist"], unit, decimals), unit))
+    for e in plan["stay"]:
+        lines.append(u"  {0}: stays (no line for it)".format(
+            e.get("name") or e.get("label") or e.get("id")))
+    for w in plan["warnings"]:
+        lines.append(u"  ! {0}".format(w))
+    return u"\n".join(lines)
 
 
 def search(entries, text, category=None):
@@ -238,6 +408,9 @@ def summary_text(points, errors, unit):
     if points:
         with_z = len([p for p in points if p["has_z"]])
         bits.append(u"{0} point(s) read in {1}".format(len(points), dict(UNITS).get(unit, unit)))
+        with_end = len([p for p in points if p.get("has_end")])
+        if with_end:
+            bits.append(u"{0} with an end point (line based families)".format(with_end))
         if with_z and with_z < len(points):
             bits.append(u"{0} with an offset, the rest at the level".format(with_z))
         elif with_z:
@@ -257,6 +430,7 @@ def summary_text(points, errors, unit):
     return u"; ".join(bits) + u"."
 
 
-__all__ = ["FT_PER_UNIT", "UNITS", "SYSTEMS", "AXES", "parse_points", "to_feet",
-           "from_feet", "internal_xy", "shared_xy", "coords_in", "coords_table",
-           "place_lines", "prepare", "search", "type_label", "summary_text"]
+__all__ = ["FT_PER_UNIT", "UNITS", "SYSTEMS", "AXES", "DEFAULT_LINE_FT", "parse_points",
+           "to_feet", "from_feet", "internal_xy", "shared_xy", "coords_in", "coords_table",
+           "place_lines", "prepare", "line_end", "spread_points", "plan_moves", "norm_name",
+           "moves_text", "search", "type_label", "summary_text"]

@@ -43,7 +43,7 @@ pyMEP.extension/
     10_ManholePlan.panel/       # Export Manholes
     11_COBie.panel/             # Populate, Check
     12_Struct.panel/            # Add To Pile Sequence
-    13_Site.panel/              # Place At Coordinates, Element Coordinates
+    13_Site.panel/              # Place At Coordinates, Element Coordinates, Move To Coordinates
 ```
 
 Every button has its own icon.
@@ -854,11 +854,18 @@ origin, project base point, or shared easting / northing) and their
 unit (metres, millimetres, feet); then type one point per line as
 `x, y` or `x, y, z` - z is the offset above the level and 0 when left
 out. Lines paste straight from a spreadsheet, and one extra word on a
-line (`P1605, 12.5, 8.0`) is written to the instance's Mark. Level based
+line (`P1605, 12.5, 8.0`) is written to the instance's Mark. Every
+loaded family is offered and placed by its own rule: level based
 families take the offset through the placement, columns and work-plane
-based families get it written to their offset parameter. All instances
-go in with one undo step, are left selected, and the output window
-lists each with its element id, typed and internal coordinates.
+based families get it written to their offset parameter, wall / floor /
+ceiling / roof hosted families go on the nearest host at the point (a
+wall within 1 m, a floor within 5 m vertically), 2D families and detail
+items go in the active view, line based families and beams run along
+`x1, y1, x2, y2` (a fifth number is z) or 1 m east when only a point is
+given, and adaptive components have their placement points spread along
+that line. All instances go in with one undo step, are left selected,
+and the output window lists each with its element id, how it was placed,
+and its typed and internal coordinates.
 
 **Element Coordinates** - the coordinates of the selected elements
 (pick them if nothing is selected): the location point of a family
@@ -870,6 +877,21 @@ tab-separated table on the clipboard for a spreadsheet; "Copy as x, y
 lines" gives `name, x, y` per element in the format Place at Coordinates
 reads, in the same system and unit. The output window keeps a copy in
 all three systems.
+
+**Move to Coordinates** - move the selected elements to typed x, y
+coordinates: families, filled regions, annotations, pipes, anything
+Revit lets move (pick them if nothing is selected). Each element is
+measured at a reference point - the location point of a family
+instance, the start of a curve, else the centre of its box - and that
+point lands on the typed coordinates. One typed line moves the whole
+selection together, the element highlighted in the list landing on it
+and the rest keeping their spacing; one line per element pairs them in
+list order; lines starting with a Mark (`P1605, 12.5, 8.0`) move the
+element with that Mark. An optional z is the new offset above the
+element's level; without it the height stays, and view-specific
+elements only ever move in x, y. The preview lists every move with the
+distance before anything happens; pinned elements are refused unless
+the unpin tick is on; one undo step.
 
 ## Lib modules
 

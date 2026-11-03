@@ -44,11 +44,37 @@ class Parsing(unittest.TestCase):
         self.assertFalse(pts[0]["has_z"])
 
     def test_errors(self):
-        pts, errs = PC.parse_points(u"1\n1, 2, 3, 4\na b 1 2\n5, 6")
+        pts, errs = PC.parse_points(u"1\n1, 2, 3, 4, 5, 6\na b 1 2\n5, 6")
         self.assertEqual(len(pts), 1)
         self.assertEqual([(e[0], e[2]) for e in errs],
-                         [(1, u"needs at least x and y"), (2, u"more than three numbers"),
+                         [(1, u"needs at least x and y"), (2, u"more than five numbers"),
                           (3, u"more than one word on the line")])
+
+    def test_lines_with_an_end_point(self):
+        pts, errs = PC.parse_points(u"1, 2, 3, 4\nB1, 1, 2, 3, 4, 0.5\n7, 8, 9")
+        self.assertEqual(errs, [])
+        self.assertEqual((pts[0]["x2"], pts[0]["y2"], pts[0]["has_end"], pts[0]["z"]),
+                         (3.0, 4.0, True, 0.0))
+        self.assertEqual((pts[1]["name"], pts[1]["z"], pts[1]["has_z"]), (u"B1", 0.5, True))
+        self.assertEqual((pts[2]["has_end"], pts[2]["z"]), (False, 9.0))
+        self.assertIn(u"2 with an end point", PC.summary_text(pts, errs, "m"))
+        out = PC.prepare(pts, "m", 0.0)
+        self.assertAlmostEqual(out[0]["x2"], 3 / 0.3048)
+        self.assertIsNone(out[2]["x2"])
+        self.assertEqual(PC.line_end(out[0]), (out[0]["x2"], out[0]["y2"]))
+        ex, ey = PC.line_end(out[2])
+        self.assertAlmostEqual(ex - out[2]["x"], 1 / 0.3048)
+        self.assertAlmostEqual(ey, out[2]["y"])
+
+    def test_adaptive_points_spread(self):
+        pt = {"x": 0.0, "y": 0.0, "has_end": False}
+        self.assertEqual(PC.spread_points(pt, 1), [(0.0, 0.0)])
+        three = PC.spread_points(pt, 3)
+        self.assertAlmostEqual(three[2][0], 2 / 0.3048)
+        pt2 = {"x": 0.0, "y": 0.0, "x2": 0.0, "y2": 10.0, "has_end": True}
+        four = PC.spread_points(pt2, 4)
+        self.assertEqual(four[:2], [(0.0, 0.0), (0.0, 10.0)])
+        self.assertAlmostEqual(four[3][1], 30.0)
 
     def test_summary(self):
         pts, errs = PC.parse_points(u"1, 2\n3, 4, 5\nbad")
@@ -161,6 +187,61 @@ class Reading(unittest.TestCase):
         self.assertEqual(errs, [])
         self.assertEqual(pts[0]["name"], u"P1605")
         self.assertAlmostEqual(pts[0]["x"], 30.48)
+
+
+class Moves(unittest.TestCase):
+    """Move to Coordinates: pairing elements with typed points."""
+
+    def elems(self):
+        return [{"id": 1, "name": u"P1", "x": 10.0, "y": 10.0, "z": 5.0, "level_z": 0.0, "flat": False},
+                {"id": 2, "name": u"P2", "x": 20.0, "y": 10.0, "z": 5.0, "level_z": 0.0, "flat": False},
+                {"id": 3, "name": u"", "label": u"Filled Region", "x": 30.0, "y": 10.0, "z": 0.0,
+                 "level_z": None, "flat": True}]
+
+    def targets(self, text):
+        pts, errs = PC.parse_points(text)
+        assert not errs, errs
+        return PC.prepare(pts, "ft", 0.0)
+
+    def test_group_move_keeps_offsets(self):
+        plan = PC.plan_moves(self.elems(), self.targets(u"100, 50"), reference=1)
+        self.assertEqual(plan["mode"], "group")
+        self.assertEqual([(m["to"][0], m["to"][1]) for m in plan["moves"]],
+                         [(90.0, 50.0), (100.0, 50.0), (110.0, 50.0)])
+        self.assertEqual([m["dz"] for m in plan["moves"]], [0.0, 0.0, 0.0])
+        plan_z = PC.plan_moves(self.elems(), self.targets(u"100, 50, 2"), reference=0)
+        self.assertEqual([m["dz"] for m in plan_z["moves"]], [-3.0, -3.0, 0.0])   # flat one stays level
+
+    def test_named(self):
+        plan = PC.plan_moves(self.elems(), self.targets(u"p2, 0, 0\nP9, 1, 1"))
+        self.assertEqual(plan["mode"], "named")
+        self.assertEqual([m["id"] for m in plan["moves"]], [2])
+        self.assertEqual(plan["moves"][0]["to"][:2], (0.0, 0.0))
+        self.assertEqual([e["id"] for e in plan["stay"]], [1, 3])
+        self.assertIn(u"no selected element has the Mark 'P9'", plan["warnings"][0])
+
+    def test_ordered_and_z(self):
+        plan = PC.plan_moves(self.elems(), self.targets(u"1, 1\n2, 2, 7\n3, 3, 7"))
+        self.assertEqual(plan["mode"], "ordered")
+        self.assertEqual([m["dz"] for m in plan["moves"]], [0.0, 2.0, 0.0])
+        self.assertAlmostEqual(plan["moves"][1]["dist"], math.sqrt(18 ** 2 + 8 ** 2 + 2 ** 2))
+
+    def test_refusals(self):
+        with self.assertRaises(ValueError):
+            PC.plan_moves(self.elems(), self.targets(u"1, 1\n2, 2"))
+        with self.assertRaises(ValueError):
+            PC.plan_moves(self.elems(), self.targets(u"P1, 1, 1\n2, 2\n3, 3"))
+        with self.assertRaises(ValueError):
+            PC.plan_moves([], self.targets(u"1, 1"))
+        with self.assertRaises(ValueError):
+            PC.plan_moves(self.elems(), [])
+
+    def test_text(self):
+        plan = PC.plan_moves(self.elems(), self.targets(u"100, 50"), reference=0)
+        text = PC.moves_text(plan, "internal", "ft")
+        self.assertIn(u"3 element(s) move (moved together", text)
+        self.assertIn(u"P1: 10.000, 10.000  ->  100.000, 50.000   (98.489 ft)", text)
+        self.assertIn(u"Filled Region: 30.000, 10.000  ->  120.000, 50.000", text)
 
 
 class Search(unittest.TestCase):

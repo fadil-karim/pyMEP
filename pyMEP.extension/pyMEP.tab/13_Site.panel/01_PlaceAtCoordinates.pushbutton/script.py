@@ -9,11 +9,15 @@ shared easting / northing), their unit, and the points themselves - one
 per line as x, y or x, y, z. z is the offset above the level and 0
 when left out; an extra word on a line becomes the instance's Mark.
 
-Every point becomes one instance, placed in one transaction: level
-based families through the level overload (the point's z gives the
-offset), work-plane based families on the level's plane with the
-offset written to the instance afterwards, columns at the level with
-the base offset set.
+Every point becomes one instance, placed in one transaction, by the
+family's placement type: level based families through the level
+overload (the point's z gives the offset), work-plane based families
+on the level's plane with the offset written afterwards, columns at
+the level with the base offset set, wall / floor / ceiling / roof
+hosted families on the nearest host at the point, view based (2D)
+families in the active view, line based families and beams along a
+line from the point (a typed x1, y1, x2, y2, else 1 m east), adaptive
+components with their placement points spread along that line.
 
 IronPython 2.7: .format() only, no f-strings, LF endings.
 """
@@ -30,8 +34,10 @@ for _mod in [m for m in list(sys.modules.keys()) if m.startswith("pymep_")]:
 import clr
 clr.AddReference("RevitAPI")
 from Autodesk.Revit.DB import (BuiltInCategory, BuiltInParameter, ElementId,
-                               FamilySymbol, FilteredElementCollector, Level,
-                               StorageType, Transaction, XYZ)
+                               FamilySymbol, FilteredElementCollector, Floor,
+                               Level, Line, RoofBase, StorageType, Transaction,
+                               Wall, XYZ)
+from Autodesk.Revit.DB import AdaptiveComponentInstanceUtils
 from Autodesk.Revit.DB.Structure import StructuralType
 from System.Collections.Generic import List
 
@@ -48,8 +54,20 @@ uidoc = revit.uidoc
 XAML_PATH = os.path.join(os.path.dirname(os.path.abspath(PC.__file__)),
                          "pymep_place_coords.xaml")
 FT_TO_M = 0.3048
-PLACEABLE = ("OneLevelBased", "TwoLevelsBased", "WorkPlaneBased")
 LIST_CAP = 400
+POINT_TYPES = ("OneLevelBased", "TwoLevelsBased", "WorkPlaneBased",
+               "OneLevelBasedHosted")
+LINE_TYPES = ("CurveBased", "CurveBasedDetail", "CurveDrivenStructural")
+HOST_NAMES = {1: u"wall", 2: u"floor", 3: u"ceiling", 4: u"roof", 5: u"face"}
+HOST_REACH_FT = 1.0 / 0.3048            # a wall within 1 m of the point
+HOST_REACH_Z_FT = 5.0 / 0.3048          # a floor / roof within 5 m vertically
+TAGS = {"ViewBased": u"2D - goes in the active view",
+        "CurveBased": u"line based - x1, y1, x2, y2 or 1 m east",
+        "CurveBasedDetail": u"2D line based - in the active view",
+        "CurveDrivenStructural": u"beam / brace - x1, y1, x2, y2 or 1 m east",
+        "Adaptive": u"adaptive - points spread along the line",
+        "TwoLevelsBased": u"column",
+        "WorkPlaneBased": u"work plane based"}
 
 S_CATEGORY = "place_coords_category"
 S_FAMILY = "place_coords_family"
@@ -61,6 +79,21 @@ S_UNITS = "place_coords_units"
 # ---------------------------------------------------------------------------
 # 1. What the model offers: point-placed family types, levels, position
 # ---------------------------------------------------------------------------
+def hosting_behaviour(fam):
+    """1 wall, 2 floor, 3 ceiling, 4 roof, 5 face, 0 none."""
+    try:
+        prm = fam.get_Parameter(BuiltInParameter.FAMILY_HOSTING_BEHAVIOR)
+        return int(prm.AsInteger()) if prm is not None else 0
+    except Exception:
+        return 0
+
+
+def tag_for(placement, host):
+    if placement == "OneLevelBasedHosted":
+        return u"needs a {0} at the point".format(HOST_NAMES.get(host, u"host"))
+    return TAGS.get(placement, u"")
+
+
 entries = []
 for sym in FilteredElementCollector(doc).OfClass(FamilySymbol):
     try:
@@ -68,20 +101,29 @@ for sym in FilteredElementCollector(doc).OfClass(FamilySymbol):
         if fam is None or fam.IsInPlace:
             continue
         placement = u"{0}".format(fam.FamilyPlacementType)
-        if placement not in PLACEABLE:
-            continue
+        host = hosting_behaviour(fam) if placement == "OneLevelBasedHosted" else 0
         cat = sym.Category
         cat_name = u"{0}".format(cat.Name) if cat is not None else u"(no category)"
         entries.append({"id": id_value(sym.Id),
                         "label": PC.type_label(fam.Name, sym.Name),
-                        "category": cat_name, "placement": placement,
+                        "category": cat_name, "placement": placement, "host": host,
+                        "tag": tag_for(placement, host),
                         "bic": id_value(cat.Id) if cat is not None else 0})
     except Exception:
         continue
 entries.sort(key=lambda e: (e["category"].lower(), e["label"].lower()))
 if not entries:
-    forms.alert("No point-placed family types are loaded in this model.",
-                exitscript=True)
+    forms.alert("No family types are loaded in this model.", exitscript=True)
+
+view2d = None
+try:
+    _vt = u"{0}".format(doc.ActiveView.ViewType)
+    if _vt not in ("ThreeD", "Schedule", "ProjectBrowser", "SystemBrowser",
+                   "Report", "CostReport", "Walkthrough", "Rendering", "Internal",
+                   "DrawingSheet", "Undefined"):
+        view2d = doc.ActiveView
+except Exception:
+    view2d = None
 categories = sorted(set(e["category"] for e in entries), key=lambda s: s.lower())
 
 levels = sorted(FilteredElementCollector(doc).OfClass(Level),
@@ -148,18 +190,135 @@ def structural_type(bic):
 OFFSET_PARAMS = ("INSTANCE_FREE_HOST_OFFSET_PARAM", "INSTANCE_ELEVATION_PARAM",
                  "FAMILY_BASE_LEVEL_OFFSET_PARAM")
 
+_hosts = {}
 
-def place_one(sym, level, pt, stype, placement):
-    """The new instance, and a note on how it got there."""
+
+def host_candidates(kind):
+    if kind in _hosts:
+        return _hosts[kind]
+    try:
+        if kind == 1:
+            els = list(FilteredElementCollector(doc).OfClass(Wall))
+        elif kind == 2:
+            els = list(FilteredElementCollector(doc).OfClass(Floor))
+        elif kind == 3:
+            els = list(FilteredElementCollector(doc).OfCategory(
+                BuiltInCategory.OST_Ceilings).WhereElementIsNotElementType())
+        elif kind == 4:
+            els = list(FilteredElementCollector(doc).OfClass(RoofBase))
+        else:
+            els = []
+    except Exception:
+        els = []
+    _hosts[kind] = els
+    return els
+
+
+def find_host(kind, p):
+    """The wall nearest the point (within 1 m), or the floor / ceiling /
+    roof under or over it (within 5 m vertically), else None."""
+    best = None
+    best_d = None
+    for el in host_candidates(kind):
+        try:
+            if kind == 1:
+                crv = el.Location.Curve
+                res = crv.Project(XYZ(p.X, p.Y, crv.GetEndPoint(0).Z))
+                if res is None:
+                    continue
+                d = res.Distance
+                if d > HOST_REACH_FT:
+                    continue
+            else:
+                bb = el.get_BoundingBox(None)
+                if bb is None:
+                    continue
+                if not (bb.Min.X - 0.1 <= p.X <= bb.Max.X + 0.1
+                        and bb.Min.Y - 0.1 <= p.Y <= bb.Max.Y + 0.1):
+                    continue
+                d = 0.0 if bb.Min.Z <= p.Z <= bb.Max.Z else min(
+                    abs(p.Z - bb.Min.Z), abs(p.Z - bb.Max.Z))
+                if d > HOST_REACH_Z_FT:
+                    continue
+        except Exception:
+            continue
+        if best_d is None or d < best_d:
+            best, best_d = el, d
+    return best
+
+
+def _host_name(host):
+    try:
+        return u"{0} {1}".format(host.Category.Name, id_value(host.Id))
+    except Exception:
+        return u"host"
+
+
+def place_one(sym, entry, level, pt, stype):
+    """The new instance, and a note on how it got there - by the
+    family's placement type."""
+    placement = entry["placement"]
     p = XYZ(pt["x"], pt["y"], pt["z"])
     attempts = []
-    if placement == "WorkPlaneBased":
-        attempts.append(("on the level's plane", lambda: doc.Create.NewFamilyInstance(
-            level.GetPlaneReference(), p, XYZ.BasisX, sym)))
-    attempts.append(("on the level", lambda: doc.Create.NewFamilyInstance(
-        p, sym, level, stype)))
-    attempts.append(("on the active work plane", lambda: doc.Create.NewFamilyInstance(
-        p, sym, stype)))
+    if placement == "ViewBased":
+        if view2d is None:
+            raise RuntimeError(u"a 2D family goes in a view - open a plan, section "
+                               u"or drafting view and run again")
+        attempts.append((u"in view '{0}'".format(view2d.Name),
+                         lambda: doc.Create.NewFamilyInstance(p, sym, view2d)))
+    elif placement in LINE_TYPES:
+        ex, ey = PC.line_end(pt)
+        line = Line.CreateBound(p, XYZ(ex, ey, pt["z"]))
+        how = u"along a line to {0:.3f}, {1:.3f}{2}".format(
+            ex * FT_TO_M, ey * FT_TO_M, u"" if pt.get("has_end") else u" (1 m east)")
+        if placement == "CurveBasedDetail":
+            if view2d is None:
+                raise RuntimeError(u"a 2D line based family goes in a view - open a "
+                                   u"plan, section or drafting view and run again")
+            attempts.append((how + u" in the active view",
+                             lambda: doc.Create.NewFamilyInstance(line, sym, view2d)))
+        elif placement == "CurveDrivenStructural":
+            st = stype if stype in (StructuralType.Beam, StructuralType.Brace) \
+                else StructuralType.Beam
+            attempts.append((how + u" as a beam",
+                             lambda: doc.Create.NewFamilyInstance(line, sym, level, st)))
+        else:
+            attempts.append((how + u" on the level",
+                             lambda: doc.Create.NewFamilyInstance(line, sym, level, stype)))
+            if view2d is not None:
+                attempts.append((how + u" in the active view",
+                                 lambda: doc.Create.NewFamilyInstance(line, sym, view2d)))
+    elif placement == "Adaptive":
+        def adaptive():
+            inst = AdaptiveComponentInstanceUtils.CreateAdaptiveComponentInstance(doc, sym)
+            ids = list(AdaptiveComponentInstanceUtils.GetInstancePlacementPointElementRefIds(inst))
+            pts = PC.spread_points(pt, len(ids))
+            for rid, (x, y) in zip(ids, pts):
+                rp = doc.GetElement(rid)
+                rp.Position = XYZ(x, y, pt["z"])
+            return inst
+        attempts.append((u"as an adaptive component", adaptive))
+    elif placement == "OneLevelBasedHosted":
+        host = find_host(entry["host"], p)
+        if host is None:
+            raise RuntimeError(u"needs a {0} at the point - none within reach".format(
+                HOST_NAMES.get(entry["host"], u"host")))
+        hn = _host_name(host)
+        attempts.append((u"hosted on {0}".format(hn),
+                         lambda: doc.Create.NewFamilyInstance(p, sym, host, level, stype)))
+        attempts.append((u"hosted on {0}, no level".format(hn),
+                         lambda: doc.Create.NewFamilyInstance(p, sym, host, stype)))
+    else:
+        if placement == "WorkPlaneBased":
+            attempts.append(("on the level's plane", lambda: doc.Create.NewFamilyInstance(
+                level.GetPlaneReference(), p, XYZ.BasisX, sym)))
+        attempts.append(("on the level", lambda: doc.Create.NewFamilyInstance(
+            p, sym, level, stype)))
+        attempts.append(("on the active work plane", lambda: doc.Create.NewFamilyInstance(
+            p, sym, stype)))
+        if view2d is not None:
+            attempts.append((u"in view '{0}'".format(view2d.Name),
+                             lambda: doc.Create.NewFamilyInstance(p, sym, view2d)))
     last = None
     for how, make in attempts:
         try:
@@ -280,8 +439,11 @@ class PlaceWindow(forms.WPFWindow):
         self.filtered = PC.search(entries, self.TxtSearch.Text, self.category())
         self.LstFamilies.Items.Clear()
         for e in self.filtered[:LIST_CAP]:
-            self.LstFamilies.Items.Add(e["label"] if self.category() else
-                                       u"{0}    [{1}]".format(e["label"], e["category"]))
+            text = e["label"] if self.category() else u"{0}    [{1}]".format(
+                e["label"], e["category"])
+            if e["tag"]:
+                text = u"{0}    - {1}".format(text, e["tag"])
+            self.LstFamilies.Items.Add(text)
         labels = [e["label"] for e in self.filtered[:LIST_CAP]]
         if keep in labels:
             self.LstFamilies.SelectedIndex = labels.index(keep)
@@ -380,8 +542,10 @@ try:
         pass
     for pt in prepared:
         try:
-            inst, how = place_one(sym, level, pt, stype, entry["placement"])
-            notes = [n for n in (fix_offset(inst, pt), set_mark(inst, pt["name"])) if n]
+            inst, how = place_one(sym, entry, level, pt, stype)
+            notes = [n for n in ((fix_offset(inst, pt) if entry["placement"] in POINT_TYPES
+                                  or entry["placement"] == "Invalid" else u""),
+                                 set_mark(inst, pt["name"])) if n]
             placed.append((pt, inst, how, u"; ".join(notes)))
         except Exception as ex:
             failed.append((pt, u"{0}".format(ex)))
