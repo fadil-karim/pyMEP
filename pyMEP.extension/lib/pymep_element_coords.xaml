@@ -1,0 +1,78 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Element Coordinates"
+        Width="760" Height="560" MinWidth="620" MinHeight="420"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False"
+        Background="White">
+    <Window.Resources>
+        <Style TargetType="ComboBox">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Margin" Value="0,3,12,0"/>
+            <Setter Property="MinWidth" Value="150"/>
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,6,8,0"/>
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#888888"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style x:Key="DialogButton" TargetType="Button">
+            <Setter Property="MinWidth" Value="96"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
+            <Setter Property="Padding" Value="10,4"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#F4F4F4" Padding="14,10">
+            <StackPanel>
+                <TextBlock FontSize="15" FontWeight="SemiBold" Text="Element Coordinates"/>
+                <TextBlock x:Name="TxtInfo" Style="{StaticResource Hint}" Text=""/>
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="14,10,14,0">
+            <TextBlock Style="{StaticResource FieldLabel}" Text="Coordinates"/>
+            <ComboBox x:Name="CmbSystem" SelectionChanged="on_changed"/>
+            <TextBlock Style="{StaticResource FieldLabel}" Text="Units"/>
+            <ComboBox x:Name="CmbUnits" SelectionChanged="on_changed"/>
+        </StackPanel>
+
+        <Grid Grid.Row="2" Margin="14,8,14,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBox Grid.Row="0" x:Name="TxtCoords" IsReadOnly="True" FontFamily="Consolas" FontSize="12"
+                     AcceptsReturn="True" TextWrapping="NoWrap" Background="#FAFAFA"
+                     HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"/>
+            <TextBlock Grid.Row="1" Style="{StaticResource Hint}"
+                       Text="Tab separated - 'Copy table' pastes straight into a spreadsheet. 'Copy as x, y lines' gives name, x, y per element, ready for Place at Coordinates (same coordinate system and units)."/>
+            <TextBlock Grid.Row="2" x:Name="StatusText" Foreground="#2E7D32" TextWrapping="Wrap" Margin="0,4,0,8" Text=""/>
+        </Grid>
+
+        <Border Grid.Row="3" Background="#F4F4F4" Padding="14,10">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="BtnCopy" Content="Copy table"
+                        Style="{StaticResource DialogButton}" Click="on_copy"/>
+                <Button x:Name="BtnCopyLines" Content="Copy as x, y lines"
+                        Style="{StaticResource DialogButton}" Click="on_copy_lines"/>
+                <Button x:Name="BtnClose" Content="Close"
+                        Style="{StaticResource DialogButton}" IsDefault="True" IsCancel="True" Click="on_close"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

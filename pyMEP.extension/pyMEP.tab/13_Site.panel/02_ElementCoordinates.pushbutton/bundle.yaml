@@ -1,0 +1,2 @@
+title: "Element\nCoordinates"
+tooltip: "Read the coordinates of the selected elements (pick them if nothing is selected): the location point of a family instance, both ends of a pipe or line, else the centre of the bounding box - as internal, project base point or shared easting/northing, in metres, millimetres or feet, with level and offset. Copy the table for a spreadsheet, or copy name, x, y lines ready to paste into Place at Coordinates."

@@ -107,6 +107,62 @@ class Maths(unittest.TestCase):
         self.assertAlmostEqual(out2[0]["x"], 1000 / 0.3048 + 1.0)
 
 
+class Reading(unittest.TestCase):
+    """Element Coordinates: internal feet out to the three systems."""
+    POS = dict(east=1000.0, north=2000.0, elev=50.0, angle=math.radians(30.0),
+               pbp_x=10.0, pbp_y=20.0, pbp_z=5.0)
+    ROWS = [{"name": u"P1605", "point": u"location", "x": 100.0, "y": 200.0, "z": 30.0,
+             "level": u"L1", "label": u"Pile Cap : 600 dia", "id": 1234},
+            {"name": u"", "point": u"start", "x": 0.0, "y": 0.0, "z": 0.0,
+             "level": u"", "label": u"Pipe", "id": 99}]
+
+    def test_from_feet(self):
+        self.assertAlmostEqual(PC.from_feet(1.0, "m"), 0.3048)
+        self.assertAlmostEqual(PC.from_feet(1.0, "mm"), 304.8)
+        self.assertAlmostEqual(PC.from_feet(2.0, "ft"), 2.0)
+
+    def test_systems(self):
+        self.assertEqual(PC.coords_in("internal", 1, 2, 3, **self.POS), (1.0, 2.0, 3.0))
+        self.assertEqual(PC.coords_in("pbp", 11, 22, 8, **self.POS), (1.0, 2.0, 3.0))
+        X, Y, Z = PC.coords_in("shared", 0, 0, 0, **self.POS)
+        self.assertAlmostEqual(X, 1000.0)
+        self.assertAlmostEqual(Y, 2000.0)
+        self.assertAlmostEqual(Z, 50.0)
+        # back through internal_xy
+        x, y = PC.internal_xy(*PC.coords_in("shared", 100, 200, 30, **self.POS)[:2],
+                              system="shared", east=1000.0, north=2000.0,
+                              angle=math.radians(30.0))
+        self.assertAlmostEqual(x, 100.0, places=6)
+        self.assertAlmostEqual(y, 200.0, places=6)
+        with self.assertRaises(ValueError):
+            PC.coords_in("nope", 0, 0, 0)
+
+    def test_table(self):
+        text = PC.coords_table(self.ROWS, "shared", "m", **self.POS)
+        lines = text.split(u"\n")
+        self.assertEqual(lines[0].split(u"\t")[:5],
+                         [u"Name", u"Point", u"Easting (metres)", u"Northing (metres)",
+                          u"Elevation (metres)"])
+        cells = lines[1].split(u"\t")
+        self.assertEqual(cells[0], u"P1605")
+        self.assertEqual(cells[-1], u"1234")
+        self.assertEqual(cells[5], u"L1")
+        X, Y, Z = PC.coords_in("shared", 100.0, 200.0, 30.0, **self.POS)
+        self.assertEqual(cells[2], u"{0:.3f}".format(X * 0.3048))
+        self.assertEqual(cells[4], u"{0:.3f}".format(80.0 * 0.3048))
+        mm = PC.coords_table(self.ROWS, "internal", "mm")
+        self.assertEqual(mm.split(u"\n")[1].split(u"\t")[2], u"30480")      # 100 ft
+        self.assertIn(u"X (millimetres)", mm)
+
+    def test_place_lines(self):
+        text = PC.place_lines(self.ROWS, "internal", "m")
+        self.assertEqual(text.split(u"\n"), [u"P1605, 30.480, 60.960", u"0.000, 0.000"])
+        pts, errs = PC.parse_points(text)
+        self.assertEqual(errs, [])
+        self.assertEqual(pts[0]["name"], u"P1605")
+        self.assertAlmostEqual(pts[0]["x"], 30.48)
+
+
 class Search(unittest.TestCase):
     ENTRIES = [
         {"label": u"Pile Cap : 600 dia", "category": u"Structural Foundations"},

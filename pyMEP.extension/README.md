@@ -42,7 +42,8 @@ pyMEP.extension/
     09_Conduits.panel/          # Pipes To Conduits
     10_ManholePlan.panel/       # Export Manholes
     11_COBie.panel/             # Populate, Check
-    12_Struct.panel/            # Add To Pile Sequence, Place At Coordinates
+    12_Struct.panel/            # Add To Pile Sequence
+    13_Site.panel/              # Place At Coordinates, Element Coordinates
 ```
 
 Every button has its own icon.
@@ -843,6 +844,8 @@ numbers typed. **Apply** renames in one undo step, lowest new number
 first, and writes a CSV and an as-applied page to the model's pyMEP
 folder.
 
+### Site
+
 **Place at Coordinates** - place a family type at typed coordinates on
 a level. Search the loaded families by any words of the family or type
 name ("pile 600" finds "Pile Cap : 600 dia"), with a category filter;
@@ -856,6 +859,17 @@ families take the offset through the placement, columns and work-plane
 based families get it written to their offset parameter. All instances
 go in with one undo step, are left selected, and the output window
 lists each with its element id, typed and internal coordinates.
+
+**Element Coordinates** - the coordinates of the selected elements
+(pick them if nothing is selected): the location point of a family
+instance, the start and end of a pipe, wall or line, else the centre of
+the bounding box. A dialog shows them as internal, project-base-point or
+shared easting / northing / elevation, in metres, millimetres or feet,
+with the element's level and offset above it. "Copy table" puts a
+tab-separated table on the clipboard for a spreadsheet; "Copy as x, y
+lines" gives `name, x, y` per element in the format Place at Coordinates
+reads, in the same system and unit. The output window keeps a copy in
+all three systems.
 
 ## Lib modules
 

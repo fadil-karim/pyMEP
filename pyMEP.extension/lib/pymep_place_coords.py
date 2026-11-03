@@ -2,9 +2,11 @@
 """Place at Coordinates - the pure part (no Revit): reading the typed
 points, turning them into internal feet, and searching the family list.
 
-The Revit side (pyMEP.tab/12_Struct.panel/02_PlaceAtCoordinates) lists
+The Revit side (pyMEP.tab/13_Site.panel/01_PlaceAtCoordinates) lists
 the loaded family types and the levels, hands the typed text here, and
-places one instance per point on the chosen level.
+places one instance per point on the chosen level; Element Coordinates
+(13_Site.panel/02_ElementCoordinates) uses the reverse maths and the
+table formatting to read coordinates back out.
 
 Runs under IronPython 2.7 and CPython 3: .format() only, LF endings.
 """
@@ -122,6 +124,75 @@ def shared_xy(x, y, east=0.0, north=0.0, angle=0.0):
             float(x) * s + float(y) * c + float(north))
 
 
+def from_feet(value, unit):
+    """Internal feet shown in unit ('m', 'mm', 'ft')."""
+    try:
+        return float(value) / FT_PER_UNIT[unit]
+    except KeyError:
+        raise ValueError(u"unknown unit '{0}'".format(unit))
+
+
+def coords_in(system, x, y, z, east=0.0, north=0.0, elev=0.0, angle=0.0,
+              pbp_x=0.0, pbp_y=0.0, pbp_z=0.0):
+    """An internal point (feet) as (X, Y, Z) feet in a coordinate system
+    - the reverse of internal_xy, with the elevation carried too:
+    pbp subtracts the base point's internal position, shared rotates
+    and shifts by the project position (elev is its Elevation)."""
+    x, y, z = float(x), float(y), float(z)
+    if system == "internal":
+        return x, y, z
+    if system == "pbp":
+        return x - float(pbp_x), y - float(pbp_y), z - float(pbp_z)
+    if system == "shared":
+        sx, sy = shared_xy(x, y, east, north, angle)
+        return sx, sy, z + float(elev)
+    raise ValueError(u"unknown coordinate system '{0}'".format(system))
+
+
+AXES = {"internal": (u"X", u"Y", u"Z"), "pbp": (u"X", u"Y", u"Z"),
+        "shared": (u"Easting", u"Northing", u"Elevation")}
+
+
+def _fmt(value, unit, decimals=None):
+    if decimals is None:
+        decimals = 0 if unit == "mm" else 3
+    return u"{0:.{1}f}".format(from_feet(value, unit), decimals)
+
+
+def coords_table(rows, system, unit, decimals=None, sep=u"\t", **position):
+    """Tab-separated text for a spreadsheet: a header, then one line per
+    row - name, point, X, Y, Z in the system and unit, level, element.
+    rows: dicts with name, point, x, y, z (internal feet), level, label,
+    id."""
+    ax = AXES.get(system, AXES["internal"])
+    u = dict(UNITS).get(unit, unit)
+    lines = [sep.join([u"Name", u"Point", u"{0} ({1})".format(ax[0], u),
+                       u"{0} ({1})".format(ax[1], u), u"{0} ({1})".format(ax[2], u),
+                       u"Level", u"Element", u"Id"])]
+    for r in rows:
+        X, Y, Z = coords_in(system, r["x"], r["y"], r["z"], **position)
+        lines.append(sep.join([
+            u"{0}".format(r.get("name") or u""), u"{0}".format(r.get("point") or u""),
+            _fmt(X, unit, decimals), _fmt(Y, unit, decimals), _fmt(Z, unit, decimals),
+            u"{0}".format(r.get("level") or u""), u"{0}".format(r.get("label") or u""),
+            u"{0}".format(r.get("id") if r.get("id") is not None else u"")]))
+    return u"\n".join(lines)
+
+
+def place_lines(rows, system, unit, decimals=None, **position):
+    """The rows as lines Place at Coordinates reads back - name, X, Y -
+    one per row, in the same system and unit (no z: there it would be
+    an offset above a level, not an elevation)."""
+    out = []
+    for r in rows:
+        X, Y, _Z = coords_in(system, r["x"], r["y"], r["z"], **position)
+        name = u"{0}".format(r.get("name") or u"").strip()
+        name = name.split()[0] if name else u""
+        cells = ([name] if name else []) + [_fmt(X, unit, decimals), _fmt(Y, unit, decimals)]
+        out.append(u", ".join(cells))
+    return u"\n".join(out)
+
+
 def prepare(points, unit, level_elevation_ft, system="internal", **position):
     """The placement list: every parsed point as internal feet -
     x, y through the coordinate system and unit, z = level elevation +
@@ -186,6 +257,6 @@ def summary_text(points, errors, unit):
     return u"; ".join(bits) + u"."
 
 
-__all__ = ["FT_PER_UNIT", "UNITS", "SYSTEMS", "parse_points", "to_feet",
-           "internal_xy", "shared_xy", "prepare", "search", "type_label",
-           "summary_text"]
+__all__ = ["FT_PER_UNIT", "UNITS", "SYSTEMS", "AXES", "parse_points", "to_feet",
+           "from_feet", "internal_xy", "shared_xy", "coords_in", "coords_table",
+           "place_lines", "prepare", "search", "type_label", "summary_text"]
