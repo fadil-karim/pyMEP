@@ -129,6 +129,85 @@ def search_params(params, text):
     return [p for p in params if all(w in _low(p["label"]) for w in words)]
 
 
+# ---------------------------------------------------------------------------
+# 2b. A schedule as the source
+# ---------------------------------------------------------------------------
+
+SCHEDULE_SCOPES = {"Instance": INSTANCE, "ElementType": TYPE}
+
+
+def schedule_fields(fields):
+    """The schedule fields that are element parameters, in schedule
+    order, and the ones that are not.
+
+    fields: dicts with name (the parameter name), heading (the column
+            heading), kind (the field type - Instance, ElementType,
+            Count, Formula, Room, ...), hidden, pid (the parameter id).
+    Returns (usable, skipped): usable dicts key, scope, name, heading,
+    hidden, pid; skipped [(heading, why)]. A parameter listed twice is
+    kept once."""
+    usable = []
+    skipped = []
+    seen = set()
+    for f in fields:
+        heading = u"{0}".format(f.get("heading") or f.get("name") or u"").strip()
+        scope = SCHEDULE_SCOPES.get(u"{0}".format(f.get("kind")))
+        if scope is None:
+            skipped.append((heading, u"{0} field - not an element parameter".format(
+                f.get("kind"))))
+            continue
+        name = u"{0}".format(f.get("name") or u"")
+        if not name:
+            skipped.append((heading, u"no parameter name"))
+            continue
+        key = param_key(scope, name)
+        if key in seen:
+            continue
+        seen.add(key)
+        usable.append({"key": key, "scope": scope, "name": name,
+                       "heading": heading or name, "hidden": bool(f.get("hidden")),
+                       "pid": f.get("pid")})
+    return usable, skipped
+
+
+def schedule_params(usable, info_by_key):
+    """Parameter dicts (as build_params makes them) for the usable
+    schedule fields, with the column heading and parameter id kept.
+    info_by_key[key] = {storage, readonly, yesno} for the fields found
+    on the schedule's elements; a field found on none is listed but not
+    editable."""
+    out = []
+    for f in usable:
+        info = info_by_key.get(f["key"])
+        storage = info.get("storage") if info else None
+        readonly = bool(info.get("readonly")) if info else True
+        editable = (not readonly) and storage in ("String", "Integer", "Double")
+        label = param_label(f["scope"], f["name"])
+        out.append({"key": f["key"], "scope": f["scope"], "name": f["name"], "label": label,
+                    "heading": f["heading"], "pid": f.get("pid"), "hidden": f["hidden"],
+                    "storage": storage, "readonly": readonly,
+                    "yesno": bool(info.get("yesno")) if info else False,
+                    "editable": editable, "from_schedule": True})
+    return out
+
+
+def merge_params(first, rest):
+    """first in its own order, then the rest not already in it."""
+    keys = set(p["key"] for p in first)
+    return list(first) + [p for p in rest if p["key"] not in keys]
+
+
+def column_header(p):
+    """What a grid column is headed: the schedule's heading when it has
+    one that differs from the parameter name, else the label."""
+    heading = p.get("heading")
+    if heading and heading != p["name"]:
+        text = u"{0} ({1})".format(heading, p["label"])
+    else:
+        text = p["label"]
+    return text if p.get("editable") else u"{0} (read-only)".format(text)
+
+
 def default_keys(params, wanted=(u"Mark", u"Comments")):
     keys = set(p["key"] for p in params)
     return [param_key(INSTANCE, w) for w in wanted if param_key(INSTANCE, w) in keys]
@@ -375,4 +454,6 @@ __all__ = ["ALL_FAMILIES", "ALL_TYPES", "NO_TYPE", "INSTANCE", "TYPE", "ID_KEY",
            "make_filter", "filter_label", "matches", "apply_filters", "categories",
            "family_options", "type_options", "filter_rows", "sample_rows", "param_key",
            "split_key", "param_label", "build_params", "search_params", "default_keys",
+           "SCHEDULE_SCOPES", "schedule_fields", "schedule_params", "merge_params",
+           "column_header",
            "selection_column", "check_value", "unchanged", "plan_change", "plan_text"]

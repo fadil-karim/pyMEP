@@ -511,15 +511,23 @@ whether Apply Edits asks before changing the model. Saved per user.
 ### Parameters
 
 **Bulk Change** - a spreadsheet of parameter values where a block of
-cells takes a new value. Filter by category, then family and type (or
-all of them), optionally keeping to what is selected in Revit; tick the
-parameters to show (a search box narrows the list) and each becomes a
-column beside Element Id and Family : Type. Select cells in one column
+cells takes a new value. The main way in is an existing schedule: its
+elements become the rows and its parameter fields the columns, in
+schedule order and under the schedule's headings (count, formula and
+room fields are left out; hidden fields can be ticked back in). The
+open schedule is picked when the button runs from a schedule view, and
+rows selected there limit the table to them. Filtering by category,
+then family and type (or all of them) is the alternative, picked
+automatically when the run starts from a selection in a model view.
+Tick more parameters (a search box narrows the list) to add columns
+beside Element Id and Family : Type. Select cells in one column
 the Excel way - click, Shift+click, drag, Ctrl+click, or "Select whole
 column" - type the new value and press "Change selected cells" or
 Enter. The status line says how many will change before you press it;
 the values are written in one transaction, read back into the grid, and
-the dialog stays open for the next change. Type parameters (marked
+the dialog stays open for the next change. Schedule fields are read by
+their parameter id, so built-in and shared parameters are found whatever
+the heading says. Type parameters (marked
 `[type]`) are written once per type, which changes every instance of
 it; read-only and element-reference parameters show but cannot be
 changed; numbers are read in the parameter's project units, text keeps

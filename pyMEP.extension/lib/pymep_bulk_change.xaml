@@ -45,13 +45,14 @@
             <StackPanel>
                 <TextBlock FontSize="15" FontWeight="SemiBold" Text="Bulk Change"/>
                 <TextBlock Style="{StaticResource Hint}"
-                           Text="Filter the elements, tick the parameters to see as columns, then select cells in one column like Excel - click, Shift+click or drag, Ctrl+click to add - type the new value and press Change. Each Change is one undo step."/>
+                           Text="Pick a schedule - its elements become the rows and its fields the columns - or filter by category, family and type instead. Tick more parameters to add columns, select cells in one column like Excel - click, Shift+click or drag, Ctrl+click to add - type the new value and press Change. Each Change is one undo step."/>
             </StackPanel>
         </Border>
 
-        <!-- 1. filter -->
+        <!-- 1. where the rows come from: a schedule (main) or a filter -->
         <Grid Grid.Row="1" Margin="14,10,14,4">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="2*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -63,17 +64,26 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <TextBlock Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Category"/>
-            <ComboBox Grid.Column="1" x:Name="CmbCategory" SelectionChanged="on_category_changed"/>
-            <TextBlock Grid.Column="2" Style="{StaticResource FieldLabel}" Text="Family"/>
-            <ComboBox Grid.Column="3" x:Name="CmbFamily" SelectionChanged="on_family_changed"/>
-            <TextBlock Grid.Column="4" Style="{StaticResource FieldLabel}" Text="Type"/>
-            <ComboBox Grid.Column="5" x:Name="CmbType" SelectionChanged="on_type_changed"/>
-            <CheckBox Grid.Column="6" x:Name="ChkSelection" VerticalAlignment="Center" Margin="0,4,0,0"
+            <RadioButton Grid.Row="0" Grid.Column="0" x:Name="RbSchedule" GroupName="Source"
+                         VerticalAlignment="Center" Margin="0,4,12,0" FontWeight="SemiBold"
+                         Content="Schedule" Checked="on_mode_changed"/>
+            <ComboBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="6" x:Name="CmbSchedule"
+                      SelectionChanged="on_schedule_changed"/>
+            <CheckBox Grid.Row="0" Grid.Column="7" x:Name="ChkSelection" VerticalAlignment="Center" Margin="0,4,0,0"
                       Checked="on_scope_changed" Unchecked="on_scope_changed"
                       Content="selected in Revit only"/>
-            <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="6" x:Name="TxtCount"
+            <RadioButton Grid.Row="1" Grid.Column="0" x:Name="RbFilter" GroupName="Source"
+                         VerticalAlignment="Center" Margin="0,8,12,0"
+                         Content="or filter" Checked="on_mode_changed"/>
+            <TextBlock Grid.Row="1" Grid.Column="1" x:Name="LblCategory" Style="{StaticResource FieldLabel}" Margin="0,8,8,0" Text="Category"/>
+            <ComboBox Grid.Row="1" Grid.Column="2" x:Name="CmbCategory" Margin="0,8,12,0" SelectionChanged="on_category_changed"/>
+            <TextBlock Grid.Row="1" Grid.Column="3" x:Name="LblFamily" Style="{StaticResource FieldLabel}" Margin="0,8,8,0" Text="Family"/>
+            <ComboBox Grid.Row="1" Grid.Column="4" x:Name="CmbFamily" Margin="0,8,12,0" SelectionChanged="on_family_changed"/>
+            <TextBlock Grid.Row="1" Grid.Column="5" x:Name="LblType" Style="{StaticResource FieldLabel}" Margin="0,8,8,0" Text="Type"/>
+            <ComboBox Grid.Row="1" Grid.Column="6" x:Name="CmbType" Margin="0,8,12,0" SelectionChanged="on_type_changed"/>
+            <TextBlock Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="7" x:Name="TxtCount"
                        Style="{StaticResource Hint}" Text=""/>
         </Grid>
 

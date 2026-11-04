@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Bulk Change - a spreadsheet of parameter values for a filtered set of
-elements, where a block of cells in one column takes a new value.
+"""Bulk Change - a spreadsheet of parameter values for a set of elements,
+where a block of cells in one column takes a new value.
 
-1. Filter: category, then family and type (or all of them), optionally
-   only what is selected in Revit.
-2. Tick the parameters to show; each becomes a column next to the
-   Element Id and Family : Type.
+1. Source: an existing schedule (the main way) - its elements become the
+   rows and its parameter fields the columns, in schedule order and
+   with the schedule's headings - or a filter by category, then family
+   and type. Either can keep to what is selected in Revit.
+2. Tick more parameters to add columns next to the Element Id and
+   Family : Type.
 3. Sort by clicking a column header (numbers by value, P2 before P10)
    and narrow the rows with column filters - contains, equals, greater
    than, is blank and so on, or "Filter to selected values".
@@ -34,7 +36,8 @@ import clr
 clr.AddReference("RevitAPI")
 clr.AddReference("System.Data")
 import System
-from Autodesk.Revit.DB import CategoryType, FilteredElementCollector, Transaction
+from Autodesk.Revit.DB import (BuiltInParameter, CategoryType, FilteredElementCollector,
+                               Transaction, ViewSchedule)
 from System.Data import DataTable
 
 from pyrevit import revit, forms, script
@@ -66,7 +69,8 @@ XAML_PATH = os.path.join(os.path.dirname(os.path.abspath(BC.__file__)),
 S_CATEGORY = "bulk_change_category"
 S_FAMILY = "bulk_change_family"
 S_TYPE = "bulk_change_type"
-S_PARAMS = "bulk_change_params"      # {category: [parameter keys]}
+S_PARAMS = "bulk_change_params"      # {category or "schedule:<name>": [parameter keys]}
+S_SCHEDULE = "bulk_change_schedule"
 ID_COL = "id"
 LABEL_COL = "label"
 LABEL_SORT = "slabel"
@@ -75,22 +79,25 @@ FIXED = {ID_COL: BC.ID_KEY, LABEL_SORT: BC.LABEL_KEY, LABEL_COL: BC.LABEL_KEY}
 
 
 # ---------------------------------------------------------------------------
-# 1. Every element that can carry parameters, with its family and type
+# 1. Rows (one per element, with category, family and type) and schedules
 # ---------------------------------------------------------------------------
-rows = []
+rows_by_id = {}
 _types = {}
-for el in FilteredElementCollector(doc).WhereElementIsNotElementType():
+
+
+def make_row(el):
+    """The row for an element, made once and kept by element id."""
+    try:
+        eid = id_value(el.Id)
+    except Exception:
+        return None
+    if eid in rows_by_id:
+        return rows_by_id[eid]
     try:
         cat = el.Category
-        if cat is None:
-            continue
-        if cat.CategoryType != CategoryType.Model and cat.CategoryType != CategoryType.Annotation:
-            continue
-        if not cat.AllowsBoundParameters:
-            continue
-        cname = u"{0}".format(cat.Name)
+        cname = u"{0}".format(cat.Name) if cat is not None else u"(no category)"
     except Exception:
-        continue
+        cname = u"(no category)"
     tid = None
     fam = BC.NO_TYPE
     tname = BC.NO_TYPE
@@ -106,27 +113,169 @@ for el in FilteredElementCollector(doc).WhereElementIsNotElementType():
             fam, tname = _types[tid]
     except Exception:
         tid = None
-    rows.append({"id": id_value(el.Id), "category": cname, "family": fam, "type": tname,
-                 "type_id": tid})
-if not rows:
-    forms.alert("No elements in this model carry parameters.", exitscript=True)
-rows_by_id = dict((r["id"], r) for r in rows)
+    row = {"id": eid, "category": cname, "family": fam, "type": tname, "type_id": tid}
+    rows_by_id[eid] = row
+    return row
+
+
+_all_rows = []
+
+
+def all_rows():
+    """Every element that can carry parameters - collected the first time
+    the filter is used; a schedule only needs its own elements."""
+    if not _all_rows:
+        for el in FilteredElementCollector(doc).WhereElementIsNotElementType():
+            try:
+                cat = el.Category
+                if cat is None:
+                    continue
+                if (cat.CategoryType != CategoryType.Model
+                        and cat.CategoryType != CategoryType.Annotation):
+                    continue
+                if not cat.AllowsBoundParameters:
+                    continue
+            except Exception:
+                continue
+            r = make_row(el)
+            if r is not None:
+                _all_rows.append(r)
+    return _all_rows
+
+
+def collect_schedules():
+    """The schedules that list elements - not templates, key schedules,
+    title-block revision or keynote legends."""
+    out = []
+    for sch in FilteredElementCollector(doc).OfClass(ViewSchedule):
+        try:
+            if sch.IsTemplate:
+                continue
+            if getattr(sch, "IsTitleblockRevisionSchedule", False):
+                continue
+            if getattr(sch, "IsInternalKeynoteSchedule", False):
+                continue
+            if sch.Definition.IsKeySchedule:
+                continue
+            out.append(sch)
+        except Exception:
+            continue
+    out.sort(key=lambda v: u"{0}".format(v.Name).lower())
+    return out
+
+
+schedules = collect_schedules()
+_sources = {}
+
+
+def schedule_source(sch):
+    """(rows, fields) of a schedule: the elements it lists and its fields
+    in schedule order."""
+    sid = id_value(sch.Id)
+    if sid in _sources:
+        return _sources[sid]
+    srows = []
+    for el in FilteredElementCollector(doc, sch.Id).WhereElementIsNotElementType():
+        r = make_row(el)
+        if r is not None:
+            srows.append(r)
+    fields = []
+    d = sch.Definition
+    for fid in d.GetFieldOrder():
+        try:
+            f = d.GetField(fid)
+            fields.append({"name": u"{0}".format(f.GetName()),
+                           "heading": u"{0}".format(f.ColumnHeading or u""),
+                           "kind": u"{0}".format(f.FieldType),
+                           "hidden": bool(f.IsHidden),
+                           "pid": id_value(f.ParameterId)})
+        except Exception:
+            continue
+    _sources[sid] = (srows, fields)
+    return _sources[sid]
+
 
 selected_ids = set()
 try:
     selected_ids = set(id_value(i) for i in uidoc.Selection.GetElementIds())
-    selected_ids = set(i for i in selected_ids if i in rows_by_id)
 except Exception:
     selected_ids = set()
+active_schedule = None
+try:
+    if isinstance(doc.ActiveView, ViewSchedule):
+        active_schedule = id_value(doc.ActiveView.Id)
+except Exception:
+    active_schedule = None
 
 settings = load_settings()
 _elements = {}
+_guids = {}
 
 
 def element(eid):
     if eid not in _elements:
         _elements[eid] = doc.GetElement(make_id(eid)) if eid is not None else None
     return _elements[eid]
+
+
+def find_param(el, p):
+    """The Parameter p names on el: by its built-in id or shared GUID when
+    the schedule gave one (so a renamed heading or a duplicate name is no
+    problem), else by name."""
+    if el is None:
+        return None
+    pid = p.get("pid")
+    try:
+        if pid is not None and pid < -1:
+            prm = el.get_Parameter(System.Enum.ToObject(clr.GetClrType(BuiltInParameter), int(pid)))
+            if prm is not None:
+                return prm
+        elif pid is not None and pid > 0:
+            if pid not in _guids:
+                _guids[pid] = getattr(doc.GetElement(make_id(pid)), "GuidValue", None)
+            if _guids[pid] is not None:
+                prm = el.get_Parameter(_guids[pid])
+                if prm is not None:
+                    return prm
+    except Exception:
+        pass
+    try:
+        return el.LookupParameter(p["name"])
+    except Exception:
+        return None
+
+
+def probe(usable, sample):
+    """{key: {storage, readonly, yesno}} for schedule fields, read from the
+    schedule's own elements (or their types) - writable on any counts."""
+    info = {}
+    type_ids = []
+    for r in sample:
+        if r["type_id"] is not None and r["type_id"] not in type_ids:
+            type_ids.append(r["type_id"])
+    inst = [element(r["id"]) for r in sample[:80]]
+    types = [element(t) for t in type_ids[:80]]
+    for f in usable:
+        found = None
+        for el in (types if f["scope"] == BC.TYPE else inst):
+            prm = find_param(el, f)
+            if prm is None:
+                continue
+            try:
+                st = PR.storage_name(prm.StorageType)
+            except Exception:
+                continue
+            if st == "None":
+                continue
+            if found is None:
+                found = {"storage": st, "readonly": True,
+                         "yesno": st == "Integer" and PR.is_yesno(prm)}
+            if not prm.IsReadOnly:
+                found["readonly"] = False
+                break
+        if found is not None:
+            info[f["key"]] = found
+    return info
 
 
 def _header(text):
@@ -144,7 +293,8 @@ class BulkWindow(forms.WPFWindow):
         forms.WPFWindow.__init__(self, XAML_PATH)
         self._ready = False
         self._sync = 0
-        self.cats = BC.categories(rows)
+        self.cats = None            # filter categories, read on first use
+        self.mode = None            # "schedule" or "filter"
         self.params = []
         self.param_by_key = {}
         self.chosen = []            # parameter keys, in column order
@@ -160,9 +310,80 @@ class BulkWindow(forms.WPFWindow):
         self.log = []               # (label, owner id, old, new, result)
         self.changes = 0
         self.remembered = dict(settings.get(S_PARAMS) or {})
-        self._loaded_cat = None
+        self._remember_key = None
+        self.source_text = u""
+        self.source_note = u""
         self._sync += 1
         try:
+            for sch in schedules:
+                self.CmbSchedule.Items.Add(u"{0}".format(sch.Name))
+            if schedules:
+                ids = [id_value(v.Id) for v in schedules]
+                names = [u"{0}".format(v.Name) for v in schedules]
+                want = settings.get(S_SCHEDULE)
+                if active_schedule in ids:
+                    self.CmbSchedule.SelectedIndex = ids.index(active_schedule)
+                elif want in names:
+                    self.CmbSchedule.SelectedIndex = names.index(want)
+                else:
+                    self.CmbSchedule.SelectedIndex = 0
+            else:
+                self.RbSchedule.IsEnabled = False
+                self.RbSchedule.Content = u"Schedule (none in this model)"
+                self.CmbSchedule.IsEnabled = False
+            if selected_ids:
+                self.ChkSelection.Content = u"only the {0} selected in Revit".format(
+                    len(selected_ids))
+                self.ChkSelection.IsChecked = True
+            else:
+                self.ChkSelection.IsEnabled = False
+                self.ChkSelection.Content = u"selected in Revit only (nothing selected)"
+            for _op, lbl in BC.OPS:
+                self.CmbFilterOp.Items.Add(lbl)
+            self.CmbFilterOp.SelectedIndex = 0
+            # a schedule is the main way in; a selection made in a model
+            # view (not in a schedule) is filtered instead
+            use_schedule = bool(schedules) and (active_schedule is not None or not selected_ids)
+            if use_schedule:
+                self.RbSchedule.IsChecked = True
+            else:
+                self.RbFilter.IsChecked = True
+        finally:
+            self._sync -= 1
+        self._ready = True
+        self._set_mode("schedule" if use_schedule else "filter", first=True)
+
+    # -- the source -----------------------------------------------------------------
+    def schedule(self):
+        idx = self.CmbSchedule.SelectedIndex
+        return schedules[idx] if 0 <= idx < len(schedules) else None
+
+    def _selection(self):
+        return selected_ids if (selected_ids and self.ChkSelection.IsChecked) else None
+
+    def _set_mode(self, mode, first=False):
+        self.mode = mode
+        is_filter = mode == "filter"
+        for c in (self.CmbCategory, self.CmbFamily, self.CmbType,
+                  self.LblCategory, self.LblFamily, self.LblType):
+            c.IsEnabled = is_filter
+        self.CmbSchedule.IsEnabled = (not is_filter) and bool(schedules)
+        self._remember()
+        self.chosen = []
+        if is_filter:
+            self._ensure_categories()
+            self._load_category(first=first)
+        else:
+            self._load_schedule()
+
+    def _ensure_categories(self):
+        if self.cats is not None:
+            return
+        rows = all_rows()
+        self.cats = BC.categories(rows)
+        self._sync += 1
+        try:
+            self.CmbCategory.Items.Clear()
             for name, n in self.cats:
                 self.CmbCategory.Items.Add(u"{0}  ({1})".format(name, n))
             names = [c for c, _n in self.cats]
@@ -170,30 +391,69 @@ class BulkWindow(forms.WPFWindow):
             if selected_ids:
                 counts = {}
                 for i in selected_ids:
-                    c = rows_by_id[i]["category"]
-                    counts[c] = counts.get(c, 0) + 1
-                want = sorted(counts.items(), key=lambda kv: -kv[1])[0][0]
-                self.ChkSelection.Content = u"only the {0} selected in Revit".format(
-                    len(selected_ids))
-                self.ChkSelection.IsChecked = True
-            else:
-                self.ChkSelection.IsEnabled = False
-                self.ChkSelection.Content = u"selected in Revit only (nothing selected)"
+                    r = rows_by_id.get(i)
+                    if r is not None:
+                        counts[r["category"]] = counts.get(r["category"], 0) + 1
+                if counts:
+                    want = sorted(counts.items(), key=lambda kv: -kv[1])[0][0]
             self.CmbCategory.SelectedIndex = names.index(want) if want in names else 0
-            for _op, lbl in BC.OPS:
-                self.CmbFilterOp.Items.Add(lbl)
-            self.CmbFilterOp.SelectedIndex = 0
         finally:
             self._sync -= 1
-        self._ready = True
-        # a run started from a Revit selection shows all of it, whatever
-        # family / type filter was used last time
-        self._load_category(first=not selected_ids)
 
-    # -- the filter ---------------------------------------------------------------
+    def _load_schedule(self):
+        sch = self.schedule()
+        if sch is None:
+            self._set_source([], [], None, [], u"No schedule picked", u"")
+            return
+        srows, fields = schedule_source(sch)
+        ids = self._selection()
+        view_rows = [r for r in srows if ids is None or r["id"] in ids]
+        usable, skipped = BC.schedule_fields(fields)
+        sample = BC.sample_rows(view_rows)
+        sparams = BC.schedule_params(usable, probe(usable, sample))
+        params = BC.merge_params(sparams, self._catalog(sample))
+        note = u""
+        if skipped:
+            note = u" Schedule fields that are not parameters (count, formulas, room ...) " \
+                   u"are left out: {0}{1}.".format(u", ".join(h for h, _w in skipped[:6]),
+                                                 u" ..." if len(skipped) > 6 else u"")
+        self._set_source(view_rows, params, u"schedule:{0}".format(sch.Name),
+                         [f["key"] for f in usable if not f["hidden"]],
+                         u"Schedule '{0}'".format(sch.Name), note)
+
+    def _catalog(self, sample):
+        els = [e for e in (element(r["id"]) for r in sample) if e is not None]
+        type_ids = []
+        for r in sample:
+            if r["type_id"] is not None and r["type_id"] not in type_ids:
+                type_ids.append(r["type_id"])
+        types = [t for t in (element(i) for i in type_ids) if t is not None]
+        return BC.build_params(PR.param_catalog(els), PR.param_catalog(types))
+
+    def _set_source(self, view_rows, params, remember_key, default_chosen, text, note,
+                    keep_chosen=False):
+        self.view_rows = view_rows
+        self.params = params
+        self.param_by_key = dict((p["key"], p) for p in self.params)
+        keep = [k for k in self.chosen if k in self.param_by_key] if keep_chosen else []
+        if not keep:
+            keep = [k for k in (self.remembered.get(remember_key) or [])
+                    if k in self.param_by_key]
+        if not keep:
+            keep = [k for k in default_chosen if k in self.param_by_key]
+        if not keep:
+            keep = BC.default_keys(self.params)
+        self._remember_key = remember_key
+        self.chosen = keep
+        self.source_text = text
+        self.source_note = note
+        self._fill_params()
+        self._build_grid()
+
+    # -- the filter (optional way in) -------------------------------------------------
     def category(self):
         idx = self.CmbCategory.SelectedIndex
-        return self.cats[idx][0] if 0 <= idx < len(self.cats) else None
+        return self.cats[idx][0] if self.cats and 0 <= idx < len(self.cats) else None
 
     def family(self):
         return u"{0}".format(self.CmbFamily.SelectedItem or BC.ALL_FAMILIES)
@@ -213,38 +473,22 @@ class BulkWindow(forms.WPFWindow):
 
     def _load_category(self, first=False):
         cat = self.category()
-        self._fill(self.CmbFamily, BC.family_options(rows, cat),
-                   settings.get(S_FAMILY) if first else BC.ALL_FAMILIES)
+        self._fill(self.CmbFamily, BC.family_options(all_rows(), cat),
+                   settings.get(S_FAMILY) if (first and not selected_ids) else BC.ALL_FAMILIES)
         self._load_family(first)
 
     def _load_family(self, first=False):
-        self._fill(self.CmbType, BC.type_options(rows, self.category(), self.family()),
-                   settings.get(S_TYPE) if first else BC.ALL_TYPES)
-        self._load_rows()
+        self._fill(self.CmbType, BC.type_options(all_rows(), self.category(), self.family()),
+                   settings.get(S_TYPE) if (first and not selected_ids) else BC.ALL_TYPES)
+        self._load_rows(keep_chosen=not first)
 
-    def _load_rows(self):
-        ids = selected_ids if (selected_ids and self.ChkSelection.IsChecked) else None
-        self.view_rows = BC.filter_rows(rows, self.category(), self.family(),
-                                        self.type_name(), ids)
-        sample = BC.sample_rows(self.view_rows)
-        els = [e for e in (element(r["id"]) for r in sample) if e is not None]
-        type_ids = []
-        for r in sample:
-            if r["type_id"] is not None and r["type_id"] not in type_ids:
-                type_ids.append(r["type_id"])
-        types = [t for t in (element(i) for i in type_ids) if t is not None]
-        self.params = BC.build_params(PR.param_catalog(els), PR.param_catalog(types))
-        self.param_by_key = dict((p["key"], p) for p in self.params)
-        self._loaded_cat = self.category()
-        remembered = self.remembered.get(self.category())
-        keep = [k for k in self.chosen if k in self.param_by_key]
-        if not keep:
-            keep = [k for k in (remembered or []) if k in self.param_by_key]
-        if not keep:
-            keep = BC.default_keys(self.params)
-        self.chosen = keep
-        self._fill_params()
-        self._build_grid()
+    def _load_rows(self, keep_chosen=True):
+        view_rows = BC.filter_rows(all_rows(), self.category(), self.family(),
+                                   self.type_name(), self._selection())
+        sample = BC.sample_rows(view_rows)
+        self._set_source(view_rows, self._catalog(sample), self.category(), [],
+                         u"{0}".format(self.category() or u"(no category)"), u"",
+                         keep_chosen=keep_chosen)
 
     # -- the parameter list -------------------------------------------------------
     def _fill_params(self):
@@ -253,8 +497,7 @@ class BulkWindow(forms.WPFWindow):
             self.LstParams.Items.Clear()
             for p in BC.search_params(self.params, self.TxtParamSearch.Text):
                 cb = CheckBox()
-                label = p["label"] if p["editable"] else u"{0}  (read-only)".format(p["label"])
-                cb.Content = _header(label)
+                cb.Content = _header(BC.column_header(p))
                 cb.Tag = p["key"]
                 cb.IsChecked = p["key"] in self.chosen
                 cb.Checked += self.on_param_toggled
@@ -275,8 +518,8 @@ class BulkWindow(forms.WPFWindow):
         self._build_grid()
 
     def _remember(self):
-        if self._loaded_cat:
-            self.remembered[self._loaded_cat] = list(self.chosen)
+        if self._remember_key:
+            self.remembered[self._remember_key] = list(self.chosen)
 
     # -- reading values -----------------------------------------------------------
     def value(self, rid, key):
@@ -289,20 +532,15 @@ class BulkWindow(forms.WPFWindow):
             if p["scope"] == BC.TYPE:
                 tkey = (row["type_id"], key)
                 if tkey not in self._type_values:
-                    self._type_values[tkey] = self._read(element(row["type_id"]), p["name"])
+                    self._type_values[tkey] = self._read(element(row["type_id"]), p)
                 text = self._type_values[tkey]
             else:
-                text = self._read(element(rid), p["name"])
+                text = self._read(element(rid), p)
         self.values[(rid, key)] = text
         return text
 
-    def _read(self, el, name):
-        if el is None:
-            return None
-        try:
-            prm = el.LookupParameter(name)
-        except Exception:
-            prm = None
+    def _read(self, el, p):
+        prm = find_param(el, p)
         return PR.as_text(prm, doc) if prm is not None else None
 
     # -- the grid -----------------------------------------------------------------
@@ -365,8 +603,7 @@ class BulkWindow(forms.WPFWindow):
                 vpath, spath = self.paths[key]
                 p = self.param_by_key[key]
                 col = DataGridTextColumn()
-                col.Header = _header(p["label"] if p["editable"] else
-                                     u"{0} (read-only)".format(p["label"]))
+                col.Header = _header(BC.column_header(p))
                 col.Binding = Binding(vpath)
                 col.SortMemberPath = spath
                 self.GridValues.Columns.Add(col)
@@ -425,10 +662,10 @@ class BulkWindow(forms.WPFWindow):
             b.ToolTip = u"Remove this filter"
             b.Click += self.on_remove_filter
             self.PnlFilters.Children.Add(b)
-        self.TxtCount.Text = u"{0} element(s){1}; {2} parameter(s) found on them.".format(
-            len(self.view_rows),
+        self.TxtCount.Text = u"{0}: {1} element(s){2}; {3} parameter(s) to choose from.{4}".format(
+            self.source_text, len(self.view_rows),
             u", {0} shown by the filters".format(shown) if self.filters else u"",
-            len(self.params))
+            len(self.params), self.source_note)
 
     def _apply_filters(self):
         if self.table is None:
@@ -495,22 +732,40 @@ class BulkWindow(forms.WPFWindow):
         self.BtnChange.IsEnabled = bool(plan["targets"])
 
     # -- handlers -------------------------------------------------------------------
+    def on_mode_changed(self, sender, args):
+        if not self._ready or self._sync:
+            return
+        mode = "schedule" if self.RbSchedule.IsChecked else "filter"
+        if mode != self.mode:
+            self._set_mode(mode)
+
+    def on_schedule_changed(self, sender, args):
+        if self._ready and not self._sync and self.mode == "schedule":
+            self._remember()
+            self.chosen = []
+            self._load_schedule()
+
     def on_category_changed(self, sender, args):
-        if self._ready and not self._sync:
+        if self._ready and not self._sync and self.mode == "filter":
             self._remember()
             self.chosen = []
             self._load_category()
 
     def on_family_changed(self, sender, args):
-        if self._ready and not self._sync:
+        if self._ready and not self._sync and self.mode == "filter":
             self._load_family()
 
     def on_type_changed(self, sender, args):
-        if self._ready and not self._sync:
+        if self._ready and not self._sync and self.mode == "filter":
             self._load_rows()
 
     def on_scope_changed(self, sender, args):
-        if self._ready and not self._sync:
+        if not self._ready or self._sync:
+            return
+        self._remember()
+        if self.mode == "schedule":
+            self._load_schedule()
+        else:
             self._load_rows()
 
     def on_param_search(self, sender, args):
@@ -641,7 +896,7 @@ class BulkWindow(forms.WPFWindow):
                 owner = element(tg["owner"])
                 prm = None
                 try:
-                    prm = owner.LookupParameter(param["name"]) if owner is not None else None
+                    prm = find_param(owner, param)
                 except Exception:
                     prm = None
                 if prm is None:
@@ -700,9 +955,13 @@ class BulkWindow(forms.WPFWindow):
 
     def on_close(self, sender, args):
         try:
-            settings[S_CATEGORY] = self.category()
-            settings[S_FAMILY] = self.family()
-            settings[S_TYPE] = self.type_name()
+            sch = self.schedule()
+            if sch is not None:
+                settings[S_SCHEDULE] = u"{0}".format(sch.Name)
+            if self.cats is not None:
+                settings[S_CATEGORY] = self.category()
+                settings[S_FAMILY] = self.family()
+                settings[S_TYPE] = self.type_name()
             self._remember()
             settings[S_PARAMS] = self.remembered
             save_settings(settings)

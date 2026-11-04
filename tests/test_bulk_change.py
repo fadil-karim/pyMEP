@@ -87,6 +87,52 @@ class Params(unittest.TestCase):
         self.assertEqual(len(BC.search_params(ps, u"")), 7)
 
 
+class Schedules(unittest.TestCase):
+    FIELDS = [
+        {"name": u"Mark", "heading": u"Pile Ref", "kind": "Instance", "hidden": False, "pid": -1001203},
+        {"name": u"Type Mark", "heading": u"Type Mark", "kind": "ElementType", "hidden": False, "pid": -1002},
+        {"name": u"Count", "heading": u"Count", "kind": "Count", "hidden": False, "pid": -1},
+        {"name": u"Load x2", "heading": u"Load x2", "kind": "Formula", "hidden": False, "pid": -1},
+        {"name": u"Peak Load", "heading": u"", "kind": "Instance", "hidden": True, "pid": 345},
+        {"name": u"Mark", "heading": u"Mark again", "kind": "Instance", "hidden": False, "pid": -1001203},
+    ]
+
+    def test_fields(self):
+        usable, skipped = BC.schedule_fields(self.FIELDS)
+        self.assertEqual([u["key"] for u in usable], [u"i:Mark", u"t:Type Mark", u"i:Peak Load"])
+        self.assertEqual(usable[0]["heading"], u"Pile Ref")
+        self.assertEqual(usable[2]["heading"], u"Peak Load")      # blank heading -> the name
+        self.assertTrue(usable[2]["hidden"])
+        self.assertEqual(usable[0]["pid"], -1001203)
+        self.assertEqual([h for h, _w in skipped], [u"Count", u"Load x2"])
+        self.assertIn(u"Formula field", skipped[1][1])
+
+    def test_params_and_merge(self):
+        usable, _ = BC.schedule_fields(self.FIELDS)
+        info = {u"i:Mark": {"storage": "String", "readonly": False, "yesno": False},
+                u"t:Type Mark": {"storage": "String", "readonly": False, "yesno": False}}
+        sp = BC.schedule_params(usable, info)
+        self.assertEqual([p["editable"] for p in sp], [True, True, False])   # Peak Load not found
+        self.assertTrue(sp[2]["readonly"])
+        self.assertEqual(sp[1]["label"], u"Type Mark [type]")
+        catalog = BC.build_params(INST, TYPE)
+        merged = BC.merge_params(sp, catalog)
+        self.assertEqual([p["key"] for p in merged[:3]], [u"i:Mark", u"t:Type Mark", u"i:Peak Load"])
+        self.assertEqual(len([p for p in merged if p["key"] == u"i:Mark"]), 1)
+        self.assertEqual(len(merged), 3 + len(catalog) - 3)    # Mark, Type Mark, Peak Load overlap
+
+    def test_headers(self):
+        usable, _ = BC.schedule_fields(self.FIELDS)
+        info = {u"i:Mark": {"storage": "String", "readonly": False, "yesno": False},
+                u"t:Type Mark": {"storage": "String", "readonly": False, "yesno": False}}
+        sp = BC.schedule_params(usable, info)
+        self.assertEqual(BC.column_header(sp[0]), u"Pile Ref (Mark)")
+        self.assertEqual(BC.column_header(sp[1]), u"Type Mark [type]")
+        self.assertEqual(BC.column_header(sp[2]), u"Peak Load (read-only)")
+        plain = BC.build_params(INST, {})[0]
+        self.assertEqual(BC.column_header(plain), plain["label"])
+
+
 class Selection(unittest.TestCase):
 
     def test_one_column(self):
