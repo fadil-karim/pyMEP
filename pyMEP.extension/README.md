@@ -35,7 +35,7 @@ pyMEP.extension/
     07_PipeNetworks.panel/      # 'Pipe Networks': Lines to Pipes (always creates) + Update Pipes (scoped in-place update) + Connect Inflow to Collector + Sync Input Nodes
     03_Topography.panel/        # Align to Topo, Cut Toposolid, Drape Floor
     04_Chambers.panel/          # 'Chamber Drawing Setup': sections workflow, Chamber Plans
-    05_Parameters.panel/        # Replicate Parameter, CSV to Parameter
+    05_Parameters.panel/        # Bulk Change, CSV to Parameter, Replicate Parameter
     06_ProjectDataTransfer.panel/ # 'Project Data Transfer': Export/Import Project Data (view templates + filters as JSON)
     06_Annotate.panel/          # 3 annotation buttons
     08_Electrical.panel/        # Encasement (shown before Drainage on the ribbon)
@@ -509,6 +509,24 @@ whether Apply Edits asks before changing the model. Saved per user.
 
 
 ### Parameters
+
+**Bulk Change** - a spreadsheet of parameter values where a block of
+cells takes a new value. Filter by category, then family and type (or
+all of them), optionally keeping to what is selected in Revit; tick the
+parameters to show (a search box narrows the list) and each becomes a
+column beside Element Id and Family : Type. Select cells in one column
+the Excel way - click, Shift+click, drag, Ctrl+click, or "Select whole
+column" - type the new value and press "Change selected cells" or
+Enter. The status line says how many will change before you press it;
+the values are written in one transaction, read back into the grid, and
+the dialog stays open for the next change. Type parameters (marked
+`[type]`) are written once per type, which changes every instance of
+it; read-only and element-reference parameters show but cannot be
+changed; numbers are read in the parameter's project units, text keeps
+exactly what you type so letter case can be fixed. Columns sort on a
+header click, and the chosen parameters are remembered per category.
+Each Change is one undo step, and the output window lists every value
+changed when the dialog closes.
 
 **Replicate Parameter** - generic utility: pick a placed family type, a
 source parameter and a writable target parameter; the value is copied onto

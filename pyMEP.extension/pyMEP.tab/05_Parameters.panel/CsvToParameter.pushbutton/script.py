@@ -38,11 +38,13 @@ for _mod in [m for m in list(sys.modules.keys()) if m.startswith("pymep_")]:
 import clr
 clr.AddReference("RevitAPI")
 from Autodesk.Revit.DB import (CategoryType, FilteredElementCollector,
-                               StorageType, Transaction, UnitUtils)
+                               Transaction)
 
 from pyrevit import revit, forms, script
 
 import pymep_csv_params as CP
+import pymep_param_rw as PR
+from pymep_param_rw import param_catalog, validator, write_param
 from pymep_config import get_export_folder, load_settings, save_settings
 from pymep_dashboard_launch import launch_html
 from pymep_revit import id_value, make_id, quiet
@@ -55,7 +57,6 @@ XAML_PATH = os.path.join(os.path.dirname(os.path.abspath(CP.__file__)),
                          "pymep_csv_params.xaml")
 DEFAULT_CATEGORY = "Structural Foundations"
 ELEMENT_ID = u"Element Id"
-PARAM_CAP = 400          # elements sampled for the parameter lists
 
 S_CATEGORY = "csv_params_category"
 S_MATCH = "csv_params_match"
@@ -96,98 +97,10 @@ settings = load_settings()
 
 
 # ---------------------------------------------------------------------------
-# 2. Parameters: what an element exposes, how it reads, how it is written
+# 2. Parameters - the helpers live in lib/pymep_param_rw.py
 # ---------------------------------------------------------------------------
-def _is_yesno(p):
-    d = p.Definition
-    for getter in ("GetDataType", "GetSpecTypeId"):      # 2022+ / 2021
-        try:
-            fn = getattr(d, getter, None)
-            if fn is not None:
-                sp = fn()
-                if sp is not None and sp.TypeId:
-                    return "spec.bool" in sp.TypeId
-        except Exception:
-            pass
-    try:                                                 # <= 2020
-        return str(d.ParameterType) == "YesNo"
-    except Exception:
-        return False
-
-
-def _display_unit(p):
-    """The unit Properties shows a measured parameter in, or None."""
-    try:                                    # Revit 2021+
-        u = p.GetUnitTypeId()
-        if u is not None and u.TypeId:
-            return u
-    except Exception:
-        pass
-    try:                                    # Revit <= 2020
-        dut = p.DisplayUnitType
-        if str(dut) not in ("DUT_UNDEFINED", "DUT_GENERAL",
-                            "DUT_CUSTOM", "DUT_FIXED"):
-            return dut
-    except Exception:
-        pass
-    return None
-
-
-def _storage_name(st):
-    s = u"{0}".format(st)
-    return s.split(".")[-1]
-
-
-def param_catalog(elements):
-    """{name: {"storage": "String"/"Integer"/"Double"/"ElementId",
-    "readonly": bool, "yesno": bool}} over the instance parameters of
-    (a sample of) the elements. Writable on any element counts."""
-    cat = {}
-    for el in elements[:PARAM_CAP]:
-        try:
-            params = el.Parameters
-        except Exception:
-            continue
-        for p in params:
-            try:
-                name = u"{0}".format(p.Definition.Name)
-                st = _storage_name(p.StorageType)
-            except Exception:
-                continue
-            if st == "None" or not name:
-                continue
-            info = cat.get(name)
-            if info is None:
-                cat[name] = {"storage": st, "readonly": bool(p.IsReadOnly),
-                             "yesno": st == "Integer" and _is_yesno(p)}
-            elif info["readonly"] and not p.IsReadOnly:
-                info["readonly"] = False
-    return cat
-
-
 def _as_text(p):
-    """A parameter's value as Properties shows it."""
-    try:
-        if not p.HasValue:
-            return u""
-        st = _storage_name(p.StorageType)
-        if st == "String":
-            return u"{0}".format(p.AsString() or u"")
-        if st == "Integer":
-            vs = p.AsValueString()
-            return u"{0}".format(vs) if vs else u"{0}".format(p.AsInteger())
-        if st == "Double":
-            vs = p.AsValueString()
-            return u"{0}".format(vs) if vs else u"{0}".format(p.AsDouble())
-        if st == "ElementId":
-            eid = p.AsElementId()
-            if eid is None or id_value(eid) < 0:
-                return u""
-            ref = doc.GetElement(eid)
-            return u"{0}".format(ref.Name) if ref is not None else u"{0}".format(id_value(eid))
-    except Exception:
-        pass
-    return u""
+    return PR.as_text(p, doc)
 
 
 def read_param(el, name):
@@ -211,49 +124,6 @@ def element_label(el):
         return u"{0}".format(el.Name)
     except Exception:
         return u"element"
-
-
-def write_param(p, info, text):
-    """(ok, why) after writing text into p according to its storage type."""
-    st = info["storage"]
-    text = u"{0}".format(text)
-    try:
-        if st == "String":
-            return (True, u"") if p.Set(text) else (False, u"Set refused")
-        if st == "Integer":
-            ok, v, why = CP.to_yesno(text) if info["yesno"] else CP.to_integer(text)
-            if not ok:
-                return False, why
-            return (True, u"") if p.Set(int(v)) else (False, u"Set refused")
-        if st == "Double":
-            try:
-                if p.SetValueString(text):      # parsed in the project's units
-                    return True, u""
-            except Exception:
-                pass
-            v = CP.to_number(text)
-            if v is None:
-                return False, u"not a number"
-            unit = _display_unit(p)
-            if unit is not None:
-                v = UnitUtils.ConvertToInternalUnits(float(v), unit)
-            return (True, u"") if p.Set(float(v)) else (False, u"Set refused")
-    except Exception as ex:
-        return False, u"{0}".format(ex)
-    return False, u"parameter type {0} cannot be set from text".format(st)
-
-
-def validator(info):
-    """What the preview can already tell is wrong for this parameter."""
-    if info is None:
-        return None
-    if info["storage"] == "Integer":
-        if info["yesno"]:
-            return lambda t: CP.to_yesno(t)[2]
-        return lambda t: CP.to_integer(t)[2]
-    if info["storage"] == "Double":
-        return lambda t: (u"" if re.search(r"\d", u"{0}".format(t)) else u"no number in it")
-    return None
 
 
 # ---------------------------------------------------------------------------

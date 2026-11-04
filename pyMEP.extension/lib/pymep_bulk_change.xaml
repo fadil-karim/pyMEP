@@ -1,0 +1,142 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Bulk Change"
+        Width="1120" Height="740" MinWidth="820" MinHeight="520"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False"
+        Background="White">
+    <Window.Resources>
+        <Style TargetType="ComboBox">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Margin" Value="0,3,12,0"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,3,0,0"/>
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,4,8,0"/>
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#888888"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style x:Key="DialogButton" TargetType="Button">
+            <Setter Property="MinWidth" Value="96"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
+            <Setter Property="Padding" Value="10,4"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#F4F4F4" Padding="14,10">
+            <StackPanel>
+                <TextBlock FontSize="15" FontWeight="SemiBold" Text="Bulk Change"/>
+                <TextBlock Style="{StaticResource Hint}"
+                           Text="Filter the elements, tick the parameters to see as columns, then select cells in one column like Excel - click, Shift+click or drag, Ctrl+click to add - type the new value and press Change. Each Change is one undo step."/>
+            </StackPanel>
+        </Border>
+
+        <!-- 1. filter -->
+        <Grid Grid.Row="1" Margin="14,10,14,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Category"/>
+            <ComboBox Grid.Column="1" x:Name="CmbCategory" SelectionChanged="on_category_changed"/>
+            <TextBlock Grid.Column="2" Style="{StaticResource FieldLabel}" Text="Family"/>
+            <ComboBox Grid.Column="3" x:Name="CmbFamily" SelectionChanged="on_family_changed"/>
+            <TextBlock Grid.Column="4" Style="{StaticResource FieldLabel}" Text="Type"/>
+            <ComboBox Grid.Column="5" x:Name="CmbType" SelectionChanged="on_type_changed"/>
+            <CheckBox Grid.Column="6" x:Name="ChkSelection" VerticalAlignment="Center" Margin="0,4,0,0"
+                      Checked="on_scope_changed" Unchecked="on_scope_changed"
+                      Content="selected in Revit only"/>
+            <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="6" x:Name="TxtCount"
+                       Style="{StaticResource Hint}" Text=""/>
+        </Grid>
+
+        <!-- 2. parameters + table -->
+        <Grid Grid.Row="2" Margin="14,4,14,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="250"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" FontWeight="SemiBold" Text="Parameters to show"/>
+                <TextBox Grid.Row="1" x:Name="TxtParamSearch" TextChanged="on_param_search"/>
+                <ListBox Grid.Row="2" x:Name="LstParams" Margin="0,6,0,0"/>
+                <TextBlock Grid.Row="3" Style="{StaticResource Hint}"
+                           Text="Type to search. [type] marks a type parameter - changing it changes every instance of that type. Read-only and element-reference parameters can be shown but not changed."/>
+            </Grid>
+            <DataGrid Grid.Column="2" x:Name="GridValues"
+                      AutoGenerateColumns="False" IsReadOnly="True"
+                      SelectionUnit="Cell" SelectionMode="Extended"
+                      CanUserAddRows="False" CanUserDeleteRows="False"
+                      CanUserReorderColumns="True" CanUserResizeColumns="True" CanUserSortColumns="True"
+                      HeadersVisibility="Column" GridLinesVisibility="All"
+                      HorizontalGridLinesBrush="#E3E3E3" VerticalGridLinesBrush="#E3E3E3"
+                      EnableRowVirtualization="True" EnableColumnVirtualization="True"
+                      FrozenColumnCount="2" FontSize="12"
+                      SelectedCellsChanged="on_cells_changed"/>
+        </Grid>
+
+        <!-- 3. the change -->
+        <Grid Grid.Row="3" Margin="14,10,14,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Column="0" Style="{StaticResource FieldLabel}" Text="New value" FontWeight="SemiBold"/>
+            <TextBox Grid.Column="1" x:Name="TxtValue" TextChanged="on_value_changed" KeyDown="on_value_key"/>
+            <Button Grid.Column="2" x:Name="BtnSelectColumn" Content="Select whole column"
+                    Style="{StaticResource DialogButton}" Margin="8,3,0,0" Click="on_select_column"/>
+            <Button Grid.Column="3" x:Name="BtnChange" Content="Change selected cells"
+                    Style="{StaticResource DialogButton}" Margin="8,3,0,0" FontWeight="SemiBold" Click="on_change"/>
+            <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" x:Name="StatusText"
+                       TextWrapping="Wrap" Margin="0,6,0,0" Text=""/>
+        </Grid>
+
+        <Border Grid.Row="4" Background="#F4F4F4" Padding="14,10">
+            <Grid>
+                <TextBlock x:Name="TxtLog" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="0" Text=""/>
+                <Button x:Name="BtnClose" Content="Close" HorizontalAlignment="Right"
+                        Style="{StaticResource DialogButton}" IsCancel="True" Click="on_close"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
