@@ -33,18 +33,24 @@ for _mod in [m for m in list(sys.modules.keys()) if m.startswith("pymep_")]:
 import clr
 clr.AddReference("RevitAPI")
 clr.AddReference("System.Data")
-clr.AddReference("PresentationFramework")
 import System
 from Autodesk.Revit.DB import CategoryType, FilteredElementCollector, Transaction
 from System.Data import DataTable
+
+from pyrevit import revit, forms, script
+
+# WPF types come after pyrevit (whose forms module loads WPF into this
+# engine), with every WPF assembly referenced explicitly as well:
+# Thickness / controls / Binding live in PresentationFramework, Key in
+# WindowsBase.
+clr.AddReference("PresentationCore")
+clr.AddReference("PresentationFramework")
+clr.AddReference("WindowsBase")
 from System.Windows import Thickness
 from System.Windows.Controls import (Button, CheckBox, DataGridCellInfo, DataGridTextColumn,
                                      TextBlock)
-from System.Windows.Media import BrushConverter
 from System.Windows.Data import Binding
 from System.Windows.Input import Key
-
-from pyrevit import revit, forms, script
 
 import pymep_bulk_change as BC
 import pymep_param_rw as PR
@@ -405,8 +411,10 @@ class BulkWindow(forms.WPFWindow):
         if not self.filters:
             tb = TextBlock()
             tb.Text = u"No filters - every element above is listed."
-            tb.Foreground = BrushConverter().ConvertFromString("#888888")
-            tb.FontSize = 11
+            try:
+                tb.Style = self.FindResource("Hint")
+            except Exception:
+                pass
             self.PnlFilters.Children.Add(tb)
         for i, f in enumerate(self.filters):
             b = Button()
