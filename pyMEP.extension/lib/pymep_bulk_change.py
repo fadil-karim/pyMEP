@@ -11,6 +11,8 @@ which elements (or types) to write.
 Runs under IronPython 2.7 and CPython 3: .format() only, LF endings.
 """
 
+import re
+
 import pymep_csv_params as CP
 
 ALL_FAMILIES = u"(all families)"
@@ -18,6 +20,8 @@ ALL_TYPES = u"(all types)"
 NO_TYPE = u"(no type)"
 INSTANCE = "i"
 TYPE = "t"
+ID_KEY = u"__id"            # the fixed Element Id column
+LABEL_KEY = u"__label"      # the fixed Family : Type column
 
 
 def _low(s):
@@ -231,6 +235,121 @@ def plan_change(cells, rows_by_id, param, new_text, values):
             "types_hit": len(targets) if param["scope"] == TYPE else 0}
 
 
+# ---------------------------------------------------------------------------
+# 4. Sorting and filtering the table
+# ---------------------------------------------------------------------------
+
+_DIGITS = re.compile(r"\d+")
+
+
+def sort_key(text):
+    """A text key that sorts like a person would: numbers (with or
+    without a unit - 20 kN before 100 kN) by value first, then text with
+    the numbers inside it compared by value (P2 before P10), blanks
+    last."""
+    t = u"" if text is None else u"{0}".format(text).strip()
+    if not t:
+        return u"3"
+    n = CP.to_number(t)
+    if n is not None and abs(n) < 1e15:
+        return u"1{0:032.9f}".format(n + 1e15)
+    return u"2" + _DIGITS.sub(lambda m: m.group(0).rjust(15, u"0"), t.lower())
+
+
+OPS = (("contains", u"contains"), ("notcontains", u"does not contain"),
+       ("equals", u"equals"), ("notequals", u"does not equal"),
+       ("starts", u"starts with"), ("gt", u"greater than"), ("lt", u"less than"),
+       ("ge", u"at least"), ("le", u"at most"),
+       ("blank", u"is blank"), ("notblank", u"is not blank"))
+OP_LABELS = dict(OPS)
+NUMERIC_OPS = ("gt", "lt", "ge", "le")
+VALUELESS_OPS = ("blank", "notblank")
+_SYMBOL = {"gt": u">", "lt": u"<", "ge": u">=", "le": u"<="}
+
+
+def make_filter(key, op, text=u"", values=None):
+    """A filter on one column. text may hold alternatives separated by
+    ';' (contains 16;17 = contains 16 or 17); values gives them as a
+    list instead (Filter to selected values). ValueError when the
+    filter cannot work."""
+    if op not in OP_LABELS:
+        raise ValueError(u"unknown condition '{0}'".format(op))
+    if op in VALUELESS_OPS:
+        return {"key": key, "op": op, "values": []}
+    if op in NUMERIC_OPS:
+        n = CP.to_number(text)
+        if n is None:
+            raise ValueError(u"type a number to compare with")
+        return {"key": key, "op": op, "values": [u"{0}".format(text).strip()], "number": n}
+    if values is None:
+        values = [v.strip() for v in u"{0}".format(text or u"").split(u";")]
+    values = [u"{0}".format(v) for v in values if u"{0}".format(v).strip() != u""]
+    if not values:
+        raise ValueError(u"type a value to filter on (or use 'is blank')")
+    return {"key": key, "op": op, "values": values}
+
+
+def filter_label(f, column_label):
+    op = f["op"]
+    if op in VALUELESS_OPS:
+        return u"{0} {1}".format(column_label, OP_LABELS[op])
+    if op in NUMERIC_OPS:
+        return u"{0} {1} {2}".format(column_label, _SYMBOL[op], f["values"][0])
+    vals = [u"'{0}'".format(v) for v in f["values"][:3]]
+    more = len(f["values"]) - 3
+    joined = u" or ".join(vals) if op in ("contains", "equals", "starts") else u" nor ".join(vals)
+    return u"{0} {1} {2}{3}".format(column_label, OP_LABELS[op], joined,
+                                    u" (+{0} more)".format(more) if more > 0 else u"")
+
+
+def matches(text, f):
+    """True when a cell's text passes the filter. Text is compared
+    without case; equals with a plain number also matches the same
+    number written another way (1250 = 1,250.00 kN); number conditions
+    skip cells with no number."""
+    t = u"" if text is None else u"{0}".format(text).strip()
+    tl = t.lower()
+    op = f["op"]
+    if op == "blank":
+        return t == u""
+    if op == "notblank":
+        return t != u""
+    if op in NUMERIC_OPS:
+        n = CP.to_number(t)
+        if n is None:
+            return False
+        ref = f["number"]
+        return {"gt": n > ref, "lt": n < ref, "ge": n >= ref, "le": n <= ref}[op]
+    vals = [u"{0}".format(v).strip().lower() for v in f["values"]]
+    if op == "contains":
+        return any(v in tl for v in vals)
+    if op == "notcontains":
+        return not any(v in tl for v in vals)
+    if op == "starts":
+        return any(tl.startswith(v) for v in vals)
+    hit = any(tl == v or (_BARE_NUMBER.match(v) and _same_number(t, v)) for v in vals)
+    return hit if op == "equals" else not hit
+
+
+_BARE_NUMBER = re.compile(r"^[-+]?(?:\d[\d,]*)?\.?\d+(?:e[-+]?\d+)?$")
+
+
+def _same_number(a, b):
+    x = CP.to_number(a)
+    y = CP.to_number(b)
+    if x is None or y is None:
+        return False
+    return abs(x - y) <= 1e-6 * max(abs(x), abs(y), 1.0)
+
+
+def apply_filters(rows, get, filters):
+    """The rows that pass every filter. get(row, key) gives a cell's
+    text (None when the element has no such parameter)."""
+    if not filters:
+        return list(rows)
+    return [r for r in rows if all(matches(get(r, f["key"]), f) for f in filters)]
+
+
 def plan_text(plan, param, rows_in_table=None):
     """One line for the status bar."""
     c = plan["counts"]
@@ -251,7 +370,9 @@ def plan_text(plan, param, rows_in_table=None):
     return u"; ".join(bits) + u"."
 
 
-__all__ = ["ALL_FAMILIES", "ALL_TYPES", "NO_TYPE", "INSTANCE", "TYPE", "categories",
+__all__ = ["ALL_FAMILIES", "ALL_TYPES", "NO_TYPE", "INSTANCE", "TYPE", "ID_KEY",
+           "LABEL_KEY", "OPS", "OP_LABELS", "NUMERIC_OPS", "VALUELESS_OPS", "sort_key",
+           "make_filter", "filter_label", "matches", "apply_filters", "categories",
            "family_options", "type_options", "filter_rows", "sample_rows", "param_key",
            "split_key", "param_label", "build_params", "search_params", "default_keys",
            "selection_column", "check_value", "unchanged", "plan_change", "plan_text"]

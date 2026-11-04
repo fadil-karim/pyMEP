@@ -97,16 +97,48 @@
                 <TextBlock Grid.Row="3" Style="{StaticResource Hint}"
                            Text="Type to search. [type] marks a type parameter - changing it changes every instance of that type. Read-only and element-reference parameters can be shown but not changed."/>
             </Grid>
-            <DataGrid Grid.Column="2" x:Name="GridValues"
-                      AutoGenerateColumns="False" IsReadOnly="True"
-                      SelectionUnit="Cell" SelectionMode="Extended"
-                      CanUserAddRows="False" CanUserDeleteRows="False"
-                      CanUserReorderColumns="True" CanUserResizeColumns="True" CanUserSortColumns="True"
-                      HeadersVisibility="Column" GridLinesVisibility="All"
-                      HorizontalGridLinesBrush="#E3E3E3" VerticalGridLinesBrush="#E3E3E3"
-                      EnableRowVirtualization="True" EnableColumnVirtualization="True"
-                      FrozenColumnCount="2" FontSize="12"
-                      SelectedCellsChanged="on_cells_changed"/>
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="170"/>
+                        <ColumnDefinition Width="140"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Filter" FontWeight="SemiBold"/>
+                    <ComboBox Grid.Column="1" x:Name="CmbFilterCol" Margin="0,3,6,0"/>
+                    <ComboBox Grid.Column="2" x:Name="CmbFilterOp" Margin="0,3,6,0" SelectionChanged="on_filter_op_changed"/>
+                    <TextBox Grid.Column="3" x:Name="TxtFilterValue" KeyDown="on_filter_value_key"/>
+                    <Button Grid.Column="4" x:Name="BtnAddFilter" Content="Add filter"
+                            Style="{StaticResource DialogButton}" Margin="6,3,0,0" Click="on_add_filter"/>
+                    <Button Grid.Column="5" x:Name="BtnFilterSelected" Content="Filter to selected values"
+                            Style="{StaticResource DialogButton}" Margin="6,3,0,0" Click="on_filter_selected"/>
+                    <Button Grid.Column="6" x:Name="BtnClearFilters" Content="Clear"
+                            Style="{StaticResource DialogButton}" MinWidth="60" Margin="6,3,0,0" Click="on_clear_filters"/>
+                </Grid>
+                <WrapPanel Grid.Row="1" x:Name="PnlFilters" Margin="0,4,0,0"/>
+                <DataGrid Grid.Row="2" x:Name="GridValues" Margin="0,6,0,0"
+                          AutoGenerateColumns="False" IsReadOnly="True"
+                          SelectionUnit="Cell" SelectionMode="Extended"
+                          CanUserAddRows="False" CanUserDeleteRows="False"
+                          CanUserReorderColumns="True" CanUserResizeColumns="True" CanUserSortColumns="True"
+                          HeadersVisibility="Column" GridLinesVisibility="All"
+                          HorizontalGridLinesBrush="#E3E3E3" VerticalGridLinesBrush="#E3E3E3"
+                          EnableRowVirtualization="True" EnableColumnVirtualization="True"
+                          FrozenColumnCount="2" FontSize="12"
+                          SelectedCellsChanged="on_cells_changed"/>
+                <TextBlock Grid.Row="3" Style="{StaticResource Hint}"
+                           Text="Click a column header to sort - numbers by value, P2 before P10, blanks last; click again to reverse, Shift+click to sort by a second column. Filters stack (all must match); separate alternatives with ; (contains 16;17). Click a filter above the table to remove it."/>
+            </Grid>
         </Grid>
 
         <!-- 3. the change -->

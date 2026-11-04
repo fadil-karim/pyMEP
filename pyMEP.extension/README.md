@@ -523,8 +523,17 @@ the dialog stays open for the next change. Type parameters (marked
 `[type]`) are written once per type, which changes every instance of
 it; read-only and element-reference parameters show but cannot be
 changed; numbers are read in the parameter's project units, text keeps
-exactly what you type so letter case can be fixed. Columns sort on a
-header click, and the chosen parameters are remembered per category.
+exactly what you type so letter case can be fixed. Click a column
+header to sort - numbers by value whatever their unit, text with numbers
+in it naturally (P2 before P10), blanks last; again to reverse,
+Shift+click for a second column. Column filters narrow the rows:
+contains, does not contain, equals, does not equal, starts with,
+greater / less than, at least / at most, is blank / not blank, with
+`;` between alternatives (`contains 16;17`); "Filter to selected
+values" keeps the rows whose cells match the ones selected. Filters
+stack, show above the table and go with a click; "Select whole column"
+then picks only the rows still shown. The chosen parameters are
+remembered per category.
 Each Change is one undo step, and the output window lists every value
 changed when the dialog closes.
 

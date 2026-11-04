@@ -6,7 +6,10 @@ elements, where a block of cells in one column takes a new value.
    only what is selected in Revit.
 2. Tick the parameters to show; each becomes a column next to the
    Element Id and Family : Type.
-3. Select cells in ONE column the Excel way - click, Shift+click, drag,
+3. Sort by clicking a column header (numbers by value, P2 before P10)
+   and narrow the rows with column filters - contains, equals, greater
+   than, is blank and so on, or "Filter to selected values".
+4. Select cells in ONE column the Excel way - click, Shift+click, drag,
    Ctrl+click - type the new value and press "Change selected cells"
    (or Enter). The values are written in one transaction, read back
    into the grid, and the dialog stays open for the next change.
@@ -34,8 +37,10 @@ clr.AddReference("PresentationFramework")
 import System
 from Autodesk.Revit.DB import CategoryType, FilteredElementCollector, Transaction
 from System.Data import DataTable
-from System.Windows.Controls import (CheckBox, DataGridCellInfo, DataGridTextColumn,
+from System.Windows import Thickness
+from System.Windows.Controls import (Button, CheckBox, DataGridCellInfo, DataGridTextColumn,
                                      TextBlock)
+from System.Windows.Media import BrushConverter
 from System.Windows.Data import Binding
 from System.Windows.Input import Key
 
@@ -58,6 +63,9 @@ S_TYPE = "bulk_change_type"
 S_PARAMS = "bulk_change_params"      # {category: [parameter keys]}
 ID_COL = "id"
 LABEL_COL = "label"
+LABEL_SORT = "slabel"
+SHOW_COL = "show"
+FIXED = {ID_COL: BC.ID_KEY, LABEL_SORT: BC.LABEL_KEY, LABEL_COL: BC.LABEL_KEY}
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +147,10 @@ class BulkWindow(forms.WPFWindow):
         self._type_values = {}      # (type id, key) -> text, None when missing
         self.datarows = {}          # row id -> DataRow
         self.col_keys = {}          # column path -> parameter key
+        self.paths = {}             # parameter key -> (value path, sort path)
+        self.table = None
+        self.filters = []           # BC.make_filter dicts, all must match
+        self.filter_cols = []       # [(key, label)] offered in the filter bar
         self.log = []               # (label, owner id, old, new, result)
         self.changes = 0
         self.remembered = dict(settings.get(S_PARAMS) or {})
@@ -162,6 +174,9 @@ class BulkWindow(forms.WPFWindow):
                 self.ChkSelection.IsEnabled = False
                 self.ChkSelection.Content = u"selected in Revit only (nothing selected)"
             self.CmbCategory.SelectedIndex = names.index(want) if want in names else 0
+            for _op, lbl in BC.OPS:
+                self.CmbFilterOp.Items.Add(lbl)
+            self.CmbFilterOp.SelectedIndex = 0
         finally:
             self._sync -= 1
         self._ready = True
@@ -222,8 +237,6 @@ class BulkWindow(forms.WPFWindow):
         if not keep:
             keep = BC.default_keys(self.params)
         self.chosen = keep
-        self.TxtCount.Text = u"{0} element(s); {1} parameter(s) found on them.".format(
-            len(self.view_rows), len(self.params))
         self._fill_params()
         self._build_grid()
 
@@ -287,51 +300,152 @@ class BulkWindow(forms.WPFWindow):
         return PR.as_text(prm, doc) if prm is not None else None
 
     # -- the grid -----------------------------------------------------------------
+    def cell(self, row, key):
+        """A cell's text for filtering - the fixed columns included."""
+        if key == BC.ID_KEY:
+            return u"{0}".format(row["id"])
+        if key == BC.LABEL_KEY:
+            return u"{0} : {1}".format(row["family"], row["type"])
+        return self.value(row["id"], key)
+
     def _build_grid(self):
+        # a filter on a column no longer shown goes with it
+        self.filters = [f for f in self.filters
+                        if f["key"] in (BC.ID_KEY, BC.LABEL_KEY) or f["key"] in self.chosen]
         table = DataTable()
         table.Columns.Add(ID_COL, clr.GetClrType(System.Int64))
         table.Columns.Add(LABEL_COL, clr.GetClrType(System.String))
-        self.col_keys = {}
+        table.Columns.Add(LABEL_SORT, clr.GetClrType(System.String))
+        table.Columns.Add(SHOW_COL, clr.GetClrType(System.Boolean))
+        self.col_keys = dict(FIXED)
+        self.paths = {}
         for i, key in enumerate(self.chosen):
-            path = u"p{0}".format(i)
-            table.Columns.Add(path, clr.GetClrType(System.String))
-            self.col_keys[path] = key
+            vpath = u"p{0}".format(i)
+            spath = u"s{0}".format(i)       # sorts by value, not by text
+            table.Columns.Add(vpath, clr.GetClrType(System.String))
+            table.Columns.Add(spath, clr.GetClrType(System.String))
+            self.col_keys[vpath] = key
+            self.col_keys[spath] = key
+            self.paths[key] = (vpath, spath)
+        visible = self._visible_ids()
         self.datarows = {}
         for r in self.view_rows:
             dr = table.NewRow()
+            label = u"{0} : {1}".format(r["family"], r["type"])
             dr[ID_COL] = System.Int64(r["id"])
-            dr[LABEL_COL] = u"{0} : {1}".format(r["family"], r["type"])
-            for path, key in self.col_keys.items():
+            dr[LABEL_COL] = label
+            dr[LABEL_SORT] = BC.sort_key(label)
+            dr[SHOW_COL] = r["id"] in visible
+            for key, (vpath, spath) in self.paths.items():
                 v = self.value(r["id"], key)
-                dr[path] = v if v is not None else u""
+                dr[vpath] = v if v is not None else u""
+                dr[spath] = BC.sort_key(v)
             table.Rows.Add(dr)
             self.datarows[r["id"]] = dr
+        table.DefaultView.RowFilter = u"{0} = true".format(SHOW_COL)
+        self.table = table
         self._sync += 1
         try:
             self.GridValues.ItemsSource = None
             self.GridValues.Columns.Clear()
-            for path, head in ((ID_COL, u"Element Id"), (LABEL_COL, u"Family : Type")):
+            for vpath, spath, head in ((ID_COL, ID_COL, u"Element Id"),
+                                       (LABEL_COL, LABEL_SORT, u"Family : Type")):
                 col = DataGridTextColumn()
                 col.Header = _header(head)
-                col.Binding = Binding(path)
-                col.SortMemberPath = path
+                col.Binding = Binding(vpath)
+                col.SortMemberPath = spath
                 self.GridValues.Columns.Add(col)
-            for i, key in enumerate(self.chosen):
-                path = u"p{0}".format(i)
+            for key in self.chosen:
+                vpath, spath = self.paths[key]
                 p = self.param_by_key[key]
                 col = DataGridTextColumn()
                 col.Header = _header(p["label"] if p["editable"] else
                                      u"{0} (read-only)".format(p["label"]))
-                col.Binding = Binding(path)
-                col.SortMemberPath = path
+                col.Binding = Binding(vpath)
+                col.SortMemberPath = spath
                 self.GridValues.Columns.Add(col)
             self.GridValues.ItemsSource = table.DefaultView
         finally:
             self._sync -= 1
+        self._fill_filter_cols()
+        self._show_filters(len(visible))
+        self._status()
+
+    # -- filters --------------------------------------------------------------------
+    def _visible_ids(self):
+        return set(r["id"] for r in BC.apply_filters(self.view_rows, self.cell, self.filters))
+
+    def _fill_filter_cols(self):
+        keep = None
+        idx = self.CmbFilterCol.SelectedIndex
+        if 0 <= idx < len(self.filter_cols):
+            keep = self.filter_cols[idx][0]
+        self.filter_cols = [(BC.ID_KEY, u"Element Id"), (BC.LABEL_KEY, u"Family : Type")] + [
+            (k, self.param_by_key[k]["label"]) for k in self.chosen]
+        self._sync += 1
+        try:
+            self.CmbFilterCol.Items.Clear()
+            for _k, lbl in self.filter_cols:
+                self.CmbFilterCol.Items.Add(lbl)
+            keys = [k for k, _l in self.filter_cols]
+            self.CmbFilterCol.SelectedIndex = (keys.index(keep) if keep in keys
+                                               else (2 if len(keys) > 2 else 1))
+        finally:
+            self._sync -= 1
+
+    def _column_label(self, key):
+        for k, lbl in self.filter_cols:
+            if k == key:
+                return lbl
+        p = self.param_by_key.get(key)
+        return p["label"] if p else key
+
+    def _show_filters(self, shown):
+        self.PnlFilters.Children.Clear()
+        if not self.filters:
+            tb = TextBlock()
+            tb.Text = u"No filters - every element above is listed."
+            tb.Foreground = BrushConverter().ConvertFromString("#888888")
+            tb.FontSize = 11
+            self.PnlFilters.Children.Add(tb)
+        for i, f in enumerate(self.filters):
+            b = Button()
+            b.Content = _header(u"{0}   \u00d7".format(BC.filter_label(f, self._column_label(f["key"]))))
+            b.Tag = i
+            b.Margin = Thickness(0, 0, 6, 4)
+            b.Padding = Thickness(8, 2, 8, 2)
+            b.ToolTip = u"Remove this filter"
+            b.Click += self.on_remove_filter
+            self.PnlFilters.Children.Add(b)
+        self.TxtCount.Text = u"{0} element(s){1}; {2} parameter(s) found on them.".format(
+            len(self.view_rows),
+            u", {0} shown by the filters".format(shown) if self.filters else u"",
+            len(self.params))
+
+    def _apply_filters(self):
+        if self.table is None:
+            return
+        visible = self._visible_ids()
+        self._sync += 1
+        try:
+            self.GridValues.SelectedCells.Clear()
+            view = self.table.DefaultView
+            view.RowFilter = u""
+            for rid, dr in self.datarows.items():
+                want = rid in visible
+                if bool(dr[SHOW_COL]) != want:
+                    dr[SHOW_COL] = want
+            view.RowFilter = u"{0} = true".format(SHOW_COL)
+        finally:
+            self._sync -= 1
+        self._show_filters(len(visible))
         self._status()
 
     # -- the selection ------------------------------------------------------------
-    def selected_cells(self):
+    def selected_cells(self, any_column=False):
+        """[(row id, key)] for the selected cells. The fixed Element Id
+        and Family : Type columns come back as None unless any_column
+        (filtering may use them, changing may not)."""
         cells = []
         for ci in self.GridValues.SelectedCells:
             try:
@@ -339,7 +453,10 @@ class BulkWindow(forms.WPFWindow):
                 rid = int(ci.Item.Row[ID_COL])
             except Exception:
                 continue
-            cells.append((rid, self.col_keys.get(path)))
+            key = self.col_keys.get(path)
+            if key in (BC.ID_KEY, BC.LABEL_KEY) and not any_column:
+                key = None
+            cells.append((rid, key))
         return cells
 
     def plan(self):
@@ -402,6 +519,77 @@ class BulkWindow(forms.WPFWindow):
         if args.Key == Key.Enter or args.Key == Key.Return:
             args.Handled = True
             self.on_change(sender, args)
+
+    def on_filter_op_changed(self, sender, args):
+        idx = self.CmbFilterOp.SelectedIndex
+        op = BC.OPS[idx][0] if 0 <= idx < len(BC.OPS) else "contains"
+        self.TxtFilterValue.IsEnabled = op not in BC.VALUELESS_OPS
+
+    def on_filter_value_key(self, sender, args):
+        if args.Key == Key.Enter or args.Key == Key.Return:
+            args.Handled = True
+            self.on_add_filter(sender, args)
+
+    def on_add_filter(self, sender, args):
+        idx = self.CmbFilterCol.SelectedIndex
+        oidx = self.CmbFilterOp.SelectedIndex
+        if not (0 <= idx < len(self.filter_cols)) or not (0 <= oidx < len(BC.OPS)):
+            self.StatusText.Text = u"Pick the column and the condition to filter on."
+            return
+        try:
+            f = BC.make_filter(self.filter_cols[idx][0], BC.OPS[oidx][0], self.TxtFilterValue.Text)
+        except ValueError as ex:
+            self.StatusText.Text = u"Filter not added - {0}.".format(ex)
+            return
+        self.filters.append(f)
+        self.TxtFilterValue.Text = u""
+        self._apply_filters()
+
+    def on_filter_selected(self, sender, args):
+        cells = self.selected_cells(any_column=True)
+        keys = set(k for _r, k in cells)
+        if not cells:
+            self.StatusText.Text = u"Select the cells whose values to keep, then press this."
+            return
+        if len(keys) != 1:
+            self.StatusText.Text = u"Select cells in one column to filter on their values."
+            return
+        key = list(keys)[0]
+        vals = []
+        blank = False
+        for rid, _k in cells:
+            v = self.cell(rows_by_id[rid], key)
+            if v is None or not u"{0}".format(v).strip():
+                blank = True
+            elif v not in vals:
+                vals.append(v)
+        try:
+            if vals:
+                f = BC.make_filter(key, "equals", values=vals)
+            else:
+                f = BC.make_filter(key, "blank")
+        except ValueError as ex:
+            self.StatusText.Text = u"Filter not added - {0}.".format(ex)
+            return
+        self.filters.append(f)
+        self._apply_filters()
+        if blank and vals:
+            self.StatusText.Text = u"Blank cells were left out of that filter - add 'is blank' " \
+                                   u"separately if you want them."
+
+    def on_clear_filters(self, sender, args):
+        if self.filters:
+            self.filters = []
+            self._apply_filters()
+
+    def on_remove_filter(self, sender, args):
+        try:
+            idx = int(sender.Tag)
+        except Exception:
+            return
+        if 0 <= idx < len(self.filters):
+            self.filters.pop(idx)
+            self._apply_filters()
 
     def on_select_column(self, sender, args):
         col = None
@@ -486,10 +674,7 @@ class BulkWindow(forms.WPFWindow):
     def _refresh_after(self, param, targets):
         """Read the written values back into the grid."""
         key = param["key"]
-        path = None
-        for pth, k in self.col_keys.items():
-            if k == key:
-                path = pth
+        vpath, spath = self.paths.get(key, (None, None))
         if param["scope"] == BC.TYPE:
             owners = set(tg["owner"] for tg in targets)
             for o in owners:
@@ -500,8 +685,9 @@ class BulkWindow(forms.WPFWindow):
         for rid in rids:
             self.values.pop((rid, key), None)
             v = self.value(rid, key)
-            if path is not None and rid in self.datarows:
-                self.datarows[rid][path] = v if v is not None else u""
+            if vpath is not None and rid in self.datarows:
+                self.datarows[rid][vpath] = v if v is not None else u""
+                self.datarows[rid][spath] = BC.sort_key(v)
         self._status()
 
     def on_close(self, sender, args):

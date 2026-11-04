@@ -163,5 +163,81 @@ class Plan(unittest.TestCase):
         self.assertIn(u"2 refused - type a number", BC.plan_text(plan, self.ps[u"Peak Load"]))
 
 
+class Sorting(unittest.TestCase):
+
+    def test_numbers_by_value_text_naturally_blanks_last(self):
+        cells = [u"100 kN", u"", u"P10", u"20 kN", u"P2", None, u"-5", u"1,250.00 kN", u"abc"]
+        ordered = sorted(cells, key=BC.sort_key)
+        self.assertEqual(ordered[:4], [u"-5", u"20 kN", u"100 kN", u"1,250.00 kN"])
+        self.assertEqual(ordered[4:7], [u"abc", u"P2", u"P10"])
+        self.assertEqual(set(ordered[7:]), set([u"", None]))
+
+
+class Filters(unittest.TestCase):
+
+    def test_text_conditions(self):
+        f = BC.make_filter(u"i:Mark", "contains", u"16; 17")
+        self.assertEqual(f["values"], [u"16", u"17"])
+        self.assertTrue(BC.matches(u"P1605", f))
+        self.assertTrue(BC.matches(u"p1702", f))
+        self.assertFalse(BC.matches(u"P1805", f))
+        self.assertFalse(BC.matches(None, f))
+        nf = BC.make_filter(u"i:Mark", "notcontains", u"16")
+        self.assertTrue(BC.matches(u"P1805", nf))
+        self.assertTrue(BC.matches(None, nf))
+        sf = BC.make_filter(u"i:Mark", "starts", u"p")
+        self.assertTrue(BC.matches(u"P1605", sf))
+        self.assertFalse(BC.matches(u"XP1", sf))
+
+    def test_equals_reads_numbers_too(self):
+        f = BC.make_filter(u"i:Peak Load", "equals", u"1250")
+        self.assertTrue(BC.matches(u"1,250.00 kN", f))
+        self.assertFalse(BC.matches(u"1251 kN", f))
+        e = BC.make_filter(u"i:Mark", "equals", values=[u"600 dia", u"900 dia"])
+        self.assertTrue(BC.matches(u"900 DIA", e))
+        self.assertFalse(BC.matches(u"900 dia x", e))
+        ne = BC.make_filter(u"i:Mark", "notequals", u"P1")
+        self.assertFalse(BC.matches(u"p1", ne))
+        self.assertTrue(BC.matches(u"P2", ne))
+
+    def test_numbers_and_blanks(self):
+        gt = BC.make_filter(u"i:Peak Load", "gt", u"500")
+        self.assertTrue(BC.matches(u"1,250.00 kN", gt))
+        self.assertFalse(BC.matches(u"500 kN", gt))
+        self.assertFalse(BC.matches(u"n/a", gt))
+        self.assertTrue(BC.matches(u"500 kN", BC.make_filter(u"k", "ge", u"500")))
+        self.assertTrue(BC.matches(u"-1", BC.make_filter(u"k", "lt", u"0")))
+        self.assertTrue(BC.matches(u"0", BC.make_filter(u"k", "le", u"0")))
+        self.assertTrue(BC.matches(u"  ", BC.make_filter(u"k", "blank")))
+        self.assertTrue(BC.matches(None, BC.make_filter(u"k", "blank")))
+        self.assertTrue(BC.matches(u"x", BC.make_filter(u"k", "notblank")))
+
+    def test_refusals(self):
+        with self.assertRaises(ValueError):
+            BC.make_filter(u"k", "gt", u"lots")
+        with self.assertRaises(ValueError):
+            BC.make_filter(u"k", "contains", u" ; ")
+        with self.assertRaises(ValueError):
+            BC.make_filter(u"k", "bogus", u"1")
+
+    def test_labels(self):
+        self.assertEqual(BC.filter_label(BC.make_filter(u"k", "contains", u"16;17"), u"Mark"),
+                         u"Mark contains '16' or '17'")
+        self.assertEqual(BC.filter_label(BC.make_filter(u"k", "ge", u"500"), u"Peak Load"),
+                         u"Peak Load >= 500")
+        self.assertEqual(BC.filter_label(BC.make_filter(u"k", "blank"), u"Comments"),
+                         u"Comments is blank")
+        many = BC.make_filter(u"k", "equals", values=[u"a", u"b", u"c", u"d", u"e"])
+        self.assertEqual(BC.filter_label(many, u"Type"), u"Type equals 'a' or 'b' or 'c' (+2 more)")
+
+    def test_apply_all_filters(self):
+        cells = {(1, u"m"): u"P1605", (2, u"m"): u"P1606", (3, u"m"): u"P1805",
+                 (1, u"l"): u"100", (2, u"l"): u"900", (3, u"l"): u"950"}
+        get = lambda r, k: cells.get((r, k))
+        filters = [BC.make_filter(u"m", "contains", u"16"), BC.make_filter(u"l", "gt", u"500")]
+        self.assertEqual(BC.apply_filters([1, 2, 3], get, filters), [2])
+        self.assertEqual(BC.apply_filters([1, 2, 3], get, []), [1, 2, 3])
+
+
 if __name__ == "__main__":
     unittest.main()
