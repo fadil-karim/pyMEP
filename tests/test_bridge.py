@@ -57,7 +57,7 @@ class Design(unittest.TestCase):
         self.assertIsNone(d["level_start_m"])
         self.assertIsNone(d["height_m"])
         self.assertEqual(d["truss_plane"], "outside")
-        self.assertEqual(d["bracing"], "x")
+        self.assertEqual(d["bracing"], "zigzag")
         self.assertFalse(d["end_posts"])
         self.assertEqual(d["stiffeners_across"], 1)
         d2 = BR.normalize_design({"height_m": "2.5", "plan_bays": "6", "split_x": 1,
@@ -267,24 +267,47 @@ class Members(unittest.TestCase):
         self.assertEqual(cb["zjust"], "top")
         self.assertEqual(cb["stype"], "beam")
         self.assertEqual(count(mems, "crossbeam"), 5)
-        self.assertEqual(count(mems, "bracing"), 8)               # X in 4 bays
+        # the default: one diagonal at a time over two bays, side beam to side
+        # beam, alternating - the drawing
+        self.assertEqual(count(mems, "bracing"), 2)
         br = by_key(mems, u"bracing:C:0:0")
+        self.assertAlmostEqual(br["p1"][0], 0.11)
+        self.assertAlmostEqual(br["p1"][1], 1.6)
+        self.assertAlmostEqual(br["p2"][0], 0.11 + 19.78 / 2.0)   # two bays on
+        self.assertAlmostEqual(br["p2"][1], -1.6)
+        br2 = by_key(mems, u"bracing:C:1:0")
+        self.assertAlmostEqual(br2["p1"][1], -1.6)                # alternates
+        self.assertAlmostEqual(br2["p2"][1], 1.6)
         self.assertAlmostEqual(br["p1"][2], -0.15)
         self.assertEqual((br["zjust"], br["stype"]), ("top", "brace"))
-        split = BR.members(design(split_x=True), FRAME)
+        # split where it crosses the middle cross beam: a piece per bay, meeting mid-width
+        sz = BR.members(design(split_x=True), FRAME)
+        self.assertEqual(count(sz, "bracing"), 4)
+        meet = by_key(sz, u"bracing:C:0:0")["p2"]
+        self.assertAlmostEqual(meet[0], 0.11 + 19.78 / 4.0)
+        self.assertAlmostEqual(meet[1], 0.0)
+        # an odd number of bays: the last diagonal takes the bay that is left
+        odd = BR.members(design(plan_bays=5), FRAME)
+        self.assertEqual(count(odd, "bracing"), 3)
+        self.assertAlmostEqual(by_key(odd, u"bracing:C:2:0")["p2"][0], 19.89)
+        one = BR.members(design(brace_bays=1), FRAME)
+        self.assertEqual(count(one, "bracing"), 4)
+        self.assertAlmostEqual(by_key(one, u"bracing:C:1:0")["p1"][1], -1.6)
+        x = BR.members(design(bracing="x"), FRAME)
+        self.assertEqual(count(x, "bracing"), 8)                  # X in 4 bays
+        split = BR.members(design(bracing="x", split_x=True), FRAME)
         self.assertEqual(count(split, "bracing"), 16)
         mid = by_key(split, u"bracing:C:0:0")["p2"]
         self.assertAlmostEqual(mid[0], (0.11 + 0.11 + 19.78 / 4) / 2.0)
         self.assertAlmostEqual(mid[1], 0.0)
-        zig = BR.members(design(bracing="zigzag"), FRAME)
-        self.assertEqual(count(zig, "bracing"), 4)
         self.assertEqual(count(BR.members(design(bracing="none"), FRAME), "bracing"), 0)
+        self.assertEqual(BR.normalize_design({"brace_bays": 0})["brace_bays"], 1)
         more = BR.members(design(plan_bays=8), FRAME)
         self.assertEqual(count(more, "crossbeam"), 9)
 
     def test_stiffeners_and_railings(self):
-        d = design(stiffeners_across=2, stiffener_gap_m=0.1, types={"railing": "77"},
-                   railing_inset_m=0.1)
+        d = design(stiffener_mode="count", stiffeners_across=2, stiffener_gap_m=0.1,
+                   types={"railing": "77"}, railing_inset_m=0.1)
         mems = BR.members(d, FRAME)
         st = [m for m in mems if m["role"] == "stiffener"]
         self.assertEqual(len(st), 8)                               # 2 per bay x 4 bays
@@ -293,14 +316,39 @@ class Members(unittest.TestCase):
         d0, d1, t_r, t_l = BR.deck_extent(d, FRAME)
         self.assertAlmostEqual(t_l, 1.39)                          # inner face of the post less clearance
         self.assertAlmostEqual(t_r, -1.39)
-        self.assertAlmostEqual(st[0]["p1"][1], t_r + (t_l - t_r) / 3.0)
+        tl, tr = BR.planes(d, FRAME)                               # set out between the side beam centres
+        self.assertAlmostEqual(st[0]["p1"][1], tl - (tl - tr) / 3.0)
         self.assertEqual(st[0]["stype"], "stiffener")
         rails = [m for m in mems if m["role"] == "railing"]
         self.assertEqual(len(rails), 2)
         self.assertAlmostEqual(rails[0]["p1"][1], 1.29)
         self.assertAlmostEqual(rails[0]["p1"][2], 0.0)
-        self.assertEqual(count(BR.members(design(stiffeners_across=0), FRAME), "stiffener"), 0)
+        self.assertEqual(count(BR.members(design(stiffener_mode="count", stiffeners_across=0), FRAME), "stiffener"), 0)
         self.assertEqual(count(BR.members(design(), FRAME), "railing"), 0)      # no railing type
+
+    def test_stiffener_spacing(self):
+        # 3.3 m between post centres, planes on the outside faces: 3.5 m side beam
+        # centre to centre -> at 500 exactly six lines 0.5 m apart, the first and
+        # last 0.5 m from the side beams (the drawing)
+        s, e = posts(width=3.3)
+        fr = BR.frame_from_posts(s, e)
+        lines = BR.stiffener_positions(design(stiffener_spacing_m=0.5), fr)
+        self.assertEqual(len(lines), 6)
+        self.assertAlmostEqual(lines[0], 1.75 - 0.5)
+        self.assertAlmostEqual(lines[-1], -1.75 + 0.5)
+        for a, b in zip(lines, lines[1:]):
+            self.assertAlmostEqual(a - b, 0.5)
+        # a width that is not a multiple: equal spaces no wider than the spacing
+        lines = BR.stiffener_positions(design(stiffener_spacing_m=0.5), FRAME)   # 3.2 m
+        self.assertEqual(len(lines), 6)                                           # 7 spaces of 0.457
+        self.assertAlmostEqual(lines[0], 1.6 - 3.2 / 7.0)
+        self.assertEqual(BR.stiffener_positions(design(stiffener_spacing_m=5.0), FRAME), [])
+        self.assertEqual(BR.stiffener_positions(design(stiffener_spacing_m=0.0), FRAME), [])
+        mems = BR.members(design(stiffener_spacing_m=0.5), fr)
+        self.assertEqual(count(mems, "stiffener"), 6 * 4)
+        self.assertEqual(BR.normalize_design({})["stiffener_mode"], "spacing")
+        with self.assertRaises(ValueError):
+            BR.normalize_design({"stiffener_mode": "random"})
 
     def test_deck_to_the_post_faces(self):
         # along the span the deck reaches the outer faces of the posts;
@@ -378,7 +426,7 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(s["height_m"], 2.3)
         self.assertAlmostEqual(s["deck_width_m"], 2.78)
         self.assertAlmostEqual(s["by_role"]["top_chord"]["length_m"], 40.4)
-        self.assertEqual(s["members"], 2 + 2 + 6 + 8 + 5 + 8 + 4)
+        self.assertEqual(s["members"], 2 + 2 + 6 + 8 + 5 + 2 + 6 * 4)   # two long diagonals; six stiffener lines at 500 per bay
         w = BR.summary(design(truss="warren"), FRAME)
         self.assertEqual(w["by_role"]["diagonal"]["count"], 16)
         self.assertNotIn("vertical", w["by_role"])

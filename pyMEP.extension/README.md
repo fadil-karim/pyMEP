@@ -972,13 +972,28 @@ drawings, and the ring's label sits just under the clicked spot (a dot
 marks it) so the member stays visible. The rest lives under
 **Settings**: panels by target length or count, plan bays, the Revit
 level, end posts, splitting each X at the crossing, beams between the
-cross beams per bay, stiffeners per bay and end gap, railing inset.
+cross beams per bay, the deck stiffeners (set out by spacing or by
+count) and their end gap, railing inset.
+
+Deck stiffeners are set out across the deck between the side beam
+centrelines (the truss planes, where the bottom chords run), the first
+and last one spacing in from the side beams: at 500 mm on a 3.5 m
+centre-to-centre deck that is six lines exactly 500 apart, as the
+reference drawing. A width that is not a multiple gets equal spaces no
+wider than the spacing. The spacing is the dimension on the plan's
+right edge and under the section, clicked to retype; a stiffener's
+ring offers the spacing, one more or fewer (which switches to a count
+across), the end gap and none.
 
 The default truss is the Warren of the reference drawing: top nodes at
 mid-panel, no verticals, so a 22.5 m chord in 2.5 m panels puts the
 first top node 1.25 m in; Warren with verticals, Pratt, Howe, X and
 Vierendeel are the other choices. There is no top-plan bracing; the
-plan bracing (X in every bay, zigzag or none), the cross beams and the
+plan bracing (by default one diagonal at a time from side beam to
+side beam over two bays, alternating, as the drawing - the bays per
+diagonal can be changed, and an X in every bay or none are the other
+choices; "split braces where they cross" cuts a long diagonal at each
+cross beam and an X at its centre), the cross beams and the
 optional beams between the cross beams (a count per bay, spread evenly
 between the truss planes, tops on the floor underside) sit under the
 deck. The deck runs to the outer faces of the posts along the span

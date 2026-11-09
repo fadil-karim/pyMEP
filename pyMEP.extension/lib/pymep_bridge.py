@@ -37,8 +37,8 @@ TRUSSES = (("warren", u"Warren - top nodes at mid-panel, no verticals (as the dr
            ("howe", u"Howe (diagonals lean to the ends)"),
            ("x", u"X braced (both diagonals)"),
            ("vierendeel", u"Vierendeel (verticals only)"))
-BRACINGS = (("x", u"X in every bay (as the picture)"), ("zigzag", u"zigzag (Warren)"),
-            ("none", u"none"))
+BRACINGS = (("zigzag", u"one diagonal at a time, alternating, each over brace_bays bays (as the drawing)"),
+            ("x", u"X in every bay"), ("none", u"none"))
 PLANES = (("outside", u"the outside faces of the posts"),
           ("centre", u"the post centrelines"),
           ("inside", u"the inside faces of the posts"))
@@ -73,9 +73,12 @@ DEFAULTS = {
     "deck_clearance_m": 0.01,        # gap between the deck edges and the posts / truss planes
     "floor_thickness_m": 0.15,       # of the chosen floor type (the Revit side fills it in)
     "plan_bays": None,               # cross beam bays along the deck; None = one per truss panel
-    "bracing": "x",
-    "split_x": False,                # X bracing as four pieces meeting at the crossing
-    "stiffeners_across": 1,          # stiffener lines per bay across the deck; 0 = none
+    "bracing": "zigzag",
+    "brace_bays": 2,                 # bays each zigzag diagonal spans (2: side beam to side beam over two bays)
+    "split_x": False,                # braces split where they cross: the X at its centre, a long diagonal at each cross beam
+    "stiffener_mode": "spacing",     # "spacing": lines at stiffener_spacing_m; "count": stiffeners_across lines
+    "stiffener_spacing_m": 0.5,      # between the side beam centres (the truss planes), first and last included
+    "stiffeners_across": 1,          # stiffener lines per bay across the deck in count mode; 0 = none
     "stringers_across": 0,           # beams along the span between the cross beams, per bay; 0 = none
     "stiffener_gap_m": 0.1,          # stiffener end gap to the cross beams
     "railing_inset_m": 0.1,          # railing path inside the deck edge; railing type "none" = none
@@ -98,9 +101,11 @@ def normalize_design(d):
         raise ValueError(u"unknown bracing '{0}'".format(out["bracing"]))
     if out["truss_plane"] not in [k for k, _l in PLANES]:
         raise ValueError(u"unknown truss plane '{0}'".format(out["truss_plane"]))
+    if out["stiffener_mode"] not in ("spacing", "count"):
+        raise ValueError(u"stiffener_mode must be 'spacing' or 'count'")
     for k in ("panel_length_m", "bottom_chord_offset_m", "top_chord_split_m",
               "bottom_chord_split_m", "deck_top_offset_m", "deck_clearance_m",
-              "floor_thickness_m", "stiffener_gap_m", "railing_inset_m"):
+              "floor_thickness_m", "stiffener_gap_m", "stiffener_spacing_m", "railing_inset_m"):
         try:
             out[k] = float(out[k])
         except (TypeError, ValueError):
@@ -111,7 +116,7 @@ def normalize_design(d):
                 out[k] = float(out[k])
             except (TypeError, ValueError):
                 raise ValueError(u"'{0}' must be a number or blank".format(k))
-    for k in ("panels", "stiffeners_across", "stringers_across"):
+    for k in ("panels", "stiffeners_across", "stringers_across", "brace_bays"):
         try:
             out[k] = int(round(float(out[k])))
         except (TypeError, ValueError):
@@ -131,10 +136,13 @@ def normalize_design(d):
         raise ValueError(u"floor thickness and deck clearance cannot be negative")
     if out["top_chord_split_m"] < 0 or out["bottom_chord_split_m"] < 0:
         raise ValueError(u"a chord split length cannot be negative")
+    if out["stiffener_spacing_m"] < 0:
+        raise ValueError(u"the stiffener spacing cannot be negative")
     for k in ("top_chord_pieces", "bottom_chord_pieces"):
         out[k] = _norm_pieces(k, out[k])
     out["stiffeners_across"] = max(0, out["stiffeners_across"])
     out["stringers_across"] = max(0, out["stringers_across"])
+    out["brace_bays"] = max(1, out["brace_bays"])
     out["end_posts"] = bool(out["end_posts"])
     out["split_x"] = bool(out["split_x"])
     out["types"] = dict(out["types"] or {})
@@ -356,6 +364,27 @@ def pieces(s0, s1, max_len):
     return [(s0 + L * k, s0 + L * (k + 1)) for k in range(n)]
 
 
+def stiffener_positions(design, frame):
+    """t of every deck stiffener line, set out between the side beam
+    centrelines (the truss planes, where the bottom chords run). By
+    spacing: equal spaces no wider than stiffener_spacing_m, counted
+    from the side beam centre, so a width that is a multiple of the
+    spacing gives exactly that spacing (3.5 m at 0.5 m: six lines, the
+    first and last 0.5 m from the side beams). By count:
+    stiffeners_across lines equally spaced."""
+    tl, tr = planes(design, frame)
+    width = tl - tr
+    if design["stiffener_mode"] == "count":
+        k = design["stiffeners_across"]
+        return [tl - width * (m + 1) / float(k + 1) for m in range(k)]
+    sp = design["stiffener_spacing_m"]
+    if sp <= TOL or width <= sp + TOL:
+        return []
+    n = int(math.ceil(width / sp - 1e-9))
+    step = width / n
+    return [tl - step * m for m in range(1, n)]
+
+
 def deck_extent(design, frame):
     """(d0, d1, t_right_edge, t_left_edge) of the deck. Along the span it
     runs to the outer faces of the posts (or deck_end_m past their
@@ -432,10 +461,12 @@ def members(design, frame):
     st = lay["stations"]
     for j, s in enumerate(st):
         add("crossbeam", "C", j, (s, tl, zu), (s, tr, zu))
-    # plan bracing in every bay
-    for j in range(len(st) - 1):
-        s_a, s_b = st[j], st[j + 1]
-        if design["bracing"] == "x":
+    # plan bracing: an X in every bay, or one diagonal at a time from side
+    # beam to side beam over brace_bays bays, alternating (the drawing has
+    # each diagonal over two bays, crossing the middle cross beam mid-width)
+    if design["bracing"] == "x":
+        for j in range(len(st) - 1):
+            s_a, s_b = st[j], st[j + 1]
             if design["split_x"]:
                 sm, tm = (s_a + s_b) / 2.0, (tl + tr) / 2.0
                 add("bracing", "C", j, (s_a, tl, zu), (sm, tm, zu), 0)
@@ -445,11 +476,24 @@ def members(design, frame):
             else:
                 add("bracing", "C", j, (s_a, tl, zu), (s_b, tr, zu), 0)
                 add("bracing", "C", j, (s_a, tr, zu), (s_b, tl, zu), 1)
-        elif design["bracing"] == "zigzag":
-            if j % 2 == 0:
-                add("bracing", "C", j, (s_a, tl, zu), (s_b, tr, zu), 0)
+    elif design["bracing"] == "zigzag":
+        bb = max(1, design["brace_bays"])
+        j = 0
+        k = 0
+        while j < len(st) - 1:
+            j2 = min(j + bb, len(st) - 1)
+            t_a, t_b = (tl, tr) if k % 2 == 0 else (tr, tl)
+            if design["split_x"] and j2 - j > 1:
+                # one piece per bay, meeting on the cross beams it crosses
+                for q in range(j, j2):
+                    f0 = (st[q] - st[j]) / (st[j2] - st[j])
+                    f1 = (st[q + 1] - st[j]) / (st[j2] - st[j])
+                    add("bracing", "C", k, (st[q], t_a + (t_b - t_a) * f0, zu),
+                        (st[q + 1], t_a + (t_b - t_a) * f1, zu), q - j)
             else:
-                add("bracing", "C", j, (s_a, tr, zu), (s_b, tl, zu), 0)
+                add("bracing", "C", k, (st[j], t_a, zu), (st[j2], t_b, zu), 0)
+            j = j2
+            k += 1
     # beams along the span between consecutive cross beams, spread evenly
     # between the truss planes, tops on the floor underside like the cross beams
     ks = design["stringers_across"]
@@ -459,17 +503,17 @@ def members(design, frame):
             for m in range(ks):
                 t = tr + (tl - tr) * (m + 1) / float(ks + 1)
                 add("stringer", "C", j, (s_a, t, zu), (s_b, t, zu), m)
-    # stiffeners under the deck, along the span, between the cross beams
+    # stiffeners under the deck, along the span, between the cross beams,
+    # set out across at the spacing (or count) between the side beam centres
     d0, d1, t_r, t_l = deck_extent(design, frame)
-    k = design["stiffeners_across"]
-    if k > 0:
+    lines = stiffener_positions(design, frame)
+    if lines:
         gap = design["stiffener_gap_m"]
         for j in range(len(st) - 1):
             s_a, s_b = st[j] + gap, st[j + 1] - gap
             if s_b - s_a <= TOL:
                 continue
-            for m in range(k):
-                t = t_r + (t_l - t_r) * (m + 1) / float(k + 1)
+            for m, t in enumerate(lines):
                 add("stiffener", "C", j, (s_a, t, zu), (s_b, t, zu), m)
     # railings along the deck edges
     if (design["types"].get("railing") or u"") not in (u"", u"none"):
@@ -688,7 +732,7 @@ def fill_page(template, data):
     return template.replace(PLACEHOLDER, text, 1)
 
 
-__all__ = ["piece_spans", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
+__all__ = ["piece_spans", "stiffener_positions", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
            "BRACE_ROLES", "TOP_ALIGNED", "DEFAULTS", "normalize_design", "frame_from_posts",
            "frame_from_points", "effective_frame", "planes", "height", "base_z", "to_world",
            "layout", "pieces",
