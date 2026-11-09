@@ -204,6 +204,48 @@ class Members(unittest.TestCase):
                                   chord_extension_m=0.0), f)
         self.assertEqual(count(withv, "vertical", "L"), 8 + 9)        # bottom nodes + top nodes
 
+    def test_piece_list(self):
+        # typed lengths from the start; the None piece takes the rest
+        self.assertEqual(BR.piece_spans(0.0, 20.0, [6.0, None]), [(0.0, 6.0), (6.0, 20.0)])
+        sp = BR.piece_spans(0.0, 20.0, [6.0, None, 4.0])
+        self.assertEqual(len(sp), 3)
+        self.assertAlmostEqual(sp[1][0], 6.0)
+        self.assertAlmostEqual(sp[1][1], 16.0)
+        self.assertAlmostEqual(sp[2][1], 20.0)
+        self.assertEqual(BR.piece_spans(0.0, 20.0, [None, 5.0]), [(0.0, 15.0), (15.0, 20.0)])
+        self.assertEqual(BR.piece_spans(0.0, 20.0, [], 6.0), BR.pieces(0.0, 20.0, 6.0))   # legacy equal pieces
+        with self.assertRaises(ValueError):
+            BR.piece_spans(0.0, 20.0, [12.0, 8.0, None])
+        # normalising: the last piece is the variable one unless another is marked
+        d = BR.normalize_design({"top_chord_pieces": [6, 6], "bottom_chord_pieces": [None, 5.0]})
+        self.assertEqual(d["top_chord_pieces"], [6.0, 6.0, None])
+        self.assertEqual(d["bottom_chord_pieces"], [None, 5.0])
+        self.assertEqual(BR.normalize_design({"top_chord_pieces": [None]})["top_chord_pieces"], [])
+        with self.assertRaises(ValueError):
+            BR.normalize_design({"top_chord_pieces": [None, None, 3.0]})
+        with self.assertRaises(ValueError):
+            BR.normalize_design({"top_chord_pieces": [0, 3.0]})
+
+    def test_variable_piece_stretches(self):
+        mems = BR.members(design(top_chord_pieces=[6.0, None], bottom_chord_pieces=[None, 4.0, 4.0]), FRAME)
+        self.assertEqual(count(mems, "top_chord", "L"), 2)
+        t0, t1 = by_key(mems, u"top_chord:L:0:0"), by_key(mems, u"top_chord:L:1:0")
+        self.assertAlmostEqual(t0["p1"][0], -0.1)
+        self.assertAlmostEqual(t0["p2"][0], 5.9)
+        self.assertAlmostEqual(t1["p2"][0], 20.1)
+        self.assertEqual(count(mems, "bottom_chord", "L"), 3)
+        b0 = by_key(mems, u"bottom_chord:L:0:0")
+        self.assertAlmostEqual(b0["p2"][0], 20.1 - 8.0)             # the first piece is the variable one here
+        # the posts move apart: the typed pieces keep their lengths, the variable piece stretches
+        s, e = posts(span=25.0)
+        far = BR.members(design(top_chord_pieces=[6.0, None], bottom_chord_pieces=[None, 4.0, 4.0]), BR.frame_from_posts(s, e))
+        self.assertAlmostEqual(by_key(far, u"top_chord:L:0:0")["p2"][0], 5.9)
+        self.assertAlmostEqual(by_key(far, u"top_chord:L:1:0")["p2"][0], 25.1)
+        self.assertAlmostEqual(by_key(far, u"bottom_chord:L:0:0")["p2"][0], 25.1 - 8.0)
+        self.assertAlmostEqual(by_key(far, u"bottom_chord:L:2:0")["p1"][0], 25.1 - 4.0)
+        with self.assertRaises(ValueError):
+            BR.members(design(top_chord_pieces=[15.0, 10.0, None]), FRAME)
+
     def test_split_chords(self):
         mems = BR.members(design(top_chord_split_m=6.0, bottom_chord_split_m=12.0), FRAME)
         self.assertEqual(count(mems, "top_chord", "L"), 4)       # 20.2 / 6 -> 4 pieces of 5.05

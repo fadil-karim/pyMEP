@@ -64,6 +64,8 @@ DEFAULTS = {
     "bottom_chord_offset_m": 0.0,    # bottom chord centreline relative to the post base
     "top_chord_split_m": 0.0,        # longest top chord piece; 0 = one piece
     "bottom_chord_split_m": 0.0,     # longest bottom chord piece; 0 = one piece
+    "top_chord_pieces": [],          # typed piece lengths from the start, None = the variable
+    "bottom_chord_pieces": [],       # piece that takes the rest; [] = one piece (then *_split_m)
     "chord_extension_m": None,       # chords run this far past the post centrelines; None = outer face
     "end_posts": False,              # the posts are already there
     "deck_top_offset_m": 0.0,        # deck top relative to the post base
@@ -129,6 +131,8 @@ def normalize_design(d):
         raise ValueError(u"floor thickness and deck clearance cannot be negative")
     if out["top_chord_split_m"] < 0 or out["bottom_chord_split_m"] < 0:
         raise ValueError(u"a chord split length cannot be negative")
+    for k in ("top_chord_pieces", "bottom_chord_pieces"):
+        out[k] = _norm_pieces(k, out[k])
     out["stiffeners_across"] = max(0, out["stiffeners_across"])
     out["stringers_across"] = max(0, out["stringers_across"])
     out["end_posts"] = bool(out["end_posts"])
@@ -289,6 +293,58 @@ def _diagonal(truss, i, n, s_a, s_b):
     return []
 
 
+def _norm_pieces(name, value):
+    """A chord's piece list: lengths in metres from the start of the
+    chord, with None for the one variable piece that takes whatever is
+    left (the last piece when none is marked). [] is one piece."""
+    if value is None or value == "" or value == []:
+        return []
+    try:
+        items = list(value)
+    except TypeError:
+        raise ValueError(u"'{0}' must be a list of lengths".format(name))
+    out = []
+    for v in items:
+        if v is None or v == "":
+            out.append(None)
+            continue
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            raise ValueError(u"'{0}' must be a list of lengths".format(name))
+        if f <= 0:
+            raise ValueError(u"'{0}': every typed piece must be longer than 0".format(name))
+        out.append(f)
+    if out.count(None) > 1:
+        raise ValueError(u"'{0}': only one piece can be the variable one".format(name))
+    if None not in out:
+        out.append(None)
+    return out if len(out) > 1 else []
+
+
+def piece_spans(s0, s1, pieces_list, max_len=0.0, label=u"chord"):
+    """(s_a, s_b) of a chord's pieces between s0 and s1. With a piece
+    list the typed lengths run from the start in order and the None
+    piece takes what is left, so it stretches and shrinks with the
+    chord; without one, equal pieces no longer than max_len."""
+    if not pieces_list:
+        return pieces(s0, s1, max_len)
+    total = s1 - s0
+    fixed = sum(v for v in pieces_list if v is not None)
+    rest = total - fixed
+    if rest <= TOL:
+        raise ValueError(u"the typed {0} pieces ({1:.3f} m) leave nothing for the variable piece "
+                         u"of a {2:.3f} m chord".format(label, fixed, total))
+    out = []
+    s = s0
+    for v in pieces_list:
+        step = rest if v is None else v
+        out.append((s, s + step))
+        s += step
+    out[-1] = (out[-1][0], s1)
+    return out
+
+
 def pieces(s0, s1, max_len):
     """(s_a, s_b) of equal pieces no longer than max_len between s0 and
     s1; one piece when max_len is 0."""
@@ -340,9 +396,11 @@ def members(design, frame):
 
     warren = design["truss"] in ("warren", "warren_verticals")
     for side, t in (("L", tl), ("R", tr)):
-        for k, (a, b) in enumerate(pieces(lay["s0"], lay["s1"], design["top_chord_split_m"])):
+        for k, (a, b) in enumerate(piece_spans(lay["s0"], lay["s1"], design["top_chord_pieces"],
+                                               design["top_chord_split_m"], u"top chord")):
             add("top_chord", side, k, (a, t, zt), (b, t, zt))
-        for k, (a, b) in enumerate(pieces(lay["s0"], lay["s1"], design["bottom_chord_split_m"])):
+        for k, (a, b) in enumerate(piece_spans(lay["s0"], lay["s1"], design["bottom_chord_pieces"],
+                                               design["bottom_chord_split_m"], u"bottom chord")):
             add("bottom_chord", side, k, (a, t, zb), (b, t, zb))
         if design["end_posts"]:
             add("end_post", side, 0, (lay["s0"], t, zb), (lay["s0"], t, zt))
@@ -630,7 +688,7 @@ def fill_page(template, data):
     return template.replace(PLACEHOLDER, text, 1)
 
 
-__all__ = ["TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
+__all__ = ["piece_spans", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
            "BRACE_ROLES", "TOP_ALIGNED", "DEFAULTS", "normalize_design", "frame_from_posts",
            "frame_from_points", "effective_frame", "planes", "height", "base_z", "to_world",
            "layout", "pieces",

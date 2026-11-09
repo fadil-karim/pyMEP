@@ -26,7 +26,7 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(520px,3fr) mi
 .panel h2 .legend{color:var(--muted);font-weight:400;font-size:11px}
 .panel h2 .legend span{display:inline-block;width:12px;height:3px;margin:0 4px 2px 8px;vertical-align:middle}
 .panel svg{flex:1;width:100%;height:100%;display:block;background:#fff;user-select:none;-webkit-user-select:none;touch-action:none}
-#p-elev{flex:1.2} #p-plan{flex:1} #p-sect{flex:1.1}
+#p-elev{flex:1.6} #p-plan{flex:1} #p-sect{flex:1.1}
 .v3{min-height:0;display:flex;flex-direction:column}
 .v3 svg{background:#fbfbfd;cursor:grab}
 text.dim{fill:var(--dim);font-weight:600;cursor:pointer}
@@ -49,7 +49,7 @@ text.lbl{fill:#555}
 #radial .ring{position:absolute;border-radius:50%;background:rgba(58,74,92,.04);border:1px dashed rgba(58,74,92,.4);pointer-events:none}
 #radial .ritem{position:absolute;transform:translate(-50%,-50%);width:76px;height:44px;border:1px solid #777;border-radius:6px;background:#fff;font-size:11px;line-height:1.1;padding:3px;box-shadow:0 2px 6px rgba(0,0,0,.15)}
 #radial .ritem:hover{background:var(--acc);border-color:#c98b00}
-#radial .rhub{position:absolute;transform:translate(-50%,14px);background:rgba(58,74,92,.9);color:#fff;border-radius:12px;padding:2px 8px;font-size:11px;white-space:nowrap;cursor:pointer;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+#radial .rhub{position:absolute;transform:translate(-50%,0);background:rgba(58,74,92,.9);color:#fff;border-radius:12px;padding:2px 8px;font-size:11px;white-space:nowrap;cursor:pointer;max-width:150px;overflow:hidden;text-overflow:ellipsis}
 #radial .rdot{position:absolute;width:6px;height:6px;border-radius:50%;background:var(--sel);transform:translate(-50%,-50%);pointer-events:none}
 .hint{color:var(--muted);font-size:11px;padding:4px 10px}
 @media (max-width:1100px){main{grid-template-columns:1fr;grid-template-rows:auto auto auto}.tiles{grid-column:1}}
@@ -70,7 +70,7 @@ text.lbl{fill:#555}
 <main>
   <div class="tiles" id="tiles"></div>
   <div class="views">
-    <div class="panel" id="p-elev"><h2>Elevation - left truss <span class="legend">click a blue value to change it; click a member for its family; click an end edge for its level</span></h2><svg id="elev" viewBox="0 0 1000 300" preserveAspectRatio="xMidYMid meet"></svg></div>
+    <div class="panel" id="p-elev"><h2>Elevation - left truss <span class="legend">click a blue value to change it; click a member for its family; click an end edge for its level</span></h2><svg id="elev" viewBox="0 0 1000 390" preserveAspectRatio="xMidYMid meet"></svg></div>
     <div class="panel" id="p-plan"><h2>Plan from below <span class="legend"><span style="background:var(--steel)"></span>cross beams and beams between <span style="background:var(--brace)"></span>bracing <span style="background:var(--stiff)"></span>stiffeners <span style="background:var(--rail)"></span>railings</span></h2><svg id="plan" viewBox="0 0 1000 250" preserveAspectRatio="xMidYMid meet"></svg></div>
     <div class="panel" id="p-sect"><h2>Section <span class="legend">deck, chords, cross beam, posts</span></h2><svg id="sect" viewBox="0 0 600 300" preserveAspectRatio="xMidYMid meet"></svg></div>
   </div>
@@ -82,7 +82,7 @@ text.lbl{fill:#555}
 <script>
 var DATA = /*__BRIDGE_DATA__*/null;
 var DEFAULTS = {truss:"warren",panel_mode:"length",panel_length_m:2.5,panels:9,height_m:null,level_start_m:null,level_end_m:null,
-  truss_plane:"outside",bottom_chord_offset_m:0,top_chord_split_m:0,bottom_chord_split_m:0,chord_extension_m:null,end_posts:false,
+  truss_plane:"outside",bottom_chord_offset_m:0,top_chord_split_m:0,bottom_chord_split_m:0,top_chord_pieces:[],bottom_chord_pieces:[],chord_extension_m:null,end_posts:false,
   deck_top_offset_m:0,deck_end_m:null,deck_clearance_m:0.01,floor_thickness_m:0.15,plan_bays:null,bracing:"x",split_x:false,stringers_across:0,
   stiffeners_across:1,stiffener_gap_m:0.1,railing_inset_m:0.1,types:{},level:null};
 var TRUSSES = [["warren","Warren - top nodes at mid-panel (as the drawing)"],["warren_verticals","Warren with verticals"],
@@ -108,6 +108,13 @@ function layout(d){
   return {s0:s0, s1:s1, n:n, L:L, total:total, points:pts, d0:d0, d1:d1, bays:bays, B:B, stations:st};
 }
 function pieces(s0, s1, maxLen){ var total = s1 - s0; if (maxLen <= 1e-6 || total <= maxLen + 1e-6) return [[s0, s1]]; var n = Math.ceil(total / maxLen - 1e-9), L = total / n, out = []; for (var k = 0; k < n; k++) out.push([s0 + L * k, s0 + L * (k + 1)]); return out; }
+function pieceSpans(s0, s1, list, maxLen){
+  // typed lengths from the start, the null piece takes the rest (it stretches and shrinks with the chord)
+  if (!list || !list.length) return pieces(s0, s1, maxLen);
+  var total = s1 - s0, fixed = 0; list.forEach(function(v){ if (v !== null) fixed += v; });
+  var rest = total - fixed; if (rest <= 1e-6) throw new Error("the typed chord pieces (" + fmt(fixed, 3) + " m) leave nothing for the variable piece of a " + fmt(total, 3) + " m chord");
+  var out = [], s = s0; list.forEach(function(v){ var L = v === null ? rest : v; out.push([s, s + L]); s += L; }); out[out.length - 1][1] = s1; return out;
+}
 function diagonal(truss, i, n, sa, sb){
   if (truss === "vierendeel") return [];
   if (truss === "x") return [[["bottom",sa],["top",sb]],[["top",sa],["bottom",sb]]];
@@ -122,8 +129,8 @@ function members(d){
   function add(role, side, i, p1, p2, sub){ out.push({key:role + ":" + side + ":" + i + ":" + (sub || 0), role:role, side:side, i:i, p1:p1, p2:p2}); }
   [["L", tl], ["R", tr]].forEach(function(st){
     var side = st[0], t = st[1];
-    pieces(lay.s0, lay.s1, d.top_chord_split_m).forEach(function(ab, k){ add("top_chord", side, k, [ab[0],t,zt], [ab[1],t,zt]); });
-    pieces(lay.s0, lay.s1, d.bottom_chord_split_m).forEach(function(ab, k){ add("bottom_chord", side, k, [ab[0],t,zb], [ab[1],t,zb]); });
+    pieceSpans(lay.s0, lay.s1, d.top_chord_pieces, d.top_chord_split_m).forEach(function(ab, k){ add("top_chord", side, k, [ab[0],t,zt], [ab[1],t,zt]); });
+    pieceSpans(lay.s0, lay.s1, d.bottom_chord_pieces, d.bottom_chord_split_m).forEach(function(ab, k){ add("bottom_chord", side, k, [ab[0],t,zb], [ab[1],t,zb]); });
     if (d.end_posts){ add("end_post", side, 0, [lay.s0,t,zb], [lay.s0,t,zt]); add("end_post", side, 1, [lay.s1,t,zb], [lay.s1,t,zt]); }
     if (warren){
       for (var i = 0; i < n; i++){ var mid = (pts[i] + pts[i+1]) / 2; add("diagonal", side, i, [pts[i],t,zb], [mid,t,zt], 0); add("diagonal", side, i, [mid,t,zt], [pts[i+1],t,zb], 1); }
@@ -164,6 +171,40 @@ function typeName(role){ var id = design.types[typeKey(role)]; if (!id || id ===
 function floorThickness(){ var t = (DATA.floor_types || []).filter(function(x){ return String(x.id) === String(design.types.floor); })[0]; return t && t.thickness_m ? t.thickness_m : DEFAULTS.floor_thickness_m; }
 function setDesign(k, v){ design[k] = v; if (k === "types") design.floor_thickness_m = floorThickness(); render(); }
 function fmt(v, dp){ return (Math.round(v * Math.pow(10, dp)) / Math.pow(10, dp)).toFixed(dp); }
+// ---- chord pieces: typed lengths from the start, one variable piece takes the rest ----
+function chordPieces(role){ return (design[role + "_pieces"] || []).slice(); }
+function setPieces(role, list){
+  if (list.length && list.indexOf(null) < 0) list.push(null);
+  if (list.length === 1) list = [];
+  var lay = layout(design), total = lay.s1 - lay.s0, fixed = 0; list.forEach(function(v){ if (v !== null) fixed += v; });
+  if (list.length && total - fixed <= 0.05){ $("status").textContent = "Those " + ROLES[role].toLowerCase() + " pieces add up to " + fmt(fixed, 3) + " m of a " + fmt(total, 3) + " m chord - nothing left for the variable piece, so not applied."; return false; }
+  $("status").textContent = ""; design[role + "_split_m"] = 0; setDesign(role + "_pieces", list); return true;
+}
+function equalPieces(role, maxLen){ var lay = layout(design), sp = pieces(lay.s0, lay.s1, maxLen); if (sp.length < 2) return setPieces(role, []); var list = sp.slice(0, -1).map(function(ab){ return ab[1] - ab[0]; }); list.push(null); setPieces(role, list); }
+function addPiece(role, L, after){
+  var list = chordPieces(role); if (!list.length) list = [null];
+  var vi = list.indexOf(null);
+  if (after === undefined){ if (vi === list.length - 1) list.splice(vi, 0, L); else list.push(L); } else list.splice(after + 1, 0, L);
+  setPieces(role, list);
+}
+function pieceRing(role, k, list, len, x, y){
+  var items = [], has = list.length > 0, isVar = has && list[k] === null, name = ROLES[role];
+  if (!has){
+    openRadial(x, y, name + " - one piece", [
+      {label:"Add split...", run:function(){ inlineEditAt(x, y, {value:len / 2, unit:"mm", set:function(v){ addPiece(role, v); }}); }},
+      {label:"Equal pieces...", run:function(){ inlineEditAt(x, y, {value:6, unit:"m", set:function(v){ equalPieces(role, v); }}); }},
+      {label:"Family...", run:function(){ familyPop(role, x, y); }}]);
+    return;
+  }
+  if (!isVar) items.push({label:"Length...", run:function(){ inlineEditAt(x, y, {value:len, unit:"mm", set:function(v){ var l = chordPieces(role); l[k] = Math.max(0.001, v); setPieces(role, l); }}); }});
+  if (!isVar) items.push({label:"Make this variable", run:function(){ var l = chordPieces(role), lay = layout(design), sp = pieceSpans(lay.s0, lay.s1, l, 0), vi = l.indexOf(null); if (vi >= 0) l[vi] = sp[vi][1] - sp[vi][0]; l[k] = null; setPieces(role, l); }});
+  items.push({label:"Add split after...", run:function(){ inlineEditAt(x, y, {value:len / 2, unit:"mm", set:function(v){ addPiece(role, v, k); }}); }});
+  if (!isVar) items.push({label:"Remove piece", run:function(){ var l = chordPieces(role); l.splice(k, 1); setPieces(role, l); }});
+  items.push({label:"Equal pieces...", run:function(){ inlineEditAt(x, y, {value:len, unit:"m", set:function(v){ equalPieces(role, v); }}); }});
+  items.push({label:"One piece", run:function(){ setPieces(role, []); }});
+  items.push({label:"Family...", run:function(){ familyPop(role, x, y); }});
+  openRadial(x, y, name + " piece " + (k + 1) + (isVar ? " (variable)" : ""), items);
+}
 function mm(v){ return Math.round(v * 1000) + ""; }
 
 // ---- svg helpers ----
@@ -237,13 +278,12 @@ function familyPop(role, x, y){
   if (!list.length) opts += '<option value="">(no types of this kind are loaded in the model)</option>';
   list.forEach(function(t){ opts += '<option value="' + esc(t.id) + '"' + (String(t.id) === String(cur) ? " selected" : "") + '>' + esc(t.name) + '</option>'; });
   var extra = "";
-  if (role === "top_chord" || role === "bottom_chord") extra = '<label>Pieces no longer than <span style="color:#666">m, 0 = one</span> <input type="number" step="0.5" min="0" id="pp_split" value="' + design[role + "_split_m"] + '"></label>';
+  if (role === "top_chord" || role === "bottom_chord") extra = '<div class="hint" style="padding:4px 0 0 0">Pieces: the strip under the elevation - click + to add a split and type its length; the dashed piece is the variable one and takes the rest.</div>';
   if (role === "deck") extra = '<label>Revit level <select id="pp_level">' + (DATA.levels || []).map(function(l){ return '<option value="' + esc(l.id) + '"' + (String(l.id) === String(design.level) ? " selected" : "") + '>' + esc(l.name) + ' (' + l.elevation_m.toFixed(3) + ' m)</option>'; }).join("") + '</select></label>';
   openPop(x, y, '<h3>' + ROLES[role] + ' family</h3><label>Type <select id="pp_type">' + opts + '</select></label>' + extra +
     (role === "deck" ? '<div class="hint" style="padding:4px 0 0 0">Thickness comes from the floor type.</div>' : ""), function(p){
     var sel = p.querySelector("#pp_type"); sel.focus();
     sel.onchange = function(){ var t = JSON.parse(JSON.stringify(design.types)); if (sel.value) t[key] = sel.value; else delete t[key]; setDesign("types", t); };
-    var sp = p.querySelector("#pp_split"); if (sp) sp.oninput = function(){ var v = parseFloat(sp.value); if (!isNaN(v) && v >= 0) setDesign(role + "_split_m", v); };
     var lv = p.querySelector("#pp_level"); if (lv) lv.onchange = function(){ setDesign("level", lv.value || null); };
   });
 }
@@ -277,16 +317,17 @@ function openRadial(x, y, hub, items){
   RADIAL.style.left = x + "px"; RADIAL.style.top = y + "px";
   RADIAL.innerHTML = '<div class="ring" style="left:' + (-R) + 'px;top:' + (-R) + 'px;width:' + (2 * R) + 'px;height:' + (2 * R) + 'px"></div>' +
     items.map(function(it, i){ var a = -Math.PI / 2 + i * 2 * Math.PI / items.length; return '<button class="ritem" data-ri="' + i + '" style="left:' + (R * Math.cos(a)).toFixed(1) + 'px;top:' + (R * Math.sin(a)).toFixed(1) + 'px">' + esc(it.label) + '</button>'; }).join("") +
-    '<div class="rdot"></div><div class="rhub" title="click to close">' + esc(hub) + '</div>';
+    '<div class="rdot"></div><div class="rhub" title="click to close" style="top:' + (Math.max.apply(null, items.map(function(it, i){ return R * Math.sin(-Math.PI / 2 + i * 2 * Math.PI / items.length); })) + 22 + 8).toFixed(0) + 'px">' + esc(hub) + '</div>';
   RADIAL.style.display = "block";
-  RADIAL.querySelectorAll("[data-ri]").forEach(function(b){ b.onclick = function(ev){ ev.stopPropagation(); var it = items[+b.dataset.ri]; closeRadial(); it.run(ev); }; });
+  // the buttons never take focus (a focused button removed with the ring would blur the inline edit the action opens)
+  RADIAL.querySelectorAll("[data-ri]").forEach(function(b){ b.onmousedown = function(ev){ ev.preventDefault(); }; b.onclick = function(ev){ ev.stopPropagation(); var it = items[+b.dataset.ri]; closeRadial(); setTimeout(function(){ it.run(ev); }, 0); }; });
   RADIAL.querySelector(".rhub").onclick = function(ev){ ev.stopPropagation(); closeRadial(); };
 }
 function closeRadial(){ RADIAL.style.display = "none"; RADIAL.innerHTML = ""; }
 function memberRing(role, x, y){
   closePop();
   var items = [{label:"Family...", run:function(){ familyPop(role, x, y); }}];
-  if (role === "top_chord" || role === "bottom_chord") items.push({label:"Pieces...", run:function(){ familyPop(role, x, y); }});
+  if (role === "top_chord" || role === "bottom_chord") items.push({label:"Add split...", run:function(){ inlineEditAt(x, y, {value:2.5, unit:"m", set:function(v){ addPiece(role, v); }}); }});
   if (role === "top_chord" || role === "bottom_chord" || role === "diagonal" || role === "vertical"){
     PLANES.forEach(function(p){ if (p[0] !== design.truss_plane) items.push({label:"Planes on " + p[1], run:function(){ setDesign("truss_plane", p[0]); }}); });
   }
@@ -330,7 +371,7 @@ function render(){
     "<div><b>" + mems.length + "</b>members, " + fmt(steel, 1) + " m steel</div>"].join("") + (warn.length ? '<div class="warn">' + warn.join("; ") + '</div>' : "");
 
   // ---- elevation
-  var sv = $("elev"); clear(sv); var W = 1000, H = 300, padL = 100, padR = 90, padT = 48, padB = 52, zt = res.zt, zb = res.zb;
+  var sv = $("elev"); clear(sv); var W = 1000, H = 390, padL = 100, padR = 90, padT = 48, padB = 142, zt = res.zt, zb = res.zb;
   var zmin = Math.min(baseZ(lay.s0), baseZ(lay.s1)) + Math.min(zb, res.zu) - 0.2, zmax = Math.max(baseZ(lay.s0), baseZ(lay.s1)) + Math.max(zt, F.post_height) + 0.2;
   var sx = (W - padL - padR) / lay.total, sz = (H - padT - padB) / (zmax - zmin);
   var X = function(s){ return padL + (s - lay.s0) * sx; }, Y = function(z){ return H - padB - (z - zmin) * sz; };
@@ -375,8 +416,30 @@ function render(){
   tde.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(tde, {value:-ex.d0, unit:"mm", allowBlank:true, blankLabel:"face", set:function(v){ setDesign("deck_end_m", v); }}); });
   var te = el(sv, "text", {x:X(lay.s0), y:Y(baseZ(lay.s0) + zt) - 8, "font-size":12, "class":"dim", "text-anchor":"start"}, "ext " + mm(-lay.s0) + (design.chord_extension_m === null ? " (face)" : ""));
   te.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(te, {value:-lay.s0, unit:"mm", allowBlank:true, blankLabel:"face", set:function(v){ setDesign("chord_extension_m", v); }}); });
-  var splitT = el(sv, "text", {x:W / 2, y:H - 8, "text-anchor":"middle", "font-size":11, "class":"dim"}, "top chord pieces: " + (design.top_chord_split_m ? "max " + mm(design.top_chord_split_m) : "one") + "   |   bottom chord pieces: " + (design.bottom_chord_split_m ? "max " + mm(design.bottom_chord_split_m) : "one") + "   |   vertical scale x" + fmt(sz / sx, 1));
-  splitT.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); openRadial(p[0], p[1], "chord pieces", [{label:"Top chord...", run:function(){ familyPop("top_chord", p[0], p[1]); }}, {label:"Bottom chord...", run:function(){ familyPop("bottom_chord", p[0], p[1]); }}]); });
+  // chord pieces: a strip per chord - typed lengths from the start, the variable piece (dashed) takes the rest
+  var ys = {top_chord: H - 112, bottom_chord: H - 66};
+  ["top_chord", "bottom_chord"].forEach(function(role){
+    var y = ys[role], list = chordPieces(role), spans, bad = false;
+    try { spans = pieceSpans(lay.s0, lay.s1, list, design[role + "_split_m"]); } catch (e) { spans = [[lay.s0, lay.s1]]; bad = true; }
+    var legacy = !list.length && design[role + "_split_m"] > 0;
+    el(sv, "text", {x:padL - 10, y:y + 14, "text-anchor":"end", "font-size":11, "class":"lbl"}, role === "top_chord" ? "top chord" : "bottom chord");
+    spans.forEach(function(ab, k){
+      var isVar = list.length ? list[k] === null : !legacy, x1 = X(ab[0]), x2 = X(ab[1]), L = ab[1] - ab[0];
+      var r = el(sv, "rect", {x:x1 + 1, y:y, width:Math.max(2, x2 - x1 - 2), height:22, rx:3, fill:isVar ? "#eef3fa" : "#dde5ef", stroke:isVar ? "#0b57d0" : "#8a9bb0", "stroke-width":1, "stroke-dasharray":isVar ? "4 3" : null, "class":"hit"});
+      el(r, "title", {}, isVar ? "variable piece - takes what is left of the chord and stretches or shrinks with it; click for options" : "typed piece - click the length to change it, or the bar for options");
+      var ring = function(ev){ ev.stopPropagation(); ev.preventDefault(); var p = pagePoint(ev); pieceRing(role, k, list, L, p[0], p[1]); };
+      r.addEventListener("click", ring); r.addEventListener("contextmenu", ring);
+      var t = el(sv, "text", {x:(x1 + x2) / 2, y:y + 15, "text-anchor":"middle", "font-size":11, "class":isVar ? "lbl" : "dim", "font-style":isVar ? "italic" : null, "pointer-events":(x2 - x1) < 24 ? "none" : null}, (x2 - x1) < 24 ? "" : mm(L) + (isVar && list.length ? " var" : ""));
+      if (!isVar) t.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(t, {value:L, unit:"mm", set:function(v){ var l = chordPieces(role); if (!l.length) return; l[k] = Math.max(0.001, v); setPieces(role, l); }}); });
+      else t.addEventListener("click", ring);
+      t.addEventListener("contextmenu", ring);
+    });
+    var plus = el(sv, "text", {x:X(lay.s1) + 10, y:y + 16, "font-size":15, "class":"dim", "font-weight":"700"}, "+");
+    el(plus, "title", {}, "add a split: type the length of a new piece; the variable piece takes the rest");
+    plus.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(plus, {value:lay.L, unit:"mm", set:function(v){ addPiece(role, v); }}); });
+    if (bad) el(sv, "text", {x:X(lay.s1) + 26, y:y + 15, "font-size":11, fill:"#b00020"}, "pieces longer than the chord");
+  });
+  el(sv, "text", {x:W - 8, y:H - 8, "text-anchor":"end", "font-size":10, "class":"lbl"}, "vertical scale x" + fmt(sz / sx, 1));
 
   // ---- plan from below
   var pl = $("plan"); clear(pl); var PW = 1000, PH = 250, pp = 56, hw = Math.max(F.tL + half, Math.abs(F.tR - half), res.planes[0]) + 0.1;

@@ -984,10 +984,18 @@ between the truss planes, tops on the floor underside) sit under the
 deck. The deck runs to the outer faces of the posts along the span
 (click its "deck end" value to type another offset from the post
 centrelines) and sits inside the posts across, less the clearance.
-Top and bottom chords take their own piece lengths
-(each chord in equal pieces no longer than the length given; blank is
-one piece) and their own framing types, as does every other role.
-Chord splices show as red ticks. **Save design** writes
+Top and bottom chords are split separately on the two piece strips
+under the elevation: click **+** to add a split and type the piece
+length, click a length to retype it, and the dashed piece is the
+variable one - it takes whatever is left of the chord and stretches
+or shrinks as the span changes, so the typed pieces keep their
+lengths when the posts move. The last piece is the variable one
+unless another is marked "Make this variable" on its ring, which also
+offers "Add split after", "Remove piece", "Equal pieces" (fills the
+strip with equal typed pieces) and "One piece". Pieces that add up to
+more than the chord are refused with a note. Each chord has its own
+framing type, as does every other role. Chord splices show as red
+ticks. **Save design** writes
 `bridge_<name>.json` to Downloads; **Load...** reads one back.
 
 **Build Bridge** - reads that file, reads the four posts again and
