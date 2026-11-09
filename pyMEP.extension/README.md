@@ -964,31 +964,41 @@ deck, chords and gradient follow it); clicking a member, the deck or a
 post opens a ring menu for its family, chord piece length, truss
 planes, truss type, bracing, stiffeners per bay or railing, with a
 right-click doing the same. A 3D window alongside draws the whole
-bridge (left-drag orbits, right-drag pans, the wheel zooms about the
-cursor; Fit, Iso and Under buttons) and a right-click on any member
-there gives the same family menu. The rest lives under **Settings**:
-panels by target length or count, plan bays, the Revit level, end
-posts, splitting each X at the crossing, stiffeners per bay and end
-gap, railing inset.
+bridge (left-drag orbits freely, over the top and underneath;
+right-drag pans; the wheel zooms about the cursor; Fit, Iso and Under
+buttons) and a right-click on any member there gives the same family
+menu. The browser's own right-click menu is switched off on the
+drawings, and the ring's label sits just under the clicked spot (a dot
+marks it) so the member stays visible. The rest lives under
+**Settings**: panels by target length or count, plan bays, the Revit
+level, end posts, splitting each X at the crossing, beams between the
+cross beams per bay, stiffeners per bay and end gap, railing inset.
 
 The default truss is the Warren of the reference drawing: top nodes at
 mid-panel, no verticals, so a 22.5 m chord in 2.5 m panels puts the
 first top node 1.25 m in; Warren with verticals, Pratt, Howe, X and
 Vierendeel are the other choices. There is no top-plan bracing; the
-plan bracing (X in every bay, zigzag or none) and the cross beams sit
-under the deck. Top and bottom chords take their own piece lengths
+plan bracing (X in every bay, zigzag or none), the cross beams and the
+optional beams between the cross beams (a count per bay, spread evenly
+between the truss planes, tops on the floor underside) sit under the
+deck. The deck runs to the outer faces of the posts along the span
+(click its "deck end" value to type another offset from the post
+centrelines) and sits inside the posts across, less the clearance.
+Top and bottom chords take their own piece lengths
 (each chord in equal pieces no longer than the length given; blank is
 one piece) and their own framing types, as does every other role.
 Chord splices show as red ticks. **Save design** writes
 `bridge_<name>.json` to Downloads; **Load...** reads one back.
 
 **Build Bridge** - reads that file, reads the four posts again and
-places everything in one undo step: the deck as a floor fitted inside
-the posts (less the clearance) with a slope arrow from start to end;
+places everything in one undo step: the deck as a floor from post
+face to post face along the span and inside the posts across (less the
+clearance) with a slope arrow from start to end;
 both trusses on the chosen planes (chords in their pieces, verticals,
 diagonals as braces); the cross beams at every bay line between the
-truss planes and the plan bracing in every bay, both with z
-justification Top so their top sits on the floor underside; the deck
+truss planes, the plan bracing in every bay and any beams between the
+cross beams, all with z justification Top so their top sits on the
+floor underside; the deck
 stiffeners hosted on the floor's underside, running along the span
 between the cross beams; and the railings hosted on the deck along both
 edges. Members carry the bridge name in Comments and every element id

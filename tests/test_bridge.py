@@ -260,20 +260,48 @@ class Members(unittest.TestCase):
         self.assertEqual(count(BR.members(design(stiffeners_across=0), FRAME), "stiffener"), 0)
         self.assertEqual(count(BR.members(design(), FRAME), "railing"), 0)      # no railing type
 
-    def test_deck_inside_the_posts(self):
+    def test_deck_to_the_post_faces(self):
+        # along the span the deck reaches the outer faces of the posts;
+        # across it sits inside them less the clearance
         corners = BR.deck_profile(design(), FRAME)
-        self.assertAlmostEqual(corners[0][0], 0.11)
+        self.assertAlmostEqual(corners[0][0], -0.1)
         self.assertAlmostEqual(corners[0][1], 1.39)
-        self.assertAlmostEqual(corners[2][0], 19.89)
+        self.assertAlmostEqual(corners[2][0], 20.1)
         self.assertAlmostEqual(corners[2][1], -1.39)
         inside = BR.deck_profile(design(truss_plane="inside"), FRAME)
         self.assertAlmostEqual(inside[0][1], 1.4 - 0.01)          # inside the inner truss plane too
+        typed = BR.deck_profile(design(deck_end_m=-0.11), FRAME)  # typed: inside the posts
+        self.assertAlmostEqual(typed[0][0], 0.11)
+        self.assertAlmostEqual(typed[2][0], 19.89)
+        self.assertAlmostEqual(BR.deck_profile(design(deck_end_m=0.0), FRAME)[0][0], 0.0)
         deck = BR.world_deck(design(deck_top_offset_m=-0.05), FRAME)
-        self.assertAlmostEqual(deck["tail_top_z"], 10.0 + 0.1 * 0.11 - 0.05)
+        self.assertAlmostEqual(deck["tail_top_z"], 10.0 - 0.1 * 0.1 - 0.05)
         self.assertAlmostEqual(deck["slope"], 0.1)
         self.assertAlmostEqual(deck["thickness_m"], 0.15)
-        self.assertAlmostEqual(deck["tail"][0], 0.11)
-        self.assertAlmostEqual(deck["head"][0], 19.89)
+        self.assertAlmostEqual(deck["tail"][0], -0.1)
+        self.assertAlmostEqual(deck["head"][0], 20.1)
+        # the cross beams still stop inside the posts
+        mems = BR.members(design(), FRAME)
+        self.assertAlmostEqual(by_key(mems, u"crossbeam:C:0:0")["p1"][0], 0.11)
+
+    def test_beams_between_cross_beams(self):
+        self.assertEqual(count(BR.members(design(), FRAME), "stringer"), 0)
+        mems = BR.members(design(stringers_across=2, floor_thickness_m=0.15), FRAME)
+        self.assertEqual(count(mems, "stringer"), 8)              # 2 in each of 4 bays
+        a = by_key(mems, u"stringer:C:0:0")
+        b = by_key(mems, u"stringer:C:0:1")
+        cb0 = by_key(mems, u"crossbeam:C:0:0")
+        cb1 = by_key(mems, u"crossbeam:C:1:0")
+        self.assertAlmostEqual(a["p1"][0], cb0["p1"][0])         # from one cross beam
+        self.assertAlmostEqual(a["p2"][0], cb1["p1"][0])         # to the next
+        tl, tr = cb0["p1"][1], cb0["p2"][1]
+        self.assertAlmostEqual(a["p1"][1], tr + (tl - tr) / 3.0)  # spread between the truss planes
+        self.assertAlmostEqual(b["p1"][1], tr + (tl - tr) * 2 / 3.0)
+        self.assertAlmostEqual(a["p1"][2], -0.15)                 # top on the floor underside
+        self.assertEqual((a["zjust"], a["stype"]), ("top", "beam"))
+        self.assertIn("stringer", BR.FRAMING_ROLES)
+        d = BR.normalize_design({"stringers_across": -2})
+        self.assertEqual(d["stringers_across"], 0)
 
     def test_typed_end_levels(self):
         """Clicking an end and typing a survey level moves that end's
@@ -290,7 +318,7 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(bot["p2"][2], 12.5 + 0.0125)
         deck = BR.world_deck(d, FRAME, shared_elev_m=4.0)
         self.assertAlmostEqual(deck["slope"], 0.125)
-        self.assertAlmostEqual(deck["tail_top_z"], 10.0 + 0.125 * 0.11)
+        self.assertAlmostEqual(deck["tail_top_z"], 10.0 - 0.125 * 0.1)   # deck tail at the post face
 
     def test_world_follows_the_fall(self):
         wm = BR.world_members(design(), FRAME)
