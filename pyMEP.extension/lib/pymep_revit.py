@@ -79,6 +79,45 @@ def safe_name(e):
         from Autodesk.Revit.DB import Element
         return Element.Name.__get__(e)
 
+
+def type_name(el):
+    """The name of a type or symbol, whatever IronPython makes of its Name
+    property. On FamilySymbol and other ElementTypes 'el.Name' can raise
+    or come back empty in some Revit / IronPython pairings because the
+    static Element.Name hides the instance property; the descriptor
+    read works everywhere, then the type-name parameters."""
+    if el is None:
+        return u""
+    try:
+        from Autodesk.Revit.DB import Element
+        n = Element.Name.GetValue(el)
+        if n:
+            return u"{0}".format(n)
+    except Exception:
+        pass
+    try:
+        from Autodesk.Revit.DB import Element
+        n = Element.Name.__get__(el)
+        if n:
+            return u"{0}".format(n)
+    except Exception:
+        pass
+    try:
+        n = el.Name
+        if n:
+            return u"{0}".format(n)
+    except Exception:
+        pass
+    try:
+        from Autodesk.Revit.DB import BuiltInParameter
+        for bip in (BuiltInParameter.SYMBOL_NAME_PARAM, BuiltInParameter.ALL_MODEL_TYPE_NAME):
+            p = el.get_Parameter(bip)
+            if p is not None and p.HasValue and p.AsString():
+                return u"{0}".format(p.AsString())
+    except Exception:
+        pass
+    return u""
+
 # ------------- element extractors --------------
 
 def get_connectors(elem):

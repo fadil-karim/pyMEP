@@ -32,7 +32,7 @@ def posts(span=20.0, width=3.0, z0=10.0, z1=12.0, h=2.3, size=0.2, x0=0.0, y0=0.
 
 
 def design(**kw):
-    d = {"panel_mode": "count", "panels": 4}
+    d = {"panel_mode": "count", "panels": 4, "truss": "warren_verticals"}
     d.update(kw)
     return BR.normalize_design(d)
 
@@ -52,7 +52,9 @@ class Design(unittest.TestCase):
 
     def test_defaults(self):
         d = BR.normalize_design({})
-        self.assertEqual(d["truss"], "warren_verticals")
+        self.assertEqual(d["truss"], "warren")
+        self.assertEqual(d["panel_length_m"], 2.5)
+        self.assertIsNone(d["level_start_m"])
         self.assertIsNone(d["height_m"])
         self.assertEqual(d["truss_plane"], "outside")
         self.assertEqual(d["bracing"], "x")
@@ -159,7 +161,7 @@ class Layout(unittest.TestCase):
 class Members(unittest.TestCase):
 
     def test_trusses_sit_on_the_planes(self):
-        mems = BR.members(design(), FRAME)
+        mems = BR.members(design(truss="pratt"), FRAME)
         self.assertEqual(count(mems, "top_chord"), 2)
         self.assertEqual(count(mems, "bottom_chord"), 2)
         self.assertEqual(count(mems, "end_post"), 0)           # the posts are there already
@@ -176,6 +178,31 @@ class Members(unittest.TestCase):
         with_posts = BR.members(design(end_posts=True, truss="warren"), FRAME)
         self.assertEqual(count(with_posts, "end_post"), 4)
         self.assertEqual(count(with_posts, "vertical"), 0)
+
+    def test_warren_as_drawn(self):
+        """22500 span, 2500 panels, top nodes at 1250 + k * 2500, 1800 high,
+        diagonals at 55 degrees - the drawing."""
+        f = BR.frame_from_posts(*posts(span=22.5, h=1.8, size=0.0))
+        d = design(truss="warren", panel_mode="length", panel_length_m=2.5, chord_extension_m=0.0,
+                   deck_clearance_m=0.0)
+        mems = BR.members(d, f)
+        lay = BR.layout(d, f)
+        self.assertEqual(lay["n"], 9)
+        self.assertEqual(count(mems, "vertical"), 0)
+        diags = [m for m in mems if m["role"] == "diagonal" and m["side"] == "L"]
+        self.assertEqual(len(diags), 18)
+        self.assertEqual((diags[0]["p1"][0], diags[0]["p1"][2]), (0.0, 0.0))
+        self.assertAlmostEqual(diags[0]["p2"][0], 1.25)
+        self.assertAlmostEqual(diags[0]["p2"][2], 1.8)
+        self.assertAlmostEqual(diags[1]["p2"][0], 2.5)
+        self.assertAlmostEqual(diags[1]["p2"][2], 0.0)
+        angle = math.degrees(math.atan2(1.8, 1.25))
+        self.assertAlmostEqual(angle, 55.2, places=1)
+        tops = sorted(set(round(m["p2"][0], 6) for m in diags if m["p2"][2] > 1.0))
+        self.assertEqual(tops[:3], [1.25, 3.75, 6.25])
+        withv = BR.members(design(truss="warren_verticals", panel_mode="length", panel_length_m=2.5,
+                                  chord_extension_m=0.0), f)
+        self.assertEqual(count(withv, "vertical", "L"), 8 + 9)        # bottom nodes + top nodes
 
     def test_split_chords(self):
         mems = BR.members(design(top_chord_split_m=6.0, bottom_chord_split_m=12.0), FRAME)
@@ -248,6 +275,23 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(deck["tail"][0], 0.11)
         self.assertAlmostEqual(deck["head"][0], 19.89)
 
+    def test_typed_end_levels(self):
+        """Clicking an end and typing a survey level moves that end's
+        datum; shared elevation offset is taken off."""
+        d = design(level_start_m=14.0, level_end_m=16.5)
+        ef = BR.effective_frame(d, FRAME, shared_elev_m=4.0)
+        self.assertEqual((ef["z0"], ef["z1"]), (10.0, 12.5))
+        self.assertAlmostEqual(ef["gradient"], 0.125)
+        only_end = BR.effective_frame(design(level_end_m=16.5), FRAME, shared_elev_m=4.0)
+        self.assertEqual((only_end["z0"], only_end["z1"]), (10.0, 12.5))
+        wm = BR.world_members(d, FRAME, shared_elev_m=4.0)
+        bot = by_key(wm, u"bottom_chord:L:0:0")
+        self.assertAlmostEqual(bot["p1"][2], 10.0 - 0.0125)
+        self.assertAlmostEqual(bot["p2"][2], 12.5 + 0.0125)
+        deck = BR.world_deck(d, FRAME, shared_elev_m=4.0)
+        self.assertAlmostEqual(deck["slope"], 0.125)
+        self.assertAlmostEqual(deck["tail_top_z"], 10.0 + 0.125 * 0.11)
+
     def test_world_follows_the_fall(self):
         wm = BR.world_members(design(), FRAME)
         top = by_key(wm, u"top_chord:L:0:0")
@@ -258,24 +302,27 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(cb["p1"][2], 11.0 - 0.15)
 
     def test_summary(self):
-        s = BR.summary(design(), FRAME)
+        s = BR.summary(design(truss="pratt"), FRAME)
         self.assertEqual(s["panels"], 4)
         self.assertEqual(s["bays"], 4)
         self.assertAlmostEqual(s["height_m"], 2.3)
         self.assertAlmostEqual(s["deck_width_m"], 2.78)
         self.assertAlmostEqual(s["by_role"]["top_chord"]["length_m"], 40.4)
         self.assertEqual(s["members"], 2 + 2 + 6 + 8 + 5 + 8 + 4)
+        w = BR.summary(design(truss="warren"), FRAME)
+        self.assertEqual(w["by_role"]["diagonal"]["count"], 16)
+        self.assertNotIn("vertical", w["by_role"])
 
 
 class Updates(unittest.TestCase):
 
     def test_diff(self):
-        old = [m["key"] for m in BR.members(design(), FRAME)]
-        new = BR.members(design(panels=5), FRAME)
+        old = [m["key"] for m in BR.members(design(truss="pratt"), FRAME)]
+        new = BR.members(design(truss="pratt", panels=5), FRAME)
         diff = BR.diff_members(old, new)
         self.assertTrue(any(m["key"] == u"vertical:L:4:0" for m in diff["create"]))
         self.assertIn(u"crossbeam:C:4:0", [k for k, _m in diff["update"]])
-        same = BR.diff_members(old, BR.members(design(), BR.frame_from_posts(*posts(span=25.0))))
+        same = BR.diff_members(old, BR.members(design(truss="pratt"), BR.frame_from_posts(*posts(span=25.0))))
         self.assertEqual((len(same["create"]), len(same["delete"])), (0, 0))
 
     def test_rigid_motion(self):

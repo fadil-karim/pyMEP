@@ -31,8 +31,8 @@ import json
 import math
 import os
 
-TRUSSES = (("warren", u"Warren (zigzag diagonals, no verticals)"),
-           ("warren_verticals", u"Warren with verticals"),
+TRUSSES = (("warren", u"Warren - top nodes at mid-panel, no verticals (as the drawing)"),
+           ("warren_verticals", u"Warren with verticals at every node"),
            ("pratt", u"Pratt (diagonals lean to the centre)"),
            ("howe", u"Howe (diagonals lean to the ends)"),
            ("x", u"X braced (both diagonals)"),
@@ -53,11 +53,13 @@ BRACE_ROLES = ("diagonal", "bracing")       # placed as braces, the rest as beam
 TOP_ALIGNED = ("crossbeam", "bracing")      # the member's top sits on the line (floor underside)
 
 DEFAULTS = {
-    "truss": "warren_verticals",
+    "truss": "warren",
     "panel_mode": "length",          # "length": aim for panel_length_m; "count": panels
-    "panel_length_m": 1.92,
-    "panels": 14,
+    "panel_length_m": 2.5,
+    "panels": 9,
     "height_m": None,                # top chord centreline above the post base; None = post height
+    "level_start_m": None,           # deck datum at the start as a SHARED elevation; None = post base
+    "level_end_m": None,             # same at the end
     "truss_plane": "outside",        # where the truss planes sit against the posts
     "bottom_chord_offset_m": 0.0,    # bottom chord centreline relative to the post base
     "top_chord_split_m": 0.0,        # longest top chord piece; 0 = one piece
@@ -99,7 +101,7 @@ def normalize_design(d):
             out[k] = float(out[k])
         except (TypeError, ValueError):
             raise ValueError(u"'{0}' must be a number".format(k))
-    for k in ("height_m", "chord_extension_m"):
+    for k in ("height_m", "chord_extension_m", "level_start_m", "level_end_m"):
         if out[k] is not None:
             try:
                 out[k] = float(out[k])
@@ -195,6 +197,20 @@ def frame_from_points(start, end, width=3.0, post_size=0.2, height=1.8):
                             [mk(end[0], end[1], end[2], half), mk(end[0], end[1], end[2], -half)])
 
 
+def effective_frame(design, frame, shared_elev_m=0.0):
+    """The frame with the design's typed end levels applied: a typed
+    level is a shared / survey elevation of the deck datum (the post
+    base line) at that end, so z = level - shared_elev_m; a blank one
+    keeps the post base. The other keys are untouched."""
+    f = dict(frame)
+    if design.get("level_start_m") is not None:
+        f["z0"] = float(design["level_start_m"]) - float(shared_elev_m)
+    if design.get("level_end_m") is not None:
+        f["z1"] = float(design["level_end_m"]) - float(shared_elev_m)
+    f["gradient"] = (f["z1"] - f["z0"]) / f["span"] if f["span"] else 0.0
+    return f
+
+
 def planes(design, frame):
     """(t of the left truss plane, t of the right truss plane)."""
     half = frame["post_size"] / 2.0
@@ -257,12 +273,11 @@ def layout(design, frame):
 
 
 def _diagonal(truss, i, n, s_a, s_b):
+    """Pratt / Howe / X diagonals in panel i (shared-node layouts)."""
     if truss == "vierendeel":
         return []
     if truss == "x":
         return [(("bottom", s_a), ("top", s_b)), (("top", s_a), ("bottom", s_b))]
-    if truss in ("warren", "warren_verticals"):
-        return [(("bottom", s_a), ("top", s_b))] if i % 2 == 0 else [(("top", s_a), ("bottom", s_b))]
     left_half = (i + 0.5) < n / 2.0
     if truss == "pratt":
         return [(("top", s_a), ("bottom", s_b))] if left_half else [(("bottom", s_a), ("top", s_b))]
@@ -318,6 +333,7 @@ def members(design, frame):
         out.append({"key": key, "role": role, "side": side, "i": i, "p1": p1, "p2": p2,
                     "stype": stype, "zjust": "top" if role in TOP_ALIGNED else "centre"})
 
+    warren = design["truss"] in ("warren", "warren_verticals")
     for side, t in (("L", tl), ("R", tr)):
         for k, (a, b) in enumerate(pieces(lay["s0"], lay["s1"], design["top_chord_split_m"])):
             add("top_chord", side, k, (a, t, zt), (b, t, zt))
@@ -326,14 +342,28 @@ def members(design, frame):
         if design["end_posts"]:
             add("end_post", side, 0, (lay["s0"], t, zb), (lay["s0"], t, zt))
             add("end_post", side, 1, (lay["s1"], t, zb), (lay["s1"], t, zt))
-        if design["truss"] != "warren":
+        if warren:
+            # the drawing: bottom nodes at the panel points, top nodes at
+            # mid-panel, diagonals zigzag between them - no verticals, or
+            # one at every node
+            for i in range(n):
+                mid = (pts[i] + pts[i + 1]) / 2.0
+                add("diagonal", side, i, (pts[i], t, zb), (mid, t, zt), 0)
+                add("diagonal", side, i, (mid, t, zt), (pts[i + 1], t, zb), 1)
+            if design["truss"] == "warren_verticals":
+                for i in range(1, n):
+                    add("vertical", side, i, (pts[i], t, zb), (pts[i], t, zt), 0)
+                for i in range(n):
+                    mid = (pts[i] + pts[i + 1]) / 2.0
+                    add("vertical", side, i, (mid, t, zb), (mid, t, zt), 1)
+        else:
             for i in range(1, n):
                 add("vertical", side, i, (pts[i], t, zb), (pts[i], t, zt))
-        for i in range(n):
-            for sub, (a, b) in enumerate(_diagonal(design["truss"], i, n, pts[i], pts[i + 1])):
-                za = zb if a[0] == "bottom" else zt
-                zb2 = zb if b[0] == "bottom" else zt
-                add("diagonal", side, i, (a[1], t, za), (b[1], t, zb2), sub)
+            for i in range(n):
+                for sub, (a, b) in enumerate(_diagonal(design["truss"], i, n, pts[i], pts[i + 1])):
+                    za = zb if a[0] == "bottom" else zt
+                    zb2 = zb if b[0] == "bottom" else zt
+                    add("diagonal", side, i, (a[1], t, za), (b[1], t, zb2), sub)
 
     # cross beams at every bay line, between the truss planes, tops on the floor underside
     st = lay["stations"]
@@ -405,27 +435,30 @@ def summary(design, frame, mems=None):
             "deck_area_m2": (d1 - d0) * (t_l - t_r), "height_m": height(design, frame)}
 
 
-def world_members(design, frame):
-    """The members with p1 / p2 in model coordinates (metres)."""
+def world_members(design, frame, shared_elev_m=0.0):
+    """The members with p1 / p2 in model coordinates (metres), the typed
+    end levels applied."""
+    f = effective_frame(design, frame, shared_elev_m)
     out = []
-    for m in members(design, frame):
+    for m in members(design, f):
         w = dict(m)
-        w["p1"] = to_world(frame, m["p1"][0], m["p1"][1], m["p1"][2])
-        w["p2"] = to_world(frame, m["p2"][0], m["p2"][1], m["p2"][2])
+        w["p1"] = to_world(f, m["p1"][0], m["p1"][1], m["p1"][2])
+        w["p2"] = to_world(f, m["p2"][0], m["p2"][1], m["p2"][2])
         out.append(w)
     return out
 
 
-def world_deck(design, frame):
+def world_deck(design, frame, shared_elev_m=0.0):
     """The deck for the Revit side: corners (x, y), the slope arrow from
     the deck start to the deck end (x, y), the deck top z at the arrow's
     tail, the slope ratio, the thickness and the length."""
-    corners = [to_world(frame, s, t)[:2] for s, t in deck_profile(design, frame)]
-    d0, d1, _tr, _tl = deck_extent(design, frame)
-    return {"corners": corners, "tail": to_world(frame, d0, 0.0)[:2],
-            "head": to_world(frame, d1, 0.0)[:2],
-            "tail_top_z": base_z(frame, d0) + design["deck_top_offset_m"],
-            "slope": frame["gradient"], "thickness_m": design["floor_thickness_m"],
+    f = effective_frame(design, frame, shared_elev_m)
+    corners = [to_world(f, s, t)[:2] for s, t in deck_profile(design, f)]
+    d0, d1, _tr, _tl = deck_extent(design, f)
+    return {"corners": corners, "tail": to_world(f, d0, 0.0)[:2],
+            "head": to_world(f, d1, 0.0)[:2],
+            "tail_top_z": base_z(f, d0) + design["deck_top_offset_m"],
+            "slope": f["gradient"], "thickness_m": design["floor_thickness_m"],
             "length_m": d1 - d0}
 
 
@@ -585,7 +618,8 @@ def fill_page(template, data):
 
 __all__ = ["TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
            "BRACE_ROLES", "TOP_ALIGNED", "DEFAULTS", "normalize_design", "frame_from_posts",
-           "frame_from_points", "planes", "height", "base_z", "to_world", "layout", "pieces",
+           "frame_from_points", "effective_frame", "planes", "height", "base_z", "to_world",
+           "layout", "pieces",
            "deck_extent", "members", "deck_profile", "summary", "world_members", "world_deck",
            "diff_members", "rigid_motion", "frame_changed", "parse_design_file",
            "design_file_text", "load_registry", "save_registry", "next_name", "record",

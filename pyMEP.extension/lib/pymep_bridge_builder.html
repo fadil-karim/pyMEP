@@ -4,134 +4,101 @@
 <meta charset="utf-8">
 <title>Bridge Builder</title>
 <style>
-:root{--ink:#222;--muted:#666;--line:#ddd;--pane:#f4f4f4;--acc:#f2a900;--steel:#3a4a5c;--deck:#c9b89a;--brace:#8a9bb0;--post:#7a7a7a;--stiff:#b36b00;--rail:#2e7d32}
-body{font-family:Segoe UI,Arial,sans-serif;font-size:13px;color:var(--ink);margin:0;background:#fff;display:flex;flex-direction:column;height:100vh}
-header{background:var(--pane);padding:10px 18px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
-header h1{font-size:17px;margin:0}
-header .meta{color:var(--muted);font-size:12px}
-main{display:flex;flex:1;min-height:0}
-aside{width:350px;min-width:310px;border-right:1px solid var(--line);overflow:auto;padding:10px 14px 30px 14px;background:#fbfbfb}
-section.views{flex:1;overflow:auto;padding:10px 18px 30px 18px}
-fieldset{border:1px solid var(--line);border-radius:4px;margin:0 0 10px 0;padding:8px 10px 10px 10px}
-legend{font-weight:600;padding:0 4px}
-label{display:grid;grid-template-columns:1fr 120px;align-items:center;gap:8px;margin:5px 0;font-size:12.5px}
-label span.u{color:var(--muted);font-size:11px}
-input[type=number],input[type=text],select{height:24px;border:1px solid #bbb;border-radius:3px;padding:0 6px;font:inherit;width:100%;box-sizing:border-box}
-label.check{grid-template-columns:auto 1fr;justify-content:start}
-.hint{color:var(--muted);font-size:11px;margin:2px 0 0 0}
-.tiles{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px 0}
-.tiles div{border:1px solid var(--line);border-radius:4px;padding:6px 10px;min-width:100px;background:#fff}
-.tiles b{display:block;font-size:17px}
-h2{font-size:13.5px;margin:14px 0 4px 0;color:#333}
-svg{width:100%;background:#fff;border:1px solid var(--line);border-radius:4px}
-.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
-button{border:1px solid #999;background:#fff;border-radius:3px;padding:5px 12px;font:inherit;cursor:pointer}
+:root{--ink:#222;--muted:#666;--line:#ddd;--pane:#f4f4f4;--acc:#f2a900;--steel:#3a4a5c;--deck:#c9b89a;--brace:#8a9bb0;--post:#7a7a7a;--stiff:#b36b00;--rail:#2e7d32;--dim:#0b57d0;--sel:#e0003c}
+*{box-sizing:border-box}
+body{font-family:Segoe UI,Arial,sans-serif;font-size:13px;color:var(--ink);margin:0;background:#fff;height:100vh;display:flex;flex-direction:column}
+header{background:var(--pane);padding:8px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header h1{font-size:16px;margin:0 6px 0 0}
+header input[type=text]{height:26px;border:1px solid #bbb;border-radius:3px;padding:0 8px;font:inherit;width:180px}
+header select{height:26px;border:1px solid #bbb;border-radius:3px;font:inherit;max-width:260px}
+button{border:1px solid #999;background:#fff;border-radius:3px;padding:4px 11px;font:inherit;cursor:pointer}
 button.primary{background:var(--acc);border-color:#c98b00;font-weight:600}
-button:hover{background:#f0f0f0}
-button.primary:hover{background:#ffb81c}
-.status{color:#2e7d32;font-size:12px}
+button:hover{background:#f0f0f0} button.primary:hover{background:#ffb81c}
+.status{color:#2e7d32;font-size:12px;margin-left:auto}
 .warn{color:#b00020;font-size:12px}
-table.roles{border-collapse:collapse;width:100%;font-size:12px}
-table.roles th,table.roles td{border:1px solid var(--line);padding:3px 6px;text-align:left}
-table.roles td.n{text-align:right}
-.legend span{display:inline-block;width:12px;height:3px;margin:0 4px 2px 10px;vertical-align:middle}
+main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(520px,3fr) minmax(380px,2fr);grid-template-rows:auto 1fr;gap:10px;padding:10px 16px 16px 16px;overflow:auto}
+.tiles{grid-column:1/3;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tiles div{border:1px solid var(--line);border-radius:4px;padding:4px 10px;background:#fff;font-size:12px}
+.tiles b{font-size:14px;margin-right:4px}
+.views{display:flex;flex-direction:column;gap:8px;min-height:0}
+.panel{position:relative;border:1px solid var(--line);border-radius:4px;background:#fff;display:flex;flex-direction:column;min-height:0}
+.panel h2{font-size:12.5px;margin:0;padding:6px 10px;border-bottom:1px solid #eee;color:#333;display:flex;gap:10px;align-items:center}
+.panel h2 .legend{color:var(--muted);font-weight:400;font-size:11px}
+.panel h2 .legend span{display:inline-block;width:12px;height:3px;margin:0 4px 2px 8px;vertical-align:middle}
+.panel svg{flex:1;width:100%;height:100%;display:block;background:#fff}
+#p-elev{flex:1.2} #p-plan{flex:1} #p-sect{flex:1.1}
+.v3{min-height:0;display:flex;flex-direction:column}
+.v3 svg{background:#fbfbfd;cursor:grab}
+text.dim{fill:var(--dim);font-weight:600;cursor:pointer}
+text.dim:hover{text-decoration:underline}
+text.dimv{fill:var(--dim);font-weight:600;cursor:pointer}
+text.lbl{fill:#555}
+.hit{cursor:pointer}
+.hit:hover{filter:drop-shadow(0 0 2px var(--sel))}
+.sel{stroke:var(--sel)!important}
+#edit{position:absolute;display:none;z-index:40;height:24px;width:92px;border:2px solid var(--dim);border-radius:3px;padding:0 6px;font:inherit;font-weight:600;background:#fff}
+#pop{position:absolute;display:none;z-index:50;background:#fff;border:1px solid #999;border-radius:4px;box-shadow:0 4px 14px rgba(0,0,0,.18);padding:8px 10px;min-width:220px;font-size:12.5px}
+#pop h3{font-size:12.5px;margin:0 0 6px 0}
+#pop label{display:grid;grid-template-columns:1fr 130px;gap:8px;align-items:center;margin:4px 0}
+#pop select,#pop input{height:24px;border:1px solid #bbb;border-radius:3px;font:inherit;width:100%;padding:0 6px}
+#pop .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+#pop .row button{padding:3px 8px;font-size:12px}
+#pop .row button.on{background:var(--acc);border-color:#c98b00;font-weight:600}
+#pop .x{position:absolute;right:6px;top:4px;border:0;background:none;font-size:14px;padding:0 4px}
+#radial{position:absolute;display:none;z-index:60;width:0;height:0}
+#radial .ring{position:absolute;border-radius:50%;background:rgba(58,74,92,.08);border:1px solid rgba(58,74,92,.35)}
+#radial .ritem{position:absolute;transform:translate(-50%,-50%);width:76px;height:44px;border:1px solid #777;border-radius:6px;background:#fff;font-size:11px;line-height:1.1;padding:3px;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+#radial .ritem:hover{background:var(--acc);border-color:#c98b00}
+#radial .rhub{position:absolute;transform:translate(-50%,-50%);background:var(--steel);color:#fff;border-radius:12px;padding:3px 9px;font-size:11px;white-space:nowrap;cursor:pointer}
+.hint{color:var(--muted);font-size:11px;padding:4px 10px}
+@media (max-width:1100px){main{grid-template-columns:1fr;grid-template-rows:auto auto auto}.tiles{grid-column:1}}
 </style>
 </head>
 <body>
 <header>
   <h1>Bridge Builder</h1>
-  <div class="meta" id="meta"></div>
+  <input type="text" id="name" title="bridge name">
+  <select id="truss" title="truss type"></select>
+  <button id="settings">Settings</button>
+  <button class="primary" id="save">Save design</button>
+  <button id="load">Load...</button>
+  <input type="file" id="file" accept=".json" style="display:none">
+  <button id="reset">Defaults</button>
+  <span class="status" id="status"></span>
 </header>
 <main>
-<aside>
-  <fieldset><legend>Bridge</legend>
-    <label>Name <input type="text" id="name"></label>
-    <div class="hint" id="points"></div>
-  </fieldset>
-  <fieldset><legend>Truss</legend>
-    <label>Type <select id="truss"></select></label>
-    <label>Panels by <select id="panel_mode"><option value="length">target length</option><option value="count">count</option></select></label>
-    <label id="row_panel_length">Panel length <span class="u">m</span> <input type="number" step="0.01" id="panel_length_m"></label>
-    <label id="row_panels">Panels <input type="number" step="1" min="1" id="panels"></label>
-    <label>Height <span class="u">m above the post base; blank = post height</span> <input type="number" step="0.05" id="height_m" placeholder="posts"></label>
-    <label>Truss planes on <select id="truss_plane"></select></label>
-    <label>Bottom chord <span class="u">m vs post base</span> <input type="number" step="0.01" id="bottom_chord_offset_m"></label>
-    <label>Top chord pieces <span class="u">max m, 0 = one</span> <input type="number" step="0.1" min="0" id="top_chord_split_m"></label>
-    <label>Bottom chord pieces <span class="u">max m, 0 = one</span> <input type="number" step="0.1" min="0" id="bottom_chord_split_m"></label>
-    <label>Chord extension <span class="u">m past post centres; blank = outer face</span> <input type="number" step="0.01" id="chord_extension_m" placeholder="outer face"></label>
-    <label class="check"><input type="checkbox" id="end_posts"> Add end posts (the picked posts usually are them)</label>
-  </fieldset>
-  <fieldset><legend>Deck</legend>
-    <label>Floor type <select id="type_floor"></select></label>
-    <label>Deck top <span class="u">m vs post base</span> <input type="number" step="0.01" id="deck_top_offset_m"></label>
-    <label>Clearance to posts <span class="u">m</span> <input type="number" step="0.005" id="deck_clearance_m"></label>
-    <label>Level <select id="level"></select></label>
-    <div class="hint" id="deck_hint">The deck fits inside the four posts, centred on their midpoints, and slopes from the start post bases to the end post bases. Its thickness comes from the floor type.</div>
-  </fieldset>
-  <fieldset><legend>Under the deck</legend>
-    <label>Plan bays <span class="u">blank = truss panels</span> <input type="number" step="1" min="1" id="plan_bays" placeholder="panels"></label>
-    <label>Bracing <select id="bracing"></select></label>
-    <label class="check"><input type="checkbox" id="split_x"> Split each X at the crossing (four pieces)</label>
-    <label>Stiffener type <select id="type_stiffener"></select></label>
-    <label>Stiffeners per bay <span class="u">across, 0 = none</span> <input type="number" step="1" min="0" id="stiffeners_across"></label>
-    <label>Stiffener end gap <span class="u">m to the cross beams</span> <input type="number" step="0.01" id="stiffener_gap_m"></label>
-    <div class="hint">Cross beams and bracing have their TOP on the floor underside (z justification Top). Stiffeners are hosted on the floor's underside, running along the span between the cross beams.</div>
-  </fieldset>
-  <fieldset><legend>Railing</legend>
-    <label>Railing type <select id="type_railing"></select></label>
-    <label>Inset from deck edge <span class="u">m</span> <input type="number" step="0.01" id="railing_inset_m"></label>
-    <div class="hint">Hosted on the deck along both edges. "(none)" places no railing.</div>
-  </fieldset>
-  <fieldset><legend>Member types <span class="u">structural framing</span></legend>
-    <div id="types"></div>
-    <div class="hint">Top and bottom chords can take different sections. Types come from the model - load the framing families before opening the builder.</div>
-  </fieldset>
-  <div class="bar">
-    <button class="primary" id="save">Save design</button>
-    <button id="load">Load design...</button>
-    <input type="file" id="file" accept=".json" style="display:none">
-    <button id="reset">Defaults</button>
-  </div>
-  <div class="status" id="status"></div>
-  <div class="hint">Save writes bridge_&lt;name&gt;.json to your Downloads. In Revit, Bridges &gt; Build Bridge reads it and models the bridge between the four posts; Update Bridges re-aligns it after the posts move.</div>
-</aside>
-<section class="views">
   <div class="tiles" id="tiles"></div>
-  <div class="warn" id="warn"></div>
-  <h2>Elevation (left truss) <span class="legend"><span style="background:var(--post)"></span>posts <span style="background:var(--steel)"></span>chords and verticals <span style="background:var(--brace)"></span>diagonals <span style="background:var(--deck)"></span>deck</span></h2>
-  <svg id="elev" viewBox="0 0 1000 300" preserveAspectRatio="xMidYMid meet"></svg>
-  <h2>Plan from below <span class="legend"><span style="background:var(--steel)"></span>cross beams <span style="background:var(--brace)"></span>bracing <span style="background:var(--stiff)"></span>stiffeners</span></h2>
-  <svg id="plan" viewBox="0 0 1000 260" preserveAspectRatio="xMidYMid meet"></svg>
-  <h2>Cross section</h2>
-  <svg id="sect" viewBox="0 0 600 340" preserveAspectRatio="xMidYMid meet"></svg>
-  <h2>Members</h2>
-  <table class="roles" id="roles"></table>
-</section>
+  <div class="views">
+    <div class="panel" id="p-elev"><h2>Elevation - left truss <span class="legend">click a blue value to change it; click a member for its family; click an end edge for its level</span></h2><svg id="elev" viewBox="0 0 1000 300" preserveAspectRatio="xMidYMid meet"></svg></div>
+    <div class="panel" id="p-plan"><h2>Plan from below <span class="legend"><span style="background:var(--steel)"></span>cross beams <span style="background:var(--brace)"></span>bracing <span style="background:var(--stiff)"></span>stiffeners <span style="background:var(--rail)"></span>railings</span></h2><svg id="plan" viewBox="0 0 1000 250" preserveAspectRatio="xMidYMid meet"></svg></div>
+    <div class="panel" id="p-sect"><h2>Section <span class="legend">deck, chords, cross beam, posts</span></h2><svg id="sect" viewBox="0 0 600 300" preserveAspectRatio="xMidYMid meet"></svg></div>
+  </div>
+  <div class="panel v3" id="p-3d"><h2>3D <span class="legend">drag orbits, right-drag pans, wheel zooms, right-click a member for its family</span><button id="fit3d" style="margin-left:auto;padding:2px 8px;font-size:11px">Fit</button><button id="iso3d" style="padding:2px 8px;font-size:11px">Iso</button><button id="under3d" style="padding:2px 8px;font-size:11px">Under</button></h2><svg id="v3"></svg><div class="hint" id="info3d">Hover a member to see what it is.</div></div>
+</main>
+<input id="edit" type="text">
+<div id="pop"></div>
+<div id="radial"></div>
 <script>
 var DATA = /*__BRIDGE_DATA__*/null;
-var DEFAULTS = {truss:"warren_verticals",panel_mode:"length",panel_length_m:1.92,panels:14,height_m:null,truss_plane:"outside",
-  bottom_chord_offset_m:0,top_chord_split_m:0,bottom_chord_split_m:0,chord_extension_m:null,end_posts:false,
+var DEFAULTS = {truss:"warren",panel_mode:"length",panel_length_m:2.5,panels:9,height_m:null,level_start_m:null,level_end_m:null,
+  truss_plane:"outside",bottom_chord_offset_m:0,top_chord_split_m:0,bottom_chord_split_m:0,chord_extension_m:null,end_posts:false,
   deck_top_offset_m:0,deck_clearance_m:0.01,floor_thickness_m:0.15,plan_bays:null,bracing:"x",split_x:false,
   stiffeners_across:1,stiffener_gap_m:0.1,railing_inset_m:0.1,types:{},level:null};
-var TRUSSES = [["warren","Warren (zigzag diagonals, no verticals)"],["warren_verticals","Warren with verticals"],
-  ["pratt","Pratt (diagonals lean to the centre)"],["howe","Howe (diagonals lean to the ends)"],["x","X braced (both diagonals)"],["vierendeel","Vierendeel (verticals only)"]];
-var BRACINGS = [["x","X in every bay (as the picture)"],["zigzag","zigzag (Warren)"],["none","none"]];
-var PLANES = [["outside","the outside faces of the posts"],["centre","the post centrelines"],["inside","the inside faces of the posts"]];
-var ROLES = [["top_chord","Top chord"],["bottom_chord","Bottom chord"],["end_post","End post"],["vertical","Vertical"],["diagonal","Diagonal"],["crossbeam","Cross beam"],["bracing","Plan bracing"]];
-var NUM = ["panel_length_m","panels","bottom_chord_offset_m","top_chord_split_m","bottom_chord_split_m","deck_top_offset_m","deck_clearance_m","stiffeners_across","stiffener_gap_m","railing_inset_m"];
-var OPT = ["height_m","chord_extension_m","plan_bays"];
-var $ = function(id){return document.getElementById(id);};
+var TRUSSES = [["warren","Warren - top nodes at mid-panel (as the drawing)"],["warren_verticals","Warren with verticals"],
+  ["pratt","Pratt"],["howe","Howe"],["x","X braced"],["vierendeel","Vierendeel"]];
+var PLANES = [["outside","outside faces"],["centre","centrelines"],["inside","inside faces"]];
+var ROLES = {top_chord:"Top chord",bottom_chord:"Bottom chord",end_post:"End post",vertical:"Vertical",diagonal:"Diagonal",crossbeam:"Cross beam",bracing:"Plan bracing",stiffener:"Deck stiffener",railing:"Railing",deck:"Deck",post:"Post"};
+var FRAMING = ["top_chord","bottom_chord","end_post","vertical","diagonal","crossbeam","bracing"];
+var $ = function(id){ return document.getElementById(id); };
+var SHARED = (DATA && DATA.shared_elev_m) || 0;      // internal z + SHARED = survey level
 
 // ---- the frame from the posts (same maths as lib/pymep_bridge.py) ----
-var F = (function(){
-  if (!DATA || !DATA.frame) return {span:20, tL:1.5, tR:-1.5, post_size:0.2, post_height:2.3, z0:0, z1:0, gradient:0};
-  return DATA.frame;
-})();
+var F = (DATA && DATA.frame) ? DATA.frame : {span:22.5, tL:1.5, tR:-1.5, post_size:0.2, post_height:1.8, z0:0, z1:0, gradient:0, origin:[0,0]};
+function effFrame(d){ var f = {}; for (var k in F) f[k] = F[k]; if (d.level_start_m !== null) f.z0 = d.level_start_m - SHARED; if (d.level_end_m !== null) f.z1 = d.level_end_m - SHARED; f.gradient = (f.z1 - f.z0) / f.span; return f; }
 function planes(d){ var h = F.post_size / 2; if (d.truss_plane === "outside") return [F.tL + h, F.tR - h]; if (d.truss_plane === "inside") return [F.tL - h, F.tR + h]; return [F.tL, F.tR]; }
-function heightOf(d){ return d.height_m !== null && d.height_m !== undefined && d.height_m !== "" ? d.height_m : F.post_height; }
-function baseZ(s){ return F.z0 + F.gradient * s; }
+function heightOf(d){ return (d.height_m !== null && d.height_m !== undefined) ? d.height_m : F.post_height; }
 function layout(d){
-  var half = F.post_size / 2, ext = (d.chord_extension_m === null || d.chord_extension_m === "") ? half : d.chord_extension_m;
+  var half = F.post_size / 2, ext = (d.chord_extension_m === null) ? half : d.chord_extension_m;
   var s0 = -ext, s1 = F.span + ext, total = s1 - s0;
   var n = d.panel_mode === "count" ? Math.max(1, d.panels) : Math.max(1, Math.round(total / d.panel_length_m));
   var L = total / n, pts = []; for (var i = 0; i <= n; i++) pts.push(s0 + L * i);
@@ -143,7 +110,6 @@ function pieces(s0, s1, maxLen){ var total = s1 - s0; if (maxLen <= 1e-6 || tota
 function diagonal(truss, i, n, sa, sb){
   if (truss === "vierendeel") return [];
   if (truss === "x") return [[["bottom",sa],["top",sb]],[["top",sa],["bottom",sb]]];
-  if (truss === "warren" || truss === "warren_verticals") return i % 2 === 0 ? [[["bottom",sa],["top",sb]]] : [[["top",sa],["bottom",sb]]];
   var left = (i + 0.5) < n / 2;
   if (truss === "pratt") return left ? [[["top",sa],["bottom",sb]]] : [[["bottom",sa],["top",sb]]];
   return left ? [[["bottom",sa],["top",sb]]] : [[["top",sa],["bottom",sb]]];
@@ -151,170 +117,397 @@ function diagonal(truss, i, n, sa, sb){
 function deckExtent(d){ var lay = layout(d), half = F.post_size / 2, pl = planes(d); var left = Math.min(F.tL - half, pl[0]), right = Math.max(F.tR + half, pl[1]); return {d0:lay.d0, d1:lay.d1, tr:right + d.deck_clearance_m, tl:left - d.deck_clearance_m}; }
 function members(d){
   var lay = layout(d), pl = planes(d), tl = pl[0], tr = pl[1], zb = d.bottom_chord_offset_m, zt = heightOf(d), zd = d.deck_top_offset_m, zu = zd - d.floor_thickness_m;
-  var pts = lay.points, n = lay.n, out = [];
-  function add(role, side, i, p1, p2){ out.push({role:role, side:side, i:i, p1:p1, p2:p2}); }
+  var pts = lay.points, n = lay.n, out = [], warren = d.truss === "warren" || d.truss === "warren_verticals";
+  function add(role, side, i, p1, p2, sub){ out.push({key:role + ":" + side + ":" + i + ":" + (sub || 0), role:role, side:side, i:i, p1:p1, p2:p2}); }
   [["L", tl], ["R", tr]].forEach(function(st){
     var side = st[0], t = st[1];
     pieces(lay.s0, lay.s1, d.top_chord_split_m).forEach(function(ab, k){ add("top_chord", side, k, [ab[0],t,zt], [ab[1],t,zt]); });
     pieces(lay.s0, lay.s1, d.bottom_chord_split_m).forEach(function(ab, k){ add("bottom_chord", side, k, [ab[0],t,zb], [ab[1],t,zb]); });
     if (d.end_posts){ add("end_post", side, 0, [lay.s0,t,zb], [lay.s0,t,zt]); add("end_post", side, 1, [lay.s1,t,zb], [lay.s1,t,zt]); }
-    if (d.truss !== "warren") for (var i = 1; i < n; i++) add("vertical", side, i, [pts[i],t,zb], [pts[i],t,zt]);
-    for (var j = 0; j < n; j++) diagonal(d.truss, j, n, pts[j], pts[j+1]).forEach(function(ab){
-      add("diagonal", side, j, [ab[0][1], t, ab[0][0]==="bottom"?zb:zt], [ab[1][1], t, ab[1][0]==="bottom"?zb:zt]);
-    });
+    if (warren){
+      for (var i = 0; i < n; i++){ var mid = (pts[i] + pts[i+1]) / 2; add("diagonal", side, i, [pts[i],t,zb], [mid,t,zt], 0); add("diagonal", side, i, [mid,t,zt], [pts[i+1],t,zb], 1); }
+      if (d.truss === "warren_verticals"){ for (var i1 = 1; i1 < n; i1++) add("vertical", side, i1, [pts[i1],t,zb], [pts[i1],t,zt], 0); for (var i2 = 0; i2 < n; i2++){ var m2 = (pts[i2] + pts[i2+1]) / 2; add("vertical", side, i2, [m2,t,zb], [m2,t,zt], 1); } }
+    } else {
+      for (var i3 = 1; i3 < n; i3++) add("vertical", side, i3, [pts[i3],t,zb], [pts[i3],t,zt]);
+      for (var j = 0; j < n; j++) diagonal(d.truss, j, n, pts[j], pts[j+1]).forEach(function(ab, sub){ add("diagonal", side, j, [ab[0][1], t, ab[0][0]==="bottom"?zb:zt], [ab[1][1], t, ab[1][0]==="bottom"?zb:zt], sub); });
+    }
   });
   var st = lay.stations;
   st.forEach(function(s, j){ add("crossbeam", "C", j, [s,tl,zu], [s,tr,zu]); });
   for (var j2 = 0; j2 < st.length - 1; j2++){
     var sa = st[j2], sb = st[j2+1];
     if (d.bracing === "x"){
-      if (d.split_x){ var sm = (sa+sb)/2, tm = (tl+tr)/2; add("bracing","C",j2,[sa,tl,zu],[sm,tm,zu]); add("bracing","C",j2,[sm,tm,zu],[sb,tr,zu]); add("bracing","C",j2,[sa,tr,zu],[sm,tm,zu]); add("bracing","C",j2,[sm,tm,zu],[sb,tl,zu]); }
-      else { add("bracing","C",j2,[sa,tl,zu],[sb,tr,zu]); add("bracing","C",j2,[sa,tr,zu],[sb,tl,zu]); }
+      if (d.split_x){ var sm = (sa+sb)/2, tm = (tl+tr)/2; add("bracing","C",j2,[sa,tl,zu],[sm,tm,zu],0); add("bracing","C",j2,[sm,tm,zu],[sb,tr,zu],1); add("bracing","C",j2,[sa,tr,zu],[sm,tm,zu],2); add("bracing","C",j2,[sm,tm,zu],[sb,tl,zu],3); }
+      else { add("bracing","C",j2,[sa,tl,zu],[sb,tr,zu],0); add("bracing","C",j2,[sa,tr,zu],[sb,tl,zu],1); }
     } else if (d.bracing === "zigzag"){ if (j2 % 2 === 0) add("bracing","C",j2,[sa,tl,zu],[sb,tr,zu]); else add("bracing","C",j2,[sa,tr,zu],[sb,tl,zu]); }
   }
   var ex = deckExtent(d), k = Math.max(0, d.stiffeners_across);
   if (k > 0 && d.types.stiffener && d.types.stiffener !== "none") for (var j3 = 0; j3 < st.length - 1; j3++){
     var a = st[j3] + d.stiffener_gap_m, b = st[j3+1] - d.stiffener_gap_m; if (b - a <= 1e-6) continue;
-    for (var m = 0; m < k; m++){ var t2 = ex.tr + (ex.tl - ex.tr) * (m + 1) / (k + 1); add("stiffener", "C", j3, [a,t2,zu], [b,t2,zu]); }
+    for (var m = 0; m < k; m++){ var t2 = ex.tr + (ex.tl - ex.tr) * (m + 1) / (k + 1); add("stiffener", "C", j3, [a,t2,zu], [b,t2,zu], m); }
   }
   if (d.types.railing && d.types.railing !== "none"){ var ins = d.railing_inset_m; add("railing","L",0,[ex.d0,ex.tl-ins,zd],[ex.d1,ex.tl-ins,zd]); add("railing","R",0,[ex.d0,ex.tr+ins,zd],[ex.d1,ex.tr+ins,zd]); }
   return {members:out, layout:lay, planes:pl, deck:ex, zt:zt, zb:zb, zd:zd, zu:zu};
 }
 function len3(m){ var dx=m.p1[0]-m.p2[0], dy=m.p1[1]-m.p2[1], dz=m.p1[2]-m.p2[2]; return Math.sqrt(dx*dx+dy*dy+dz*dz); }
 
-// ---- form state ----
+// ---- state ----
 var design = JSON.parse(JSON.stringify(DEFAULTS));
-function fillSelect(sel, items, value){ sel.innerHTML = ""; items.forEach(function(it){ var o = document.createElement("option"); o.value = it[0]; o.textContent = it[1]; sel.appendChild(o); }); if (value !== undefined && value !== null) sel.value = String(value); }
-function typeItems(list, noneLabel){ var items = (list || []).map(function(t){ return [String(t.id), t.name]; }); if (noneLabel) items.unshift(["none", noneLabel]); return items.length ? items : [["", "(none loaded)"]]; }
-function typeRows(){
-  var box = $("types"); box.innerHTML = "";
-  var items = typeItems(DATA.framing_types);
-  ROLES.forEach(function(r){ var lab = document.createElement("label"); lab.textContent = r[1] + " "; var sel = document.createElement("select"); sel.id = "type_" + r[0]; fillSelect(sel, items, design.types[r[0]]); sel.addEventListener("change", read); lab.appendChild(sel); box.appendChild(lab); });
-}
-function write(){
-  $("name").value = DATA.name || "Bridge 1";
-  fillSelect($("truss"), TRUSSES, design.truss); fillSelect($("bracing"), BRACINGS, design.bracing); fillSelect($("truss_plane"), PLANES, design.truss_plane);
-  $("panel_mode").value = design.panel_mode;
-  NUM.forEach(function(k){ $(k).value = design[k]; });
-  OPT.forEach(function(k){ $(k).value = (design[k] === null || design[k] === undefined) ? "" : design[k]; });
-  $("end_posts").checked = !!design.end_posts; $("split_x").checked = !!design.split_x;
-  fillSelect($("type_floor"), typeItems(DATA.floor_types), design.types.floor);
-  fillSelect($("type_stiffener"), typeItems(DATA.stiffener_types, "(none)"), design.types.stiffener || "none");
-  fillSelect($("type_railing"), typeItems(DATA.railing_types, "(none)"), design.types.railing || "none");
-  var levels = (DATA.levels || []).map(function(l){ return [String(l.id), l.name + "  (" + l.elevation_m.toFixed(3) + " m)"]; });
-  fillSelect($("level"), levels.length ? levels : [["", "(no levels)"]], design.level);
-  typeRows(); render();
-}
+var selected = null;        // member key
+var model = null;           // members(design) of the last render
+function typeList(role){ if (role === "deck") return DATA.floor_types || []; if (role === "stiffener") return DATA.stiffener_types || []; if (role === "railing") return DATA.railing_types || []; return DATA.framing_types || []; }
+function typeKey(role){ return role === "deck" ? "floor" : role; }
+function typeName(role){ var id = design.types[typeKey(role)]; if (!id || id === "none") return role === "stiffener" || role === "railing" ? "(none)" : "(first type)"; var t = typeList(role).filter(function(x){ return String(x.id) === String(id); })[0]; return t ? t.name : "(type " + id + ")"; }
 function floorThickness(){ var t = (DATA.floor_types || []).filter(function(x){ return String(x.id) === String(design.types.floor); })[0]; return t && t.thickness_m ? t.thickness_m : DEFAULTS.floor_thickness_m; }
-function read(){
-  design.truss = $("truss").value; design.bracing = $("bracing").value; design.truss_plane = $("truss_plane").value; design.panel_mode = $("panel_mode").value;
-  NUM.forEach(function(k){ var v = parseFloat($(k).value); if (!isNaN(v)) design[k] = v; });
-  OPT.forEach(function(k){ var raw = $(k).value.trim(); design[k] = raw === "" ? null : parseFloat(raw); if (design[k] !== null && isNaN(design[k])) design[k] = null; });
-  design.panels = Math.max(1, Math.round(design.panels)); design.stiffeners_across = Math.max(0, Math.round(design.stiffeners_across));
-  if (design.plan_bays !== null) design.plan_bays = Math.max(1, Math.round(design.plan_bays));
-  design.end_posts = $("end_posts").checked; design.split_x = $("split_x").checked;
-  design.types = {}; ROLES.forEach(function(r){ var s = $("type_" + r[0]); if (s && s.value) design.types[r[0]] = s.value; });
-  if ($("type_floor").value) design.types.floor = $("type_floor").value;
-  design.types.stiffener = $("type_stiffener").value || "none"; design.types.railing = $("type_railing").value || "none";
-  design.level = $("level").value || null;
-  design.floor_thickness_m = floorThickness();
-  render();
-}
+function setDesign(k, v){ design[k] = v; if (k === "types") design.floor_thickness_m = floorThickness(); render(); }
+function fmt(v, dp){ return (Math.round(v * Math.pow(10, dp)) / Math.pow(10, dp)).toFixed(dp); }
+function mm(v){ return Math.round(v * 1000) + ""; }
 
-// ---- drawing ----
-function svgLine(svg, x1, y1, x2, y2, color, w, dash){ var l = document.createElementNS("http://www.w3.org/2000/svg", "line"); l.setAttribute("x1", x1); l.setAttribute("y1", y1); l.setAttribute("x2", x2); l.setAttribute("y2", y2); l.setAttribute("stroke", color); l.setAttribute("stroke-width", w || 2); l.setAttribute("stroke-linecap", "round"); if (dash) l.setAttribute("stroke-dasharray", dash); svg.appendChild(l); }
-function svgText(svg, x, y, text, anchor, size){ var t = document.createElementNS("http://www.w3.org/2000/svg", "text"); t.setAttribute("x", x); t.setAttribute("y", y); t.setAttribute("font-size", size || 11); t.setAttribute("fill", "#555"); if (anchor) t.setAttribute("text-anchor", anchor); t.textContent = text; svg.appendChild(t); }
-function svgRect(svg, x, y, w, h, fill, stroke){ var r = document.createElementNS("http://www.w3.org/2000/svg", "rect"); r.setAttribute("x", Math.min(x, x + w)); r.setAttribute("y", Math.min(y, y + h)); r.setAttribute("width", Math.abs(w)); r.setAttribute("height", Math.abs(h)); r.setAttribute("fill", fill); if (stroke) r.setAttribute("stroke", stroke); svg.appendChild(r); }
+// ---- svg helpers ----
+var NS = "http://www.w3.org/2000/svg";
+function el(svg, tag, attrs, text){ var e = document.createElementNS(NS, tag); for (var k in attrs) if (attrs[k] !== null && attrs[k] !== undefined) e.setAttribute(k, attrs[k]); if (text !== undefined) e.textContent = text; svg.appendChild(e); return e; }
+function line(svg, x1, y1, x2, y2, color, w, extra){ var a = {x1:x1, y1:y1, x2:x2, y2:y2, stroke:color, "stroke-width":w || 2, "stroke-linecap":"round"}; for (var k in (extra || {})) a[k] = extra[k]; return el(svg, "line", a); }
 function clear(svg){ while (svg.firstChild) svg.removeChild(svg.firstChild); }
+function dimH(svg, x1, x2, y, label, onEdit, title){
+  line(svg, x1, y, x2, y, "#333", 1); line(svg, x1, y - 5, x1, y + 5, "#333", 1); line(svg, x2, y - 5, x2, y + 5, "#333", 1);
+  var t = el(svg, "text", {x:(x1 + x2) / 2, y:y - 4, "text-anchor":"middle", "font-size":12, "class":onEdit ? "dim" : "lbl"}, label);
+  if (title) el(t, "title", {}, title);
+  if (onEdit) t.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(t, onEdit); });
+  return t;
+}
+function dimV(svg, x, y1, y2, label, onEdit, title, right){
+  line(svg, x, y1, x, y2, "#333", 1); line(svg, x - 5, y1, x + 5, y1, "#333", 1); line(svg, x - 5, y2, x + 5, y2, "#333", 1);
+  var t = el(svg, "text", {x:right ? x + 6 : x - 6, y:(y1 + y2) / 2 + 4, "text-anchor":right ? "start" : "end", "font-size":12, "class":onEdit ? "dim" : "lbl"}, label);
+  if (title) el(t, "title", {}, title);
+  if (onEdit) t.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(t, onEdit); });
+  return t;
+}
+function memberLine(svg, m, x1, y1, x2, y2, color, w){
+  var l = line(svg, x1, y1, x2, y2, color, w, {"class":"hit" + (selected === m.key ? " sel" : "")});
+  el(l, "title", {}, ROLES[m.role] + " - " + typeName(m.role) + " - " + fmt(len3(m), 2) + " m  (click for the family)");
+  l.addEventListener("click", function(ev){ ev.stopPropagation(); selected = m.key; var p = pagePoint(ev); memberRing(m.role, p[0], p[1]); render(); });
+  l.addEventListener("contextmenu", function(ev){ ev.preventDefault(); ev.stopPropagation(); selected = m.key; var p = pagePoint(ev); memberRing(m.role, p[0], p[1]); render(); });
+  return l;
+}
+function pagePoint(ev){ return [ev.clientX + window.scrollX, ev.clientY + window.scrollY]; }
 
-function render(){
-  var res, warn = "";
-  try { res = members(design); } catch (e) { $("warn").textContent = "Cannot lay out: " + e; return; }
-  var mems = res.members, lay = res.layout, ex = res.deck;
-  if (lay.L < 0.5) warn += "Panels under 0.5 m - check the panel length. ";
-  if (heightOf(design) < 1.1) warn += "Truss lower than 1.1 m - a pedestrian parapet is usually 1.1 m or more. ";
-  if (design.truss_plane === "inside" && ex.tl - ex.tr < 1.0) warn += "Deck under 1 m wide. ";
-  $("warn").textContent = warn;
-  var steel = 0; mems.forEach(function(m){ if (["stiffener","railing"].indexOf(m.role) < 0) steel += len3(m); });
-  var fall = F.z1 - F.z0, grad = Math.abs(fall) > 1e-6 ? "1:" + Math.round(Math.abs(F.span / fall)) : "level";
-  $("tiles").innerHTML = ["<div><b>" + F.span.toFixed(3) + " m</b>between post pairs</div>",
-    "<div><b>" + (F.tL - F.tR).toFixed(3) + " m</b>post centres apart</div>",
-    "<div><b>" + heightOf(design).toFixed(3) + " m</b>truss height" + (design.height_m === null ? " (posts)" : "") + "</div>",
-    "<div><b>" + lay.n + "</b>panels of " + lay.L.toFixed(3) + " m</div>",
-    "<div><b>" + lay.bays + "</b>plan bays of " + lay.B.toFixed(3) + " m</div>",
-    "<div><b>" + (fall * 1000).toFixed(0) + " mm</b>rise start to end (" + grad + ")</div>",
-    "<div><b>" + (ex.d1 - ex.d0).toFixed(2) + " x " + (ex.tl - ex.tr).toFixed(2) + " m</b>deck, " + (design.floor_thickness_m * 1000).toFixed(0) + " mm thick</div>",
-    "<div><b>" + mems.length + "</b>members, " + steel.toFixed(1) + " m of steel</div>"].join("");
-  // elevation
-  var el = $("elev"); clear(el); var W = 1000, H = 300, pad = 40, zt = res.zt, zb = res.zb;
-  var half = F.post_size / 2;
-  var zmin = Math.min(baseZ(lay.s0), baseZ(lay.s1)) + Math.min(zb, res.zu) - 0.3, zmax = Math.max(baseZ(lay.s0), baseZ(lay.s1)) + Math.max(zt, F.post_height) + 0.3;
-  var sx = (W - 2 * pad) / lay.total, sz = (H - 2 * pad) / (zmax - zmin);
-  var X = function(s){ return pad + (s - lay.s0) * sx; }, Y = function(z){ return H - pad - (z - zmin) * sz; };
-  // posts at s = 0 and s = span, from their base to their top
-  [0, F.span].forEach(function(s){ svgRect(el, X(s - half), Y(baseZ(s) + F.post_height), 2 * half * sx, F.post_height * sz, "var(--post)", null); });
-  // deck slab
-  var poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-  poly.setAttribute("points", [X(ex.d0), Y(baseZ(ex.d0) + res.zd), X(ex.d1), Y(baseZ(ex.d1) + res.zd), X(ex.d1), Y(baseZ(ex.d1) + res.zu), X(ex.d0), Y(baseZ(ex.d0) + res.zu)].join(" "));
-  poly.setAttribute("fill", "var(--deck)"); poly.setAttribute("opacity", "0.85"); el.appendChild(poly);
-  mems.forEach(function(m){
-    if (m.side === "L" && ["top_chord","bottom_chord","vertical","diagonal","end_post"].indexOf(m.role) >= 0){
-      var col = m.role === "diagonal" ? "var(--brace)" : "var(--steel)", w = (m.role === "top_chord" || m.role === "bottom_chord") ? 4 : 2.5;
-      svgLine(el, X(m.p1[0]), Y(baseZ(m.p1[0]) + m.p1[2]), X(m.p2[0]), Y(baseZ(m.p2[0]) + m.p2[2]), col, w);
-    }
-    if (m.role === "crossbeam") svgRect(el, X(m.p1[0]) - 3, Y(baseZ(m.p1[0]) + m.p1[2]), 6, 0.2 * sz, "var(--steel)", null);
+// ---- inline editing of a dimension value ----
+var EDIT = $("edit"), editDone = null;
+function inlineEdit(textEl, spec){
+  // spec: {value, unit:"mm"|"m"|"n"|"level", set:fn(number|null), allowBlank:bool, blankLabel}
+  var r = textEl.getBoundingClientRect();
+  EDIT.style.left = (r.left + window.scrollX - 10) + "px"; EDIT.style.top = (r.top + window.scrollY - 4) + "px";
+  EDIT.style.width = Math.max(92, r.width + 30) + "px";
+  EDIT.value = spec.value === null || spec.value === undefined ? "" : (spec.unit === "mm" ? mm(spec.value) : (spec.unit === "n" ? String(spec.value) : fmt(spec.value, 3)));
+  EDIT.placeholder = spec.blankLabel || "";
+  EDIT.title = spec.unit === "mm" ? "millimetres" : spec.unit === "level" ? "survey level, metres" : spec.unit === "n" ? "count" : "metres";
+  EDIT.style.display = "block"; EDIT.focus(); EDIT.select();
+  editDone = function(commit){
+    EDIT.style.display = "none"; var fn = editDone; editDone = null; if (!commit || !fn) return;
+    var raw = EDIT.value.trim();
+    if (raw === "" && spec.allowBlank){ spec.set(null); return; }
+    var v = parseFloat(raw.replace(",", ".")); if (isNaN(v)) return;
+    if (spec.unit === "mm") v = v / 1000; if (spec.unit === "n") v = Math.max(spec.min === undefined ? 1 : spec.min, Math.round(v));
+    spec.set(v);
+  };
+}
+EDIT.addEventListener("keydown", function(ev){ if (ev.key === "Enter"){ editDone && editDone(true); } else if (ev.key === "Escape"){ editDone && editDone(false); } });
+EDIT.addEventListener("blur", function(){ if (editDone) editDone(true); });
+
+// ---- popover (family and settings) ----
+var POP = $("pop");
+function openPop(x, y, html, wire){
+  POP.innerHTML = html + '<button class="x" title="close">&times;</button>';
+  POP.style.display = "block";
+  var w = POP.offsetWidth, h = POP.offsetHeight;
+  POP.style.left = Math.max(6, Math.min(window.innerWidth - w - 6, x - 20)) + window.scrollX + "px";
+  POP.style.top = Math.max(6, Math.min(window.innerHeight - h - 6, y + 12)) + window.scrollY + "px";
+  POP.querySelector(".x").onclick = closePop;
+  if (wire) wire(POP);
+}
+function closePop(){ POP.style.display = "none"; POP.innerHTML = ""; }
+function esc(s){ return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+function familyPop(role, x, y){
+  var list = typeList(role), key = typeKey(role), cur = design.types[key] || "";
+  var opts = "";
+  if (role === "stiffener" || role === "railing") opts += '<option value="none"' + (cur === "none" || !cur ? " selected" : "") + '>(none)</option>';
+  if (!list.length) opts += '<option value="">(no types of this kind are loaded in the model)</option>';
+  list.forEach(function(t){ opts += '<option value="' + esc(t.id) + '"' + (String(t.id) === String(cur) ? " selected" : "") + '>' + esc(t.name) + '</option>'; });
+  var extra = "";
+  if (role === "top_chord" || role === "bottom_chord") extra = '<label>Pieces no longer than <span style="color:#666">m, 0 = one</span> <input type="number" step="0.5" min="0" id="pp_split" value="' + design[role + "_split_m"] + '"></label>';
+  if (role === "deck") extra = '<label>Revit level <select id="pp_level">' + (DATA.levels || []).map(function(l){ return '<option value="' + esc(l.id) + '"' + (String(l.id) === String(design.level) ? " selected" : "") + '>' + esc(l.name) + ' (' + l.elevation_m.toFixed(3) + ' m)</option>'; }).join("") + '</select></label>';
+  openPop(x, y, '<h3>' + ROLES[role] + ' family</h3><label>Type <select id="pp_type">' + opts + '</select></label>' + extra +
+    (role === "deck" ? '<div class="hint" style="padding:4px 0 0 0">Thickness comes from the floor type.</div>' : ""), function(p){
+    var sel = p.querySelector("#pp_type"); sel.focus();
+    sel.onchange = function(){ var t = JSON.parse(JSON.stringify(design.types)); if (sel.value) t[key] = sel.value; else delete t[key]; setDesign("types", t); };
+    var sp = p.querySelector("#pp_split"); if (sp) sp.oninput = function(){ var v = parseFloat(sp.value); if (!isNaN(v) && v >= 0) setDesign(role + "_split_m", v); };
+    var lv = p.querySelector("#pp_level"); if (lv) lv.onchange = function(){ setDesign("level", lv.value || null); };
   });
-  // chord piece marks
-  mems.forEach(function(m){ if ((m.role === "top_chord" || m.role === "bottom_chord") && m.side === "L" && m.i > 0) svgLine(el, X(m.p1[0]), Y(baseZ(m.p1[0]) + m.p1[2]) - 7, X(m.p1[0]), Y(baseZ(m.p1[0]) + m.p1[2]) + 7, "#b00020", 1.5); });
-  svgText(el, X(0), Y(zmax) - 6, "start posts  base " + F.z0.toFixed(3) + " m", "middle"); svgText(el, X(F.span), Y(zmax) - 6, "end posts  base " + F.z1.toFixed(3) + " m", "middle");
-  svgText(el, W / 2, H - 10, "vertical scale x" + (sz / sx).toFixed(1) + (design.top_chord_split_m || design.bottom_chord_split_m ? "   |   red ticks = chord splices" : ""), "middle");
-  // plan from below
-  var pl = $("plan"); clear(pl); var PW = 1000, PH = 260, ppad = 40, hw = Math.max(F.tL + half, Math.abs(F.tR - half), res.planes[0]);
-  var psx = (PW - 2 * ppad) / (lay.s1 - lay.s0 + 0.001), psy = (PH - 2 * ppad) / (2 * hw);
-  var PX = function(s){ return ppad + (s - lay.s0) * psx; }, PY = function(t){ return PH / 2 - t * psy; };
-  svgRect(pl, PX(ex.d0), PY(ex.tl), (ex.d1 - ex.d0) * psx, (ex.tl - ex.tr) * psy, "var(--deck)", null);
-  [[0, F.tL], [0, F.tR], [F.span, F.tL], [F.span, F.tR]].forEach(function(p){ svgRect(pl, PX(p[0] - half), PY(p[1] + half), 2 * half * psx, 2 * half * psy, "var(--post)", null); });
-  mems.forEach(function(m){
-    var c = null, w = 2, dash = null;
-    if (m.role === "bottom_chord") { c = "var(--steel)"; w = 4; } else if (m.role === "crossbeam") { c = "var(--steel)"; w = 2.5; }
-    else if (m.role === "bracing") { c = "var(--brace)"; } else if (m.role === "stiffener") { c = "var(--stiff)"; w = 2; dash = "6 4"; } else if (m.role === "railing") { c = "var(--rail)"; w = 1.5; }
-    if (c) svgLine(pl, PX(m.p1[0]), PY(m.p1[1]), PX(m.p2[0]), PY(m.p2[1]), c, w, dash);
+}
+function settingsPop(x, y){
+  openPop(x, y, '<h3>Settings</h3>' +
+    '<label>Panels by <select id="sp_mode"><option value="length"' + (design.panel_mode === "length" ? " selected" : "") + '>target length</option><option value="count"' + (design.panel_mode === "count" ? " selected" : "") + '>count</option></select></label>' +
+    '<label>Plan bays <span style="color:#666">blank = panels</span> <input type="number" min="1" step="1" id="sp_bays" value="' + (design.plan_bays === null ? "" : design.plan_bays) + '" placeholder="panels"></label>' +
+    '<label>Revit level <select id="sp_level">' + (DATA.levels || []).map(function(l){ return '<option value="' + esc(l.id) + '"' + (String(l.id) === String(design.level) ? " selected" : "") + '>' + esc(l.name) + ' (' + l.elevation_m.toFixed(3) + ' m)</option>'; }).join("") + '</select></label>' +
+    '<label class="check"><span>End posts (the picked posts usually are them)</span><input type="checkbox" id="sp_posts"' + (design.end_posts ? " checked" : "") + '></label>' +
+    '<label class="check"><span>Split each X at the crossing</span><input type="checkbox" id="sp_splitx"' + (design.split_x ? " checked" : "") + '></label>' +
+    '<label>Stiffeners per bay <input type="number" min="0" step="1" id="sp_stiff" value="' + design.stiffeners_across + '"></label>' +
+    '<label>Stiffener end gap <span style="color:#666">mm</span> <input type="number" step="10" id="sp_gap" value="' + mm(design.stiffener_gap_m) + '"></label>' +
+    '<label>Railing inset <span style="color:#666">mm</span> <input type="number" step="10" id="sp_ins" value="' + mm(design.railing_inset_m) + '"></label>', function(p){
+    p.querySelector("#sp_mode").onchange = function(ev){ setDesign("panel_mode", ev.target.value); };
+    p.querySelector("#sp_bays").oninput = function(ev){ var v = ev.target.value.trim(); setDesign("plan_bays", v === "" ? null : Math.max(1, Math.round(parseFloat(v)) || 1)); };
+    p.querySelector("#sp_level").onchange = function(ev){ setDesign("level", ev.target.value || null); };
+    p.querySelector("#sp_posts").onchange = function(ev){ setDesign("end_posts", ev.target.checked); };
+    p.querySelector("#sp_splitx").onchange = function(ev){ setDesign("split_x", ev.target.checked); };
+    p.querySelector("#sp_stiff").oninput = function(ev){ var v = parseInt(ev.target.value, 10); if (!isNaN(v)) setDesign("stiffeners_across", Math.max(0, v)); };
+    p.querySelector("#sp_gap").oninput = function(ev){ var v = parseFloat(ev.target.value); if (!isNaN(v)) setDesign("stiffener_gap_m", v / 1000); };
+    p.querySelector("#sp_ins").oninput = function(ev){ var v = parseFloat(ev.target.value); if (!isNaN(v)) setDesign("railing_inset_m", v / 1000); };
   });
-  svgText(pl, PX(lay.s0), PY(hw) - 8, "left", "start"); svgText(pl, PX(lay.s0), PY(-hw) + 16, "right", "start");
-  svgText(pl, PW / 2, PH - 8, "true plan scale - " + mems.filter(function(m){return m.role==="crossbeam";}).length + " cross beams, " + mems.filter(function(m){return m.role==="stiffener";}).length + " stiffeners", "middle");
-  // cross section
-  var se = $("sect"); clear(se); var SW = 600, SH = 340, spad = 50;
-  var ztop = Math.max(zt, F.post_height) + 0.3, zbot = Math.min(zb, res.zu) - 0.4;
-  var ssx = (SW - 2 * spad) / (2 * hw + 0.8), ssy = (SH - 2 * spad) / (ztop - zbot), ss = Math.min(ssx, ssy);
-  var SX = function(t){ return SW / 2 - t * ss; }, SY = function(z){ return SH - spad - (z - zbot) * ss; };
-  [F.tL, F.tR].forEach(function(t){ svgRect(se, SX(t + half), SY(F.post_height), 2 * half * ss, F.post_height * ss, "var(--post)", null); });
-  svgRect(se, SX(ex.tl), SY(res.zd), (ex.tl - ex.tr) * ss, design.floor_thickness_m * ss, "var(--deck)", "#a08a60");
-  var cbd = 0.2; svgRect(se, SX(res.planes[0]), SY(res.zu), (res.planes[0] - res.planes[1]) * ss, cbd * ss, "var(--steel)", null);
-  mems.filter(function(m){ return m.role === "stiffener" && m.i === 0; }).forEach(function(m){ svgRect(se, SX(m.p1[1]) - 3, SY(res.zu), 6, 0.12 * ss, "var(--stiff)", null); });
-  res.planes.forEach(function(t){ svgLine(se, SX(t), SY(zb), SX(t), SY(zt), "var(--steel)", 5); var r = 7; svgRect(se, SX(t) - r, SY(zt) - r, 2 * r, 2 * r, "var(--steel)", null); svgRect(se, SX(t) - r, SY(zb) - r, 2 * r, 2 * r, "var(--steel)", null); });
-  mems.filter(function(m){ return m.role === "railing"; }).forEach(function(m){ svgLine(se, SX(m.p1[1]), SY(res.zd), SX(m.p1[1]), SY(res.zd + 1.1), "var(--rail)", 3); });
-  svgText(se, SW / 2, SY(res.zd) - 8, "deck top " + (res.zd >= 0 ? "+" : "") + res.zd.toFixed(2) + " m vs post base, " + (design.floor_thickness_m * 1000).toFixed(0) + " mm", "middle");
-  svgText(se, SX(res.planes[0]) - 12, SY(zt) + 4, "top chord " + zt.toFixed(2), "end"); svgText(se, SX(res.planes[0]) - 12, SY(zb) + 4, "bottom chord " + zb.toFixed(2), "end");
-  svgText(se, SX(res.planes[1]) + 12, SY(res.zu) + 12, "cross beam top at " + res.zu.toFixed(2), "start");
-  svgText(se, SW / 2, SH - 12, "truss planes " + res.planes[0].toFixed(2) + " / " + res.planes[1].toFixed(2) + " m (" + design.truss_plane + " of the posts); deck " + (ex.tl - ex.tr).toFixed(2) + " m", "middle");
-  // roles table
-  var rows = "<tr><th>Role</th><th>Count</th><th>Length (m)</th><th>Type</th></tr>";
-  var nameOf = function(list, id){ var t = (list || []).filter(function(x){ return String(x.id) === String(id); })[0]; return t ? t.name : (id === "none" ? "(none)" : "(first type)"); };
-  ROLES.concat([["stiffener","Deck stiffener"],["railing","Railing"]]).forEach(function(r){
-    var ms = mems.filter(function(m){ return m.role === r[0]; }); if (!ms.length) return;
-    var L = 0; ms.forEach(function(m){ L += len3(m); });
-    var list = r[0] === "stiffener" ? DATA.stiffener_types : (r[0] === "railing" ? DATA.railing_types : DATA.framing_types);
-    rows += "<tr><td>" + r[1] + "</td><td class='n'>" + ms.length + "</td><td class='n'>" + L.toFixed(2) + "</td><td>" + nameOf(list, design.types[r[0]]) + "</td></tr>";
-  });
-  $("roles").innerHTML = rows;
-  $("row_panel_length").style.display = design.panel_mode === "length" ? "" : "none";
-  $("row_panels").style.display = design.panel_mode === "count" ? "" : "none";
 }
 
-// ---- save / load ----
+// ---- the radial ring (as DataCentreForge: right-click anything for a ring of what you can do to it) ----
+var RADIAL = $("radial");
+function openRadial(x, y, hub, items){
+  var R = items.length > 6 ? 84 : items.length > 4 ? 72 : 62;
+  RADIAL.style.left = x + "px"; RADIAL.style.top = y + "px";
+  RADIAL.innerHTML = '<div class="ring" style="left:' + (-R) + 'px;top:' + (-R) + 'px;width:' + (2 * R) + 'px;height:' + (2 * R) + 'px"></div>' +
+    items.map(function(it, i){ var a = -Math.PI / 2 + i * 2 * Math.PI / items.length; return '<button class="ritem" data-ri="' + i + '" style="left:' + (R * Math.cos(a)).toFixed(1) + 'px;top:' + (R * Math.sin(a)).toFixed(1) + 'px">' + esc(it.label) + '</button>'; }).join("") +
+    '<div class="rhub" title="click to close">' + esc(hub) + '</div>';
+  RADIAL.style.display = "block";
+  RADIAL.querySelectorAll("[data-ri]").forEach(function(b){ b.onclick = function(ev){ ev.stopPropagation(); var it = items[+b.dataset.ri]; closeRadial(); it.run(ev); }; });
+  RADIAL.querySelector(".rhub").onclick = function(ev){ ev.stopPropagation(); closeRadial(); };
+}
+function closeRadial(){ RADIAL.style.display = "none"; RADIAL.innerHTML = ""; }
+function memberRing(role, x, y){
+  closePop();
+  var items = [{label:"Family...", run:function(){ familyPop(role, x, y); }}];
+  if (role === "top_chord" || role === "bottom_chord") items.push({label:"Pieces...", run:function(){ familyPop(role, x, y); }});
+  if (role === "top_chord" || role === "bottom_chord" || role === "diagonal" || role === "vertical"){
+    PLANES.forEach(function(p){ if (p[0] !== design.truss_plane) items.push({label:"Planes on " + p[1], run:function(){ setDesign("truss_plane", p[0]); }}); });
+  }
+  if (role === "diagonal" || role === "vertical") items.push({label:"Truss type...", run:function(){ $("truss").focus(); }});
+  if (role === "bracing" || role === "crossbeam"){
+    [["x","X bracing"],["zigzag","Zigzag bracing"],["none","No bracing"]].forEach(function(b){ if (b[0] !== design.bracing) items.push({label:b[1], run:function(){ setDesign("bracing", b[0]); }}); });
+    items.push({label:design.split_x ? "Whole X pieces" : "Split X at crossing", run:function(){ setDesign("split_x", !design.split_x); }});
+  }
+  if (role === "stiffener") items.push({label:"One fewer", run:function(){ setDesign("stiffeners_across", Math.max(0, design.stiffeners_across - 1)); }}, {label:"One more", run:function(){ setDesign("stiffeners_across", design.stiffeners_across + 1); }});
+  if (role === "railing") items.push({label:"No railing", run:function(){ var t = JSON.parse(JSON.stringify(design.types)); t.railing = "none"; setDesign("types", t); }});
+  if (role === "deck") items.push({label:"Revit level...", run:function(){ familyPop("deck", x, y); }});
+  openRadial(x, y, ROLES[role] + " - " + typeName(role), items);
+}
+document.addEventListener("pointerdown", function(ev){
+  if (RADIAL.style.display === "block" && !RADIAL.contains(ev.target)) closeRadial();
+  if (POP.style.display === "block" && !POP.contains(ev.target) && ev.target !== EDIT) closePop();
+});
+document.addEventListener("keydown", function(ev){ if (ev.key === "Escape"){ closeRadial(); closePop(); } });
+
+// ---- the drawings ----
+function render(){
+  var res; try { res = members(design); } catch (e) { $("status").textContent = "Cannot lay out: " + e; return; }
+  model = res;
+  var ef = effFrame(design), mems = res.members, lay = res.layout, ex = res.deck, half = F.post_size / 2;
+  var baseZ = function(s){ return ef.z0 + ef.gradient * s; };
+  var warn = [];
+  if (lay.L < 0.5) warn.push("panels under 0.5 m"); if (heightOf(design) < 1.1) warn.push("truss under 1.1 m"); if (ex.tl - ex.tr < 1.0) warn.push("deck under 1 m wide");
+  var steel = 0; mems.forEach(function(m){ if (FRAMING.indexOf(m.role) >= 0) steel += len3(m); });
+  var fall = ef.z1 - ef.z0, grad = Math.abs(fall) > 1e-6 ? "1:" + Math.round(Math.abs(F.span / fall)) : "level";
+  $("tiles").innerHTML = ["<div><b>" + fmt(F.span, 3) + " m</b>between post pairs</div>", "<div><b>" + lay.n + "</b>panels of " + fmt(lay.L, 3) + " m</div>",
+    "<div><b>" + fmt(heightOf(design), 2) + " m</b>high" + (design.height_m === null ? " (posts)" : "") + "</div>", "<div><b>" + lay.bays + "</b>plan bays</div>",
+    "<div><b>" + Math.round(fall * 1000) + " mm</b>rise (" + grad + ")</div>", "<div><b>" + fmt(ex.d1 - ex.d0, 2) + " x " + fmt(ex.tl - ex.tr, 2) + " m</b>deck</div>",
+    "<div><b>" + mems.length + "</b>members, " + fmt(steel, 1) + " m steel</div>"].join("") + (warn.length ? '<div class="warn">' + warn.join("; ") + '</div>' : "");
+
+  // ---- elevation
+  var sv = $("elev"); clear(sv); var W = 1000, H = 300, padL = 100, padR = 90, padT = 48, padB = 52, zt = res.zt, zb = res.zb;
+  var zmin = Math.min(baseZ(lay.s0), baseZ(lay.s1)) + Math.min(zb, res.zu) - 0.2, zmax = Math.max(baseZ(lay.s0), baseZ(lay.s1)) + Math.max(zt, F.post_height) + 0.2;
+  var sx = (W - padL - padR) / lay.total, sz = (H - padT - padB) / (zmax - zmin);
+  var X = function(s){ return padL + (s - lay.s0) * sx; }, Y = function(z){ return H - padB - (z - zmin) * sz; };
+  // posts
+  [[0, "start", "level_start_m", ef.z0], [F.span, "end", "level_end_m", ef.z1]].forEach(function(p){
+    var g = el(sv, "rect", {x:X(p[0] - half), y:Y(baseZ(p[0]) + F.post_height), width:Math.max(3, 2 * half * sx), height:F.post_height * sz, fill:"var(--post)", "class":"hit"});
+    el(g, "title", {}, p[1] + " posts - click the edge for the level");
+    g.addEventListener("click", function(ev){ ev.stopPropagation(); var p2 = pagePoint(ev); levelRing(p[2], p[1], p2[0], p2[1]); });
+    // the end edge: a hit line at the post with the level label
+    var yl = Y(baseZ(p[0])), txt = fmt(p[3] + SHARED, 3) + (design[p[2]] === null ? "" : " *");
+    var t = el(sv, "text", {x:X(p[0]) + (p[0] === 0 ? -8 : 8), y:yl + 16, "text-anchor":p[0] === 0 ? "end" : "start", "font-size":12, "class":"dim"}, txt);
+    el(t, "title", {}, "deck datum at the " + p[1] + " as a survey level (m). " + (design[p[2]] === null ? "From the post base - click to type a level." : "Typed - clear it to go back to the post base."));
+    t.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(t, {value:p[3] + SHARED, unit:"level", allowBlank:true, blankLabel:"posts", set:function(v){ setDesign(p[2], v); }}); });
+    line(sv, X(p[0]), yl - 6, X(p[0]), yl + 6, "#0b57d0", 2);
+  });
+  // deck
+  var poly = el(sv, "polygon", {points:[X(ex.d0), Y(baseZ(ex.d0) + res.zd), X(ex.d1), Y(baseZ(ex.d1) + res.zd), X(ex.d1), Y(baseZ(ex.d1) + res.zu), X(ex.d0), Y(baseZ(ex.d0) + res.zu)].join(" "), fill:"var(--deck)", opacity:.85, "class":"hit"});
+  el(poly, "title", {}, "Deck - " + typeName("deck") + " (click for the floor type)");
+  poly.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("deck", p[0], p[1]); });
+  mems.forEach(function(m){
+    if (m.side === "L" && ["top_chord","bottom_chord","vertical","diagonal","end_post"].indexOf(m.role) >= 0)
+      memberLine(sv, m, X(m.p1[0]), Y(baseZ(m.p1[0]) + m.p1[2]), X(m.p2[0]), Y(baseZ(m.p2[0]) + m.p2[2]), m.role === "diagonal" ? "var(--brace)" : "var(--steel)", (m.role === "top_chord" || m.role === "bottom_chord") ? 4 : 2.5);
+    if (m.role === "crossbeam") el(sv, "rect", {x:X(m.p1[0]) - 3, y:Y(baseZ(m.p1[0]) + m.p1[2]), width:6, height:Math.max(3, 0.15 * sz), fill:"var(--steel)"});
+    if ((m.role === "top_chord" || m.role === "bottom_chord") && m.side === "L" && m.i > 0) line(sv, X(m.p1[0]), Y(baseZ(m.p1[0]) + m.p1[2]) - 7, X(m.p1[0]), Y(baseZ(m.p1[0]) + m.p1[2]) + 7, "#b00020", 1.5);
+  });
+  // dimensions: span (read only), panel, half panel, height, deck top, bottom chord, extension, splits
+  var yd = padT - 30;
+  dimH(sv, X(0), X(F.span), yd, mm(F.span) + "  (posts)", null, "distance between the post pairs - fixed by the posts");
+  var yp = padT - 12;
+  if (lay.n > 1 || true){
+    var p0 = lay.points[0], p1 = lay.points[1];
+    if (design.truss === "warren" || design.truss === "warren_verticals") dimH(sv, X(p0), X((p0 + p1) / 2), yp, mm(lay.L / 2), null, "half panel - the first top node");
+    dimH(sv, X(p1), X(Math.min(lay.points[2] !== undefined ? lay.points[2] : p1, lay.s1)), yp, mm(lay.L), {value:lay.L, unit:"mm", set:function(v){ setDesign("panel_mode", "length"); setDesign("panel_length_m", v); }}, "panel length - click to change (the count follows)");
+  }
+  dimV(sv, padL - 36, Y(baseZ(lay.s0) + zt), Y(baseZ(lay.s0) + zb), mm(zt - zb), {value:zt - zb, unit:"mm", set:function(v){ setDesign("height_m", v + zb); }}, "truss height, chord centres - click to change");
+  var xe = X(lay.s1) + 14;
+  dimV(sv, xe + 44, Y(baseZ(lay.s1) + Math.max(res.zd, 0)), Y(baseZ(lay.s1) + Math.min(res.zd, 0)), (res.zd >= 0 ? "+" : "") + mm(res.zd), {value:res.zd, unit:"mm", set:function(v){ setDesign("deck_top_offset_m", v); }}, "deck top above the post base - click to change");
+  var tb = el(sv, "text", {x:X(lay.s0) + 6, y:Y(baseZ(lay.s0) + Math.min(zb, res.zu)) + 16, "font-size":12, "class":"dim"}, "bottom chord " + (zb >= 0 ? "+" : "") + mm(zb));
+  tb.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(tb, {value:zb, unit:"mm", set:function(v){ setDesign("bottom_chord_offset_m", v); }}); });
+  var te = el(sv, "text", {x:X(lay.s0), y:Y(baseZ(lay.s0) + zt) - 8, "font-size":12, "class":"dim", "text-anchor":"start"}, "ext " + mm(-lay.s0) + (design.chord_extension_m === null ? " (face)" : ""));
+  te.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(te, {value:-lay.s0, unit:"mm", allowBlank:true, blankLabel:"face", set:function(v){ setDesign("chord_extension_m", v); }}); });
+  var splitT = el(sv, "text", {x:W / 2, y:H - 8, "text-anchor":"middle", "font-size":11, "class":"dim"}, "top chord pieces: " + (design.top_chord_split_m ? "max " + mm(design.top_chord_split_m) : "one") + "   |   bottom chord pieces: " + (design.bottom_chord_split_m ? "max " + mm(design.bottom_chord_split_m) : "one") + "   |   vertical scale x" + fmt(sz / sx, 1));
+  splitT.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); openRadial(p[0], p[1], "chord pieces", [{label:"Top chord...", run:function(){ familyPop("top_chord", p[0], p[1]); }}, {label:"Bottom chord...", run:function(){ familyPop("bottom_chord", p[0], p[1]); }}]); });
+
+  // ---- plan from below
+  var pl = $("plan"); clear(pl); var PW = 1000, PH = 250, pp = 56, hw = Math.max(F.tL + half, Math.abs(F.tR - half), res.planes[0]) + 0.1;
+  var psx = (PW - 2 * pp) / lay.total, psy = (PH - 2 * pp) / (2 * hw), PX = function(s){ return pp + (s - lay.s0) * psx; }, PY = function(t){ return PH / 2 - t * psy; };
+  var dk = el(pl, "rect", {x:PX(ex.d0), y:PY(ex.tl), width:(ex.d1 - ex.d0) * psx, height:(ex.tl - ex.tr) * psy, fill:"var(--deck)", "class":"hit"});
+  el(dk, "title", {}, "Deck - " + typeName("deck")); dk.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("deck", p[0], p[1]); });
+  [[0, F.tL], [0, F.tR], [F.span, F.tL], [F.span, F.tR]].forEach(function(p){ el(pl, "rect", {x:PX(p[0] - half), y:PY(p[1] + half), width:Math.max(3, 2 * half * psx), height:Math.max(3, 2 * half * psy), fill:"var(--post)"}); });
+  mems.forEach(function(m){
+    var c = null, w = 2;
+    if (m.role === "bottom_chord") { c = "var(--steel)"; w = 4; } else if (m.role === "crossbeam") { c = "var(--steel)"; w = 2.5; }
+    else if (m.role === "bracing") c = "var(--brace)"; else if (m.role === "stiffener") c = "var(--stiff)"; else if (m.role === "railing") { c = "var(--rail)"; w = 1.5; }
+    if (c){ var l = memberLine(pl, m, PX(m.p1[0]), PY(m.p1[1]), PX(m.p2[0]), PY(m.p2[1]), c, w); if (m.role === "stiffener") l.setAttribute("stroke-dasharray", "6 4"); }
+  });
+  if (lay.stations.length > 1) dimH(pl, PX(lay.stations[0]), PX(lay.stations[1]), pp - 14, mm(lay.B) + "  (" + lay.bays + " bays)", {value:lay.bays, unit:"n", min:1, set:function(v){ setDesign("plan_bays", v); }}, "plan bays - click to type the number of bays (blank in Settings follows the panels)");
+  dimV(pl, pp - 12, PY(ex.tl), PY(ex.tr), mm(ex.tl - ex.tr), null, "deck width - set by the posts and the clearance");
+  var cl = el(pl, "text", {x:PX(ex.d0) + 6, y:PY(ex.tl) + 14, "font-size":11, "class":"dim"}, "clearance " + mm(design.deck_clearance_m));
+  cl.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(cl, {value:design.deck_clearance_m, unit:"mm", set:function(v){ setDesign("deck_clearance_m", Math.max(0, v)); }}); });
+  el(pl, "text", {x:PW / 2, y:PH - 6, "text-anchor":"middle", "font-size":11, "class":"lbl"}, mems.filter(function(m){ return m.role === "crossbeam"; }).length + " cross beams - " + design.bracing + " bracing - " + mems.filter(function(m){ return m.role === "stiffener"; }).length + " stiffeners - railing " + typeName("railing"));
+
+  // ---- section
+  var se = $("sect"); clear(se); var SW = 600, SH = 300, sp = 56;
+  var ztop = Math.max(zt, F.post_height) + 0.25, zbot = Math.min(zb, res.zu) - 0.3;
+  var ss = Math.min((SW - 2 * sp) / (2 * hw + 0.6), (SH - 2 * sp) / (ztop - zbot));
+  var SX = function(t){ return SW / 2 - t * ss; }, SY = function(z){ return SH - sp - (z - zbot) * ss; };
+  [F.tL, F.tR].forEach(function(t){ var g = el(se, "rect", {x:SX(t + half), y:SY(F.post_height), width:Math.max(3, 2 * half * ss), height:F.post_height * ss, fill:"var(--post)", "class":"hit"}); el(g, "title", {}, "post - click to choose which face the truss planes use"); g.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); openRadial(p[0], p[1], "truss planes", PLANES.map(function(q){ return {label:"on the " + q[1], run:function(){ setDesign("truss_plane", q[0]); }}; })); }); });
+  var dks = el(se, "rect", {x:SX(ex.tl), y:SY(res.zd), width:(ex.tl - ex.tr) * ss, height:Math.max(2, design.floor_thickness_m * ss), fill:"var(--deck)", stroke:"#a08a60", "class":"hit"});
+  el(dks, "title", {}, "Deck - " + typeName("deck") + " - " + mm(design.floor_thickness_m) + " mm"); dks.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("deck", p[0], p[1]); });
+  var cbm = mems.filter(function(m){ return m.role === "crossbeam"; })[0];
+  if (cbm){ var cbr = el(se, "rect", {x:SX(res.planes[0]), y:SY(res.zu), width:(res.planes[0] - res.planes[1]) * ss, height:0.18 * ss, fill:"var(--steel)", "class":"hit"}); el(cbr, "title", {}, "Cross beam - " + typeName("crossbeam") + " - top on the floor underside"); cbr.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("crossbeam", p[0], p[1]); }); }
+  mems.filter(function(m){ return m.role === "stiffener" && m.i === 0; }).forEach(function(m){ var r = el(se, "rect", {x:SX(m.p1[1]) - 3, y:SY(res.zu), width:6, height:0.1 * ss, fill:"var(--stiff)", "class":"hit"}); el(r, "title", {}, "Deck stiffener - " + typeName("stiffener")); r.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("stiffener", p[0], p[1]); }); });
+  res.planes.forEach(function(t, i){
+    var side = i === 0 ? "L" : "R";
+    var vl = mems.filter(function(m){ return m.role === "vertical" && m.side === side; })[0] || mems.filter(function(m){ return m.role === "diagonal" && m.side === side; })[0];
+    if (vl) memberLine(se, vl, SX(t), SY(zb), SX(t), SY(zt), "var(--steel)", 4);
+    var tc = mems.filter(function(m){ return m.role === "top_chord" && m.side === side; })[0], bc = mems.filter(function(m){ return m.role === "bottom_chord" && m.side === side; })[0];
+    if (tc){ var r1 = el(se, "rect", {x:SX(t) - 8, y:SY(zt) - 8, width:16, height:16, fill:"var(--steel)", "class":"hit" + (selected === tc.key ? " sel" : ""), stroke:selected === tc.key ? "var(--sel)" : "none", "stroke-width":2}); el(r1, "title", {}, "Top chord - " + typeName("top_chord")); r1.addEventListener("click", function(ev){ ev.stopPropagation(); selected = tc.key; var p = pagePoint(ev); memberRing("top_chord", p[0], p[1]); render(); }); }
+    if (bc){ var r2 = el(se, "rect", {x:SX(t) - 8, y:SY(zb) - 8, width:16, height:16, fill:"var(--steel)", "class":"hit", stroke:selected === bc.key ? "var(--sel)" : "none", "stroke-width":2}); el(r2, "title", {}, "Bottom chord - " + typeName("bottom_chord")); r2.addEventListener("click", function(ev){ ev.stopPropagation(); selected = bc.key; var p = pagePoint(ev); memberRing("bottom_chord", p[0], p[1]); render(); }); }
+  });
+  mems.filter(function(m){ return m.role === "railing"; }).forEach(function(m){ var rl = line(se, SX(m.p1[1]), SY(res.zd), SX(m.p1[1]), SY(res.zd + 1.1), "var(--rail)", 3, {"class":"hit"}); el(rl, "title", {}, "Railing - " + typeName("railing")); rl.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("railing", p[0], p[1]); }); });
+  dimV(se, SX(res.planes[0]) + 26, SY(zt), SY(zb), mm(zt - zb), {value:zt - zb, unit:"mm", set:function(v){ setDesign("height_m", v + zb); }}, "truss height - click to change", true);
+  dimH(se, SX(res.planes[0]), SX(res.planes[1]), SY(zt) - 18, mm(res.planes[0] - res.planes[1]) + " (" + design.truss_plane + ")", null, "truss plane spacing - click a post to change the face");
+  dimH(se, SX(ex.tl), SX(ex.tr), SY(res.zd) + 34 + Math.max(2, design.floor_thickness_m * ss), mm(ex.tl - ex.tr) + "  deck", null, "deck width");
+  var rt = el(se, "text", {x:SW - 8, y:SH - 8, "text-anchor":"end", "font-size":11, "class":"dim"}, "railing inset " + mm(design.railing_inset_m));
+  rt.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(rt, {value:design.railing_inset_m, unit:"mm", set:function(v){ setDesign("railing_inset_m", Math.max(0, v)); }}); });
+  el(se, "text", {x:8, y:SH - 8, "font-size":11, "class":"lbl"}, "floor " + mm(design.floor_thickness_m) + " mm - cross beam top at " + (res.zu >= 0 ? "+" : "") + mm(res.zu));
+  draw3d();
+}
+function levelRing(key, which, x, y){
+  openRadial(x, y, which + " level", [
+    {label:"Type level...", run:function(){ var ef = effFrame(design); inlineEditAt(x, y, {value:(key === "level_start_m" ? ef.z0 : ef.z1) + SHARED, unit:"level", allowBlank:true, blankLabel:"posts", set:function(v){ setDesign(key, v); }}); }},
+    {label:"Use post base", run:function(){ setDesign(key, null); }},
+    {label:"Truss height...", run:function(){ inlineEditAt(x, y, {value:heightOf(design), unit:"mm", set:function(v){ setDesign("height_m", v); }}); }}
+  ]);
+}
+function inlineEditAt(x, y, spec){ var fake = {getBoundingClientRect:function(){ return {left:x - window.scrollX, top:y - window.scrollY, width:80}; }}; inlineEdit(fake, spec); }
+
+// ---- 3D (an azimuth / elevation camera into SVG, as the DataCentreForge window) ----
+var V3 = $("v3"), cam = {az:-35, el:25, s:1, px:0, py:0, cx:0, cy:0, cz:0}, prims = [], drag3 = null;
+function v3Rect(){ var r = V3.getBoundingClientRect(); return {width:Math.max(10, r.width), height:Math.max(10, r.height)}; }
+function proj(p){
+  var r = v3Rect(), a = cam.az * Math.PI / 180, e = cam.el * Math.PI / 180;
+  var x = p[0] - cam.cx, y = p[1] - cam.cy, z = p[2] - cam.cz;
+  var X = x * Math.cos(a) + y * Math.sin(a), U = -x * Math.sin(a) + y * Math.cos(a);
+  var up = z * Math.cos(e) + U * Math.sin(e), near = z * Math.sin(e) - U * Math.cos(e);
+  return [r.width / 2 + cam.px + X * cam.s, r.height / 2 + cam.py - up * cam.s, near];
+}
+function world3(m){ var ef = effFrame(design); return [[m.p1[0], m.p1[1], ef.z0 + ef.gradient * m.p1[0] + m.p1[2]], [m.p2[0], m.p2[1], ef.z0 + ef.gradient * m.p2[0] + m.p2[2]]]; }
+function pts3(){
+  var out = [], ef = effFrame(design), half = F.post_size / 2;
+  if (!model) return out;
+  model.members.forEach(function(m){ var w = world3(m); out.push(w[0], w[1]); });
+  [[0, F.tL], [0, F.tR], [F.span, F.tL], [F.span, F.tR]].forEach(function(p){ out.push([p[0] - half, p[1] - half, ef.z0 + ef.gradient * p[0]], [p[0] + half, p[1] + half, ef.z0 + ef.gradient * p[0] + F.post_height]); });
+  return out;
+}
+function fit3d(){
+  var pts = pts3(); if (!pts.length) return draw3d();
+  var lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  pts.forEach(function(p){ for (var i = 0; i < 3; i++){ lo[i] = Math.min(lo[i], p[i]); hi[i] = Math.max(hi[i], p[i]); } });
+  cam.cx = (lo[0] + hi[0]) / 2; cam.cy = (lo[1] + hi[1]) / 2; cam.cz = (lo[2] + hi[2]) / 2; cam.s = 1; cam.px = 0; cam.py = 0;
+  var r = v3Rect(), x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  pts.forEach(function(p){ var q = proj(p); x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); });
+  cam.s = Math.max(0.5, Math.min(400, Math.min((r.width - 60) / Math.max(1, x1 - x0), (r.height - 60) / Math.max(1, y1 - y0))));
+  cam.px = -((x0 + x1) / 2 - r.width / 2) * cam.s; cam.py = -((y0 + y1) / 2 - r.height / 2) * cam.s;
+  draw3d();
+}
+function colorOf(role){ return role === "diagonal" || role === "bracing" ? "#8a9bb0" : role === "stiffener" ? "#b36b00" : role === "railing" ? "#2e7d32" : "#3a4a5c"; }
+function draw3d(){
+  clear(V3); prims = []; if (!model) return;
+  var ef = effFrame(design), half = F.post_size / 2, ex = model.deck;
+  // deck as a face
+  var dz = function(s){ return ef.z0 + ef.gradient * s + design.deck_top_offset_m; };
+  var deckPts = [[ex.d0, ex.tl, dz(ex.d0)], [ex.d1, ex.tl, dz(ex.d1)], [ex.d1, ex.tr, dz(ex.d1)], [ex.d0, ex.tr, dz(ex.d0)]].map(proj);
+  prims.push({kind:"poly", pts:deckPts, fill:"var(--deck)", near:deckPts.reduce(function(a, q){ return a + q[2]; }, 0) / 4, role:"deck"});
+  // posts as boxes (12 edges)
+  [[0, F.tL], [0, F.tR], [F.span, F.tL], [F.span, F.tR]].forEach(function(p){
+    var z0 = ef.z0 + ef.gradient * p[0], z1 = z0 + F.post_height, c = [];
+    [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(function(d){ c.push([p[0] + d[0] * half, p[1] + d[1] * half]); });
+    for (var i = 0; i < 4; i++){ var a = c[i], b = c[(i + 1) % 4];
+      [[a, z0, b, z0], [a, z1, b, z1], [a, z0, a, z1]].forEach(function(e){ var q1 = proj([e[0][0], e[0][1], e[1]]), q2 = proj([e[2][0], e[2][1], e[3]]); prims.push({kind:"seg", a:q1, b:q2, color:"var(--post)", w:3, near:(q1[2] + q2[2]) / 2, role:"post"}); }); }
+  });
+  model.members.forEach(function(m){ var w = world3(m), q1 = proj(w[0]), q2 = proj(w[1]); prims.push({kind:"seg", a:q1, b:q2, color:colorOf(m.role), w:(m.role === "top_chord" || m.role === "bottom_chord") ? 4 : (m.role === "railing" || m.role === "stiffener") ? 1.5 : 2.2, near:(q1[2] + q2[2]) / 2, m:m, role:m.role, dash:m.role === "stiffener" ? "5 3" : null}); });
+  prims.sort(function(a, b){ return a.near - b.near; });     // far first
+  prims.forEach(function(p){
+    if (p.kind === "poly"){ var pg = el(V3, "polygon", {points:p.pts.map(function(q){ return q[0] + "," + q[1]; }).join(" "), fill:p.fill, opacity:.85, stroke:"#a08a60"}); p.node = pg; }
+    else { var l = line(V3, p.a[0], p.a[1], p.b[0], p.b[1], p.color, p.w, {"stroke-dasharray":p.dash}); if (p.m && selected === p.m.key) l.setAttribute("stroke", "var(--sel)"); p.node = l; }
+  });
+  // axis note
+  el(V3, "text", {x:8, y:v3Rect().height - 8, "font-size":11, "class":"lbl"}, "az " + Math.round(cam.az) + " el " + Math.round(cam.el) + " - " + (model.members.length) + " members");
+}
+function distSeg(p, a, b){ var dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy, t = L ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L)) : 0; return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy)); }
+function pick3d(sp){
+  var best = null, bd = 8;
+  for (var i = prims.length - 1; i >= 0; i--){ var p = prims[i]; if (p.kind !== "seg" || !p.m) continue; var d = distSeg(sp, p.a, p.b); if (d < bd){ bd = d; best = p; } }
+  if (best) return best;
+  var deck = prims.filter(function(p){ return p.kind === "poly"; })[0];
+  if (deck && pointInPoly(sp, deck.pts)) return deck;
+  return null;
+}
+function pointInPoly(pt, poly){ var c = false; for (var i = 0, j = poly.length - 1; i < poly.length; j = i++){ var xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1]; if (((yi > pt[1]) !== (yj > pt[1])) && (pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi)) c = !c; } return c; }
+var sp3 = function(e){ var r = V3.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+V3.addEventListener("pointerdown", function(e){ closeRadial(); closePop(); e.preventDefault(); V3.setPointerCapture(e.pointerId); var sp = sp3(e); drag3 = {sx:sp[0], sy:sp[1], az:cam.az, el:cam.el, px:cam.px, py:cam.py, pan:e.button === 2 || e.button === 1 || e.shiftKey, button:e.button, moved:false}; });
+V3.addEventListener("pointermove", function(e){
+  var sp = sp3(e);
+  if (!drag3){ var h = pick3d(sp); V3.style.cursor = h ? "pointer" : "grab"; $("info3d").textContent = h ? (h.m ? ROLES[h.m.role] + " " + h.m.key + " - " + typeName(h.m.role) + " - " + fmt(len3(h.m), 2) + " m" : "Deck - " + typeName("deck")) : "Hover a member to see what it is; right-click it for its family."; return; }
+  var dx = sp[0] - drag3.sx, dy = sp[1] - drag3.sy;
+  if (!drag3.moved && Math.hypot(dx, dy) <= 3) return; drag3.moved = true;
+  if (drag3.pan){ cam.px = drag3.px + dx; cam.py = drag3.py + dy; } else { cam.az = drag3.az - dx * 0.4; cam.el = Math.max(-89, Math.min(89.5, drag3.el + dy * 0.4)); }
+  V3.style.cursor = drag3.pan ? "move" : "grabbing"; draw3d();
+});
+V3.addEventListener("pointerup", function(e){
+  var d = drag3; drag3 = null; V3.style.cursor = "grab"; if (!d || d.moved) return;
+  var sp = sp3(e), h = pick3d(sp), p = pagePoint(e);
+  if (d.button === 2 || e.ctrlKey){ if (h){ selected = h.m ? h.m.key : null; render(); memberRing(h.role, p[0], p[1]); } else openRadial(p[0], p[1], "3D view", [{label:"Fit", run:fit3d}, {label:"Iso", run:function(){ cam.az = -35; cam.el = 25; fit3d(); }}, {label:"From below", run:function(){ cam.az = -35; cam.el = -30; fit3d(); }}, {label:"Side", run:function(){ cam.az = 0; cam.el = 0; fit3d(); }}]); return; }
+  selected = h && h.m ? h.m.key : null; render();
+});
+V3.addEventListener("contextmenu", function(e){ e.preventDefault(); });
+V3.addEventListener("wheel", function(e){ e.preventDefault(); var r = v3Rect(), sp = sp3(e), ns = Math.max(0.5, Math.min(400, cam.s * Math.exp(-e.deltaY * 0.0016))), g = ns / cam.s; cam.px = sp[0] - r.width / 2 - (sp[0] - r.width / 2 - cam.px) * g; cam.py = sp[1] - r.height / 2 - (sp[1] - r.height / 2 - cam.py) * g; cam.s = ns; draw3d(); }, {passive:false});
+$("fit3d").onclick = fit3d; $("iso3d").onclick = function(){ cam.az = -35; cam.el = 25; fit3d(); }; $("under3d").onclick = function(){ cam.az = -35; cam.el = -30; fit3d(); };
+new ResizeObserver(function(){ draw3d(); }).observe(V3);
+
+// ---- header controls, save / load ----
+function fillSelect(sel, items, value){ sel.innerHTML = ""; items.forEach(function(it){ var o = document.createElement("option"); o.value = it[0]; o.textContent = it[1]; sel.appendChild(o); }); if (value !== undefined && value !== null) sel.value = String(value); }
+function write(){ $("name").value = DATA.name || "Bridge 1"; fillSelect($("truss"), TRUSSES, design.truss); render(); }
+$("truss").addEventListener("change", function(){ setDesign("truss", $("truss").value); });
+$("settings").addEventListener("click", function(ev){ ev.stopPropagation(); var r = ev.target.getBoundingClientRect(); settingsPop(r.left, r.bottom); });
 function safeName(s){ return (s || "bridge").replace(/[^A-Za-z0-9_\-]+/g, "_"); }
 $("save").addEventListener("click", function(){
-  read();
   var name = $("name").value.trim() || "Bridge 1";
   var out = {kind:"pymep-bridge", name:name, design:design, source:DATA.source, saved:new Date().toISOString(), model:DATA.model, span_m:F.span};
   var blob = new Blob([JSON.stringify(out, null, 2)], {type:"application/json"});
@@ -326,29 +519,28 @@ $("load").addEventListener("click", function(){ $("file").click(); });
 $("file").addEventListener("change", function(){
   var f = this.files[0]; if (!f) return; var rd = new FileReader();
   rd.onload = function(){ try { var d = JSON.parse(rd.result); if (d.kind !== "pymep-bridge") throw new Error("not a bridge design");
-    design = JSON.parse(JSON.stringify(DEFAULTS)); Object.keys(d.design || {}).forEach(function(k){ design[k] = d.design[k]; });
-    if (d.name) DATA.name = d.name; write(); $("status").textContent = "Loaded " + f.name + "."; } catch (e) { $("status").textContent = "Could not load: " + e; } };
+    design = JSON.parse(JSON.stringify(DEFAULTS)); Object.keys(d.design || {}).forEach(function(k){ design[k] = d.design[k]; }); design.floor_thickness_m = floorThickness();
+    if (d.name) DATA.name = d.name; write(); fit3d(); $("status").textContent = "Loaded " + f.name + "."; } catch (e) { $("status").textContent = "Could not load: " + e; } };
   rd.readAsText(f);
 });
-$("reset").addEventListener("click", function(){ design = JSON.parse(JSON.stringify(DEFAULTS)); applyModelDefaults(); write(); });
-["truss","panel_mode","bracing","truss_plane","end_posts","split_x","type_floor","type_stiffener","type_railing","level"].forEach(function(id){ $(id).addEventListener("change", read); });
-NUM.concat(OPT).forEach(function(k){ $(k).addEventListener("input", read); });
-
+$("reset").addEventListener("click", function(){ design = JSON.parse(JSON.stringify(DEFAULTS)); applyModelDefaults(); write(); fit3d(); });
 function applyModelDefaults(){
   if (DATA.design) Object.keys(DATA.design).forEach(function(k){ design[k] = DATA.design[k]; });
-  if (!design.level && DATA.levels && DATA.levels.length){ var below = DATA.levels.filter(function(l){ return l.elevation_m <= F.z0; }); design.level = String((below.length ? below[below.length - 1] : DATA.levels[0]).id); }
   design.types = design.types || {};
+  if (!design.level && DATA.levels && DATA.levels.length){ var below = DATA.levels.filter(function(l){ return l.elevation_m <= F.z0; }); design.level = String((below.length ? below[below.length - 1] : DATA.levels[0]).id); }
   if (!design.types.floor && DATA.floor_types && DATA.floor_types.length) design.types.floor = String(DATA.floor_types[0].id);
-  if (DATA.framing_types && DATA.framing_types.length) ROLES.forEach(function(r){ if (!design.types[r[0]]) design.types[r[0]] = String(DATA.framing_types[0].id); });
+  if (DATA.framing_types && DATA.framing_types.length) FRAMING.forEach(function(r){ if (!design.types[r]) design.types[r] = String(DATA.framing_types[0].id); });
   if (!design.types.stiffener) design.types.stiffener = (DATA.stiffener_types && DATA.stiffener_types.length) ? String(DATA.stiffener_types[0].id) : "none";
   if (!design.types.railing) design.types.railing = "none";
   design.floor_thickness_m = floorThickness();
 }
 (function init(){
-  if (!DATA){ $("warn").textContent = "No data - open this page from Revit (Bridges > Bridge Builder)."; DATA = {}; }
-  $("meta").textContent = (DATA.model ? "Model: " + DATA.model + "   |   " : "") + "Start posts: " + ((DATA.source && DATA.source.start_ids) || []).join(", ") + "   |   End posts: " + ((DATA.source && DATA.source.end_ids) || []).join(", ");
-  if (DATA.frame) $("points").textContent = "Span " + F.span.toFixed(3) + " m between the pair midpoints; posts " + (F.tL - F.tR).toFixed(3) + " m apart (centres), " + (F.post_size * 1000).toFixed(0) + " mm, " + F.post_height.toFixed(3) + " m tall; bases " + F.z0.toFixed(3) + " -> " + F.z1.toFixed(3) + " m (internal, metres). The deck is centred on the midpoints and runs from the start pair to the end pair.";
-  applyModelDefaults(); write();
+  if (!DATA){ $("status").textContent = "No data - open this page from Revit (Bridges > Bridge Builder)."; DATA = {}; }
+  var missing = [];
+  if (!(DATA.framing_types || []).length) missing.push("structural framing types");
+  if (!(DATA.floor_types || []).length) missing.push("floor types");
+  if (missing.length) $("status").innerHTML = '<span class="warn">The model gave no ' + missing.join(" or ") + ' - load the families and open the builder again.</span>';
+  applyModelDefaults(); write(); fit3d();
 })();
 </script>
 </body>

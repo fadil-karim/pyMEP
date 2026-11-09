@@ -952,22 +952,35 @@ midpoints is the bridge direction; the post spacing gives the width,
 the post bases the deck level at each end (so the deck slopes between
 them) and the post length the default truss height. The builder page
 then opens in the browser with all of that and the model's framing,
-floor, stiffener and railing types and levels. Settings: truss type
-(Warren, Warren with verticals, Pratt, Howe, X, Vierendeel), panels by
-target length or count, height (blank keeps the post height), where the
-truss planes sit (outside faces of the posts, centrelines or inside
-faces), bottom chord level, top and bottom chord piece lengths (each
-chord split into equal pieces no longer than the length given; blank
-keeps one piece), chord extension past the posts, optional end posts;
-floor type (its thickness is read), deck top against the post base,
-clearance to the posts, level; plan bays (blank follows the truss
-panels), bracing (X in every bay as the reference picture, zigzag or
-none) with an option to split each X at the crossing, stiffener type
-and count per bay with the end gap, railing type (or none) and inset;
-and a framing type per role, so the top and bottom chords can differ.
-Elevation, plan-from-below and section previews update as you type;
-chord splices show as red ticks. **Save design** writes
-`bridge_<name>.json` to Downloads.
+floor, stiffener and railing types and levels.
+
+The page has no settings form: the drawings are the inputs. Blue
+values on the elevation, plan and section are clicked and typed over
+(panel length, truss height, deck top, bottom chord level, chord
+extension, plan bays, clearance, railing inset); the level figure at
+each end edge is clicked to type a survey level for that end (blank
+goes back to the post base; a typed level is marked with `*` and the
+deck, chords and gradient follow it); clicking a member, the deck or a
+post opens a ring menu for its family, chord piece length, truss
+planes, truss type, bracing, stiffeners per bay or railing, with a
+right-click doing the same. A 3D window alongside draws the whole
+bridge (left-drag orbits, right-drag pans, the wheel zooms about the
+cursor; Fit, Iso and Under buttons) and a right-click on any member
+there gives the same family menu. The rest lives under **Settings**:
+panels by target length or count, plan bays, the Revit level, end
+posts, splitting each X at the crossing, stiffeners per bay and end
+gap, railing inset.
+
+The default truss is the Warren of the reference drawing: top nodes at
+mid-panel, no verticals, so a 22.5 m chord in 2.5 m panels puts the
+first top node 1.25 m in; Warren with verticals, Pratt, Howe, X and
+Vierendeel are the other choices. There is no top-plan bracing; the
+plan bracing (X in every bay, zigzag or none) and the cross beams sit
+under the deck. Top and bottom chords take their own piece lengths
+(each chord in equal pieces no longer than the length given; blank is
+one piece) and their own framing types, as does every other role.
+Chord splices show as red ticks. **Save design** writes
+`bridge_<name>.json` to Downloads; **Load...** reads one back.
 
 **Build Bridge** - reads that file, reads the four posts again and
 places everything in one undo step: the deck as a floor fitted inside

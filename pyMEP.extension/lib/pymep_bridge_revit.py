@@ -24,7 +24,7 @@ from System.Collections.Generic import List
 import pymep_bridge as BR
 import pymep_csv_params as CP
 from pymep_config import get_export_folder
-from pymep_revit import id_value, make_id
+from pymep_revit import id_value, make_id, type_name
 
 FT = 0.3048
 
@@ -57,13 +57,16 @@ def element_label(el):
     try:
         sym = getattr(el, "Symbol", None)
         if sym is not None:
-            return u"{0} : {1}".format(sym.FamilyName, el.Name)
+            return u"{0} : {1}".format(sym.FamilyName, type_name(sym))
     except Exception:
         pass
     try:
-        return u"{0}".format(el.Name)
+        if isinstance(el, FamilySymbol):
+            return u"{0} : {1}".format(el.FamilyName, type_name(el))
     except Exception:
-        return u"element"
+        pass
+    n = type_name(el)
+    return n or u"element"
 
 
 _SIZE_PARAMS = ("b", "B", "d", "D", "h", "H", "Width", "Depth", "Height", "Size", "bf")
@@ -150,7 +153,7 @@ def framing_types(doc):
                 .OfClass(FamilySymbol)):
         try:
             out.append({"id": u"{0}".format(id_value(sym.Id)),
-                        "name": u"{0} : {1}".format(sym.FamilyName, sym.Name)})
+                        "name": u"{0} : {1}".format(sym.FamilyName, type_name(sym))})
         except Exception:
             continue
     out.sort(key=lambda t: t["name"].lower())
@@ -166,7 +169,7 @@ def floor_types(doc):
         except Exception:
             pass
         try:
-            out.append({"id": u"{0}".format(id_value(ft.Id)), "name": u"{0}".format(ft.Name),
+            out.append({"id": u"{0}".format(id_value(ft.Id)), "name": type_name(ft),
                         "thickness_m": floor_thickness_m(ft)})
         except Exception:
             continue
@@ -182,7 +185,7 @@ def stiffener_types(doc):
         try:
             for sym in FilteredElementCollector(doc).OfCategory(bic).OfClass(FamilySymbol):
                 out.append({"id": u"{0}".format(id_value(sym.Id)),
-                            "name": u"{0} : {1}".format(sym.FamilyName, sym.Name)})
+                            "name": u"{0} : {1}".format(sym.FamilyName, type_name(sym))})
         except Exception:
             continue
     out.sort(key=lambda t: t["name"].lower())
@@ -193,7 +196,7 @@ def railing_types(doc):
     out = []
     try:
         for rt in FilteredElementCollector(doc).OfClass(RailingType):
-            out.append({"id": u"{0}".format(id_value(rt.Id)), "name": u"{0}".format(rt.Name)})
+            out.append({"id": u"{0}".format(id_value(rt.Id)), "name": type_name(rt)})
     except Exception:
         pass
     out.sort(key=lambda t: t["name"].lower())
@@ -221,7 +224,7 @@ def levels(doc):
     out = []
     for lv in FilteredElementCollector(doc).OfClass(Level):
         try:
-            out.append({"id": u"{0}".format(id_value(lv.Id)), "name": u"{0}".format(lv.Name),
+            out.append({"id": u"{0}".format(id_value(lv.Id)), "name": type_name(lv) or u"{0}".format(lv.Name),
                         "elevation_m": ft_to_m(getattr(lv, "ProjectElevation", lv.Elevation))})
         except Exception:
             continue

@@ -124,8 +124,10 @@ existing = registry["bridges"].get(existing_name) if existing_name else None
 frame_out = dict((k, frame[k]) for k in BR.FRAME_KEYS)
 frame_out["origin"] = list(frame["origin"])
 frame_out["gradient"] = frame["gradient"]
+position = RV.project_position(doc)
 data = {"name": existing_name or BR.next_name(registry), "model": doc.Title,
         "frame": frame_out, "posts": {"start": start_posts, "end": end_posts},
+        "shared_elev_m": position["elev_m"],
         "source": source,
         "framing_types": RV.framing_types(doc), "floor_types": RV.floor_types(doc),
         "stiffener_types": RV.stiffener_types(doc), "railing_types": RV.railing_types(doc),

@@ -75,8 +75,9 @@ for name in chosen:
     stiffener_sym = RV.by_id(doc, stiff_id) if stiff_id not in (u"", u"none") else None
     rail_id = u"{0}".format(design["types"].get("railing") or u"none")
     railing_type = RV.by_id(doc, rail_id) if rail_id not in (u"", u"none") else None
-    mems = BR.world_members(design, new_frame)
-    deck = BR.world_deck(design, new_frame)
+    shared_elev = RV.project_position(doc)["elev_m"]
+    mems = BR.world_members(design, new_frame, shared_elev)
+    deck = BR.world_deck(design, new_frame, shared_elev)
     member_ids = dict(rec.get("members", {}))
     motion = BR.rigid_motion(old_frame, new_frame)
     framing_mems = [m for m in mems if m["role"] not in HOSTED]

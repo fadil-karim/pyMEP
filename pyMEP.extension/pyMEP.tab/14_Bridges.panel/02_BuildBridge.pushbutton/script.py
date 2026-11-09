@@ -109,8 +109,9 @@ if old:
             options=["Replace", "Cancel"]) != "Replace":
         script.exit()
 
-mems = BR.world_members(design, frame)
-deck = BR.world_deck(design, frame)
+shared_elev = RV.project_position(doc)["elev_m"]
+mems = BR.world_members(design, frame, shared_elev)
+deck = BR.world_deck(design, frame, shared_elev)
 member_ids = {}
 failed = []
 floor_id = None
@@ -177,11 +178,12 @@ try:
 except Exception:
     pass
 summ = BR.summary(design, frame, mems)
+eff = BR.effective_frame(design, frame, shared_elev)
 output.print_md("### Build Bridge - {0}".format(name))
 output.print_md("**Span:** {0:.3f} m  |  **Rise:** {1:+.0f} mm  |  **Height:** {2:.3f} m  |  "
                 "**Panels:** {3} x {4:.3f} m  |  **Plan bays:** {5}  |  **Placed:** {6}  |  "
                 "**Failed:** {7}  |  **Deck:** {8}  |  **Level:** {9}".format(
-                    frame["span"], (frame["z1"] - frame["z0"]) * 1000.0, summ["height_m"],
+                    frame["span"], (eff["z1"] - eff["z0"]) * 1000.0, summ["height_m"],
                     summ["panels"], summ["panel_length_m"], summ["bays"], len(member_ids),
                     len(failed), output.linkify(make_id(floor_id)) if floor_id else "not made",
                     level.Name))
@@ -193,10 +195,10 @@ for role in BR.ROLES:
     if role == "stiffener":
         tname = RV.element_label(stiffener_sym) if stiffener_sym is not None else u"(none)"
     elif role == "railing":
-        tname = u"{0}".format(railing_type.Name) if railing_type is not None else u"(none)"
+        tname = RV.element_label(railing_type) if railing_type is not None else u"(none)"
     else:
         sym = symbols.get(role)
-        tname = u"{0} : {1}".format(sym.FamilyName, sym.Name) if sym is not None else u"-"
+        tname = RV.element_label(sym) if sym is not None else u"-"
     rows.append([BR.ROLE_LABELS[role], r["count"], "{0:.2f}".format(r["length_m"]), tname])
 output.print_table(table_data=rows, title="Members", columns=["Role", "Count", "Length (m)", "Type"])
 if failed:

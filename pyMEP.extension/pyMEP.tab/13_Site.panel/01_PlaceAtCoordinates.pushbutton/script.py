@@ -45,7 +45,7 @@ from pyrevit import revit, forms, script
 
 import pymep_place_coords as PC
 from pymep_config import load_settings, save_settings
-from pymep_revit import id_value, make_id, quiet
+from pymep_revit import id_value, make_id, quiet, type_name
 
 output = script.get_output()
 doc = revit.doc
@@ -105,7 +105,7 @@ for sym in FilteredElementCollector(doc).OfClass(FamilySymbol):
         cat = sym.Category
         cat_name = u"{0}".format(cat.Name) if cat is not None else u"(no category)"
         entries.append({"id": id_value(sym.Id),
-                        "label": PC.type_label(fam.Name, sym.Name),
+                        "label": PC.type_label(fam.Name, type_name(sym)),
                         "category": cat_name, "placement": placement, "host": host,
                         "tag": tag_for(placement, host),
                         "bic": id_value(cat.Id) if cat is not None else 0})
