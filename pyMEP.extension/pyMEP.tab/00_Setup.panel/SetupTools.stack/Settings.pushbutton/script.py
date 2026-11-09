@@ -40,6 +40,7 @@ from pymep_config import (
     DEFAULT_GITHUB_REPO, normalize_github_repo,
 )
 import pymep_update as upd
+import pymep_ribbon
 
 doc = revit.doc
 XAML_FILE = script.get_bundle_file("SettingsWindow.xaml")
@@ -119,21 +120,24 @@ class SettingsWindow(forms.WPFWindow):
             chk.IsChecked = key not in hidden
 
     def _panel_checks(self):
-        """[(checkbox, panel-title prefix)] - mirrors
-        pymep_ribbon.HIDEABLE_PANELS."""
-        return [(self.ChkPanCivil, "Civil 3D Conversion"),
-                (self.ChkPanElec, "Electrical"),
-                (self.ChkPanDrain, "Drainage"),
-                (self.ChkPanPipeNet, "Pipe Networks"),
-                (self.ChkPanNetworks, "Networks"),
-                (self.ChkPanTopo, "Topography"),
-                (self.ChkPanFencing, "Fencing"),
-                (self.ChkPanPath, "Path"),
-                (self.ChkPanChamber, "Chamber Drawing Setup"),
-                (self.ChkPanParams, "Parameters"),
-                (self.ChkPanProjData, "Project Data Transfer"),
-                (self.ChkPanAnnotate, "Annotate"),
-                (self.ChkPanConduits, "Conduits")]
+        """[(checkbox, panel-title prefix)] - one box per entry of
+        pymep_ribbon.HIDEABLE_PANELS, in ribbon order, made the first
+        time the page is read so a new panel needs no change here."""
+        boxes = getattr(self, "_panel_boxes", None)
+        if boxes is None:
+            from System.Windows import Thickness
+            from System.Windows.Controls import CheckBox
+            boxes = []
+            self.PnlPanelChecks.Children.Clear()
+            for i, key in enumerate(pymep_ribbon.HIDEABLE_PANELS):
+                chk = CheckBox()
+                chk.Content = key
+                chk.IsChecked = True
+                chk.Margin = Thickness(0, 2 if i == 0 else 6, 0, 0)
+                self.PnlPanelChecks.Children.Add(chk)
+                boxes.append((chk, key))
+            self._panel_boxes = boxes
+        return boxes
 
     def _refresh_active_export(self):
         try:

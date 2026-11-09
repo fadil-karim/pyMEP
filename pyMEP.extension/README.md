@@ -68,6 +68,9 @@ output-window auto-close toggle; Section Dims edits the chamber
 dimension pairs in a grid; Updates holds the GitHub repo/token and the
 install-any-version picker. Ribbon Panels has a checkbox per pyMEP
 panel - untick one to HIDE it from the tab: applied the moment you hit
+The checkboxes are built from the ribbon's own panel list, so every panel - the
+newest included - can be turned off and on; a test keeps the list and the
+panels on disk in step.
 OK / Apply (no reload), re-applied by the startup hook on every Revit
 start, and - because the settings file lives outside the extension
 folder - the choice SURVIVES update installations. The pyMEP setup
