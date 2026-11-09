@@ -71,11 +71,11 @@ DEFAULTS = {
     "deck_top_offset_m": 0.0,        # deck top relative to the post base
     "deck_end_m": None,              # deck end past the post centrelines; None = the outer face
     "deck_clearance_m": 0.01,        # gap between the deck edges and the posts / truss planes
-    "floor_thickness_m": 0.15,       # of the chosen floor type (the Revit side fills it in)
+    "floor_thickness_m": 0.006,      # replaced by the chosen floor type's thickness       # of the chosen floor type (the Revit side fills it in)
     "plan_bays": None,               # cross beam bays along the deck; None = one per truss panel
     "bracing": "zigzag",
     "brace_bays": 2,                 # bays each zigzag diagonal spans (2: side beam to side beam over two bays)
-    "split_x": False,                # braces split where they cross: the X at its centre, a long diagonal at each cross beam
+    "split_x": True,                 # braces split where they cross: a long diagonal at each cross beam, an X at its centre
     "stiffener_mode": "spacing",     # "spacing": lines at stiffener_spacing_m; "count": stiffeners_across lines
     "stiffener_spacing_m": 0.5,      # between the side beam centres (the truss planes), first and last included
     "stiffeners_across": 1,          # stiffener lines per bay across the deck in count mode; 0 = none
@@ -275,8 +275,9 @@ def layout(design, frame):
     else:
         n = max(1, int(round(total / design["panel_length_m"])))
     L = total / n
-    d0 = half + design["deck_clearance_m"]
-    d1 = span - half - design["deck_clearance_m"]
+    # the plan bays run from post centreline to post centreline, so the end
+    # cross beams sit on the posts' centre points
+    d0, d1 = 0.0, span
     if d1 - d0 <= TOL:
         raise ValueError(u"the posts are too close together for a deck")
     bays = design["plan_bays"] or n
@@ -555,11 +556,22 @@ def world_members(design, frame, shared_elev_m=0.0):
     """The members with p1 / p2 in model coordinates (metres), the typed
     end levels applied."""
     f = effective_frame(design, frame, shared_elev_m)
+    g = f["gradient"]
+    ux, uy = f["u"]
+    n = math.sqrt(1.0 + g * g)
+    up = (-g * ux / n, -g * uy / n, 1.0 / n)       # the floor's normal in the model
     out = []
     for m in members(design, f):
         w = dict(m)
         w["p1"] = to_world(f, m["p1"][0], m["p1"][1], m["p1"][2])
         w["p2"] = to_world(f, m["p2"][0], m["p2"][1], m["p2"][2])
+        if m["role"] == "crossbeam":
+            # a cross beam runs across the fall: its section rolls about its
+            # own axis by the slope so its top lies on the floor underside
+            # (positive for a member running from the left plane to the right,
+            # the right-hand rule about its axis; the Revit side checks)
+            w["roll"] = math.atan(g)
+            w["up"] = up
         out.append(w)
     return out
 
@@ -683,6 +695,21 @@ def save_registry(path, registry):
         f.write(u"{0}".format(json.dumps(registry, indent=2, sort_keys=True)))
 
 
+def latest_design(registry):
+    """The design of the most recently recorded bridge, as the starting
+    point for a new one in the same model (its family types and settings
+    carry over); the per-bridge survey levels do not. None when nothing
+    has been built yet."""
+    recs = [r for r in registry.get("bridges", {}).values() if r.get("design")]
+    if not recs:
+        return None
+    recs.sort(key=lambda r: u"{0}".format(r.get("updated") or r.get("stamp") or r.get("built") or u""))
+    d = dict(recs[-1]["design"])
+    for k in ("level_start_m", "level_end_m"):
+        d.pop(k, None)
+    return d
+
+
 def next_name(registry, stem=u"Bridge"):
     names = set(registry.get("bridges", {}))
     i = 1
@@ -732,7 +759,7 @@ def fill_page(template, data):
     return template.replace(PLACEHOLDER, text, 1)
 
 
-__all__ = ["piece_spans", "stiffener_positions", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
+__all__ = ["piece_spans", "stiffener_positions", "latest_design", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
            "BRACE_ROLES", "TOP_ALIGNED", "DEFAULTS", "normalize_design", "frame_from_posts",
            "frame_from_points", "effective_frame", "planes", "height", "base_z", "to_world",
            "layout", "pieces",

@@ -132,7 +132,7 @@ data = {"name": existing_name or BR.next_name(registry), "model": doc.Title,
         "framing_types": RV.framing_types(doc), "floor_types": RV.floor_types(doc),
         "stiffener_types": RV.stiffener_types(doc), "railing_types": RV.railing_types(doc),
         "levels": RV.levels(doc),
-        "design": existing["design"] if existing else None}
+        "design": existing["design"] if existing else BR.latest_design(registry)}
 
 with io.open(HTML_PATH, "r", encoding="utf-8") as f:
     template = f.read()

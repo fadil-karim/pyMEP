@@ -46,6 +46,12 @@ text.lbl{fill:#555}
 #pop .row button{padding:3px 8px;font-size:12px}
 #pop .row button.on{background:var(--acc);border-color:#c98b00;font-weight:600}
 #pop .x{position:absolute;right:6px;top:4px;border:0;background:none;font-size:14px;padding:0 4px}
+#pop .fam{min-width:480px;max-width:720px}
+#pop .fam .cur{font-weight:600;margin:0 0 6px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#pop .fam input,#pop .fam select{width:100%;display:block;margin:0 0 6px 0;font:inherit;border:1px solid #bbb;border-radius:3px}
+#pop .fam input{height:26px;padding:0 6px}
+#pop .fam select{height:auto;padding:2px}
+#pop .fam label{grid-template-columns:1fr 130px}
 #radial{position:absolute;display:none;z-index:60;width:0;height:0}
 #radial .ring{position:absolute;border-radius:50%;background:rgba(58,74,92,.04);border:1px dashed rgba(58,74,92,.4);pointer-events:none}
 #radial .ritem{position:absolute;transform:translate(-50%,-50%);width:76px;height:44px;border:1px solid #777;border-radius:6px;background:#fff;font-size:11px;line-height:1.1;padding:3px;box-shadow:0 2px 6px rgba(0,0,0,.15)}
@@ -84,7 +90,7 @@ text.lbl{fill:#555}
 var DATA = /*__BRIDGE_DATA__*/null;
 var DEFAULTS = {truss:"warren",panel_mode:"length",panel_length_m:2.5,panels:9,height_m:null,level_start_m:null,level_end_m:null,
   truss_plane:"outside",bottom_chord_offset_m:0,top_chord_split_m:0,bottom_chord_split_m:0,top_chord_pieces:[],bottom_chord_pieces:[],chord_extension_m:null,end_posts:false,
-  deck_top_offset_m:0,deck_end_m:null,deck_clearance_m:0.01,floor_thickness_m:0.15,plan_bays:null,bracing:"zigzag",brace_bays:2,split_x:false,stringers_across:0,
+  deck_top_offset_m:0,deck_end_m:null,deck_clearance_m:0.01,floor_thickness_m:0.006,plan_bays:null,bracing:"zigzag",brace_bays:2,split_x:true,stringers_across:0,
   stiffener_mode:"spacing",stiffener_spacing_m:0.5,stiffeners_across:1,stiffener_gap_m:0.1,railing_inset_m:0.1,types:{},level:null};
 var TRUSSES = [["warren","Warren - top nodes at mid-panel (as the drawing)"],["warren_verticals","Warren with verticals"],
   ["pratt","Pratt"],["howe","Howe"],["x","X braced"],["vierendeel","Vierendeel"]];
@@ -104,7 +110,7 @@ function layout(d){
   var s0 = -ext, s1 = F.span + ext, total = s1 - s0;
   var n = d.panel_mode === "count" ? Math.max(1, d.panels) : Math.max(1, Math.round(total / d.panel_length_m));
   var L = total / n, pts = []; for (var i = 0; i <= n; i++) pts.push(s0 + L * i);
-  var d0 = half + d.deck_clearance_m, d1 = F.span - half - d.deck_clearance_m;
+  var d0 = 0, d1 = F.span;
   var bays = d.plan_bays ? Math.max(1, d.plan_bays) : n, B = (d1 - d0) / bays, st = []; for (var j = 0; j <= bays; j++) st.push(d0 + B * j);
   return {s0:s0, s1:s1, n:n, L:L, total:total, points:pts, d0:d0, d1:d1, bays:bays, B:B, stations:st};
 }
@@ -288,24 +294,36 @@ function closePop(){ POP.style.display = "none"; POP.innerHTML = ""; }
 function esc(s){ return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
 function familyPop(role, x, y){
   var list = typeList(role), key = typeKey(role), cur = design.types[key] || "";
-  var opts = "";
-  if (role === "stiffener" || role === "railing") opts += '<option value="none"' + (cur === "none" || !cur ? " selected" : "") + '>(none)</option>';
-  if (!list.length) opts += '<option value="">(no types of this kind are loaded in the model)</option>';
-  list.forEach(function(t){ opts += '<option value="' + esc(t.id) + '"' + (String(t.id) === String(cur) ? " selected" : "") + '>' + esc(t.name) + '</option>'; });
+  var optional = role === "stiffener" || role === "railing";
+  var options = function(q){
+    var words = (q || "").toLowerCase().split(/\s+/).filter(Boolean), o = "";
+    if (optional) o += '<option value="none"' + (cur === "none" || !cur ? " selected" : "") + '>(none)</option>';
+    if (!list.length) o += '<option value="">(no types of this kind are loaded in the model)</option>';
+    var shown = 0;
+    list.forEach(function(t){ var name = String(t.name).toLowerCase(); if (words.every(function(w){ return name.indexOf(w) >= 0; })){ shown++; o += '<option value="' + esc(t.id) + '"' + (String(t.id) === String(cur) ? " selected" : "") + '>' + esc(t.name) + '</option>'; } });
+    if (list.length && !shown) o += '<option value="" disabled>(nothing matches)</option>';
+    return o;
+  };
+  var curName = (list.filter(function(t){ return String(t.id) === String(cur); })[0] || {}).name || (optional ? "(none)" : "(first type)");
   var extra = "";
   if (role === "top_chord" || role === "bottom_chord") extra = '<div class="hint" style="padding:4px 0 0 0">Pieces: the strip under the elevation - click + to add a split and type its length; the dashed piece is the variable one and takes the rest.</div>';
   if (role === "deck") extra = '<label>Revit level <select id="pp_level">' + (DATA.levels || []).map(function(l){ return '<option value="' + esc(l.id) + '"' + (String(l.id) === String(design.level) ? " selected" : "") + '>' + esc(l.name) + ' (' + l.elevation_m.toFixed(3) + ' m)</option>'; }).join("") + '</select></label>';
-  openPop(x, y, '<h3>' + ROLES[role] + ' family</h3><label>Type <select id="pp_type">' + opts + '</select></label>' + extra +
-    (role === "deck" ? '<div class="hint" style="padding:4px 0 0 0">Thickness comes from the floor type.</div>' : ""), function(p){
-    var sel = p.querySelector("#pp_type"); sel.focus();
-    sel.onchange = function(){ var t = JSON.parse(JSON.stringify(design.types)); if (sel.value) t[key] = sel.value; else delete t[key]; setDesign("types", t); };
+  openPop(x, y, '<div class="fam"><h3>' + ROLES[role] + ' family</h3><div class="cur" title="current">' + esc(curName) + '</div>' +
+    '<input type="text" id="pp_find" placeholder="type to search the ' + list.length + ' types...">' +
+    '<select id="pp_type" size="' + Math.max(4, Math.min(10, list.length + (optional ? 1 : 0))) + '">' + options("") + '</select>' + extra +
+    (role === "deck" ? '<div class="hint" style="padding:4px 0 0 0">Thickness comes from the floor type.</div>' : "") + '</div>', function(p){
+    var sel = p.querySelector("#pp_type"), find = p.querySelector("#pp_find"); find.focus();
+    var pick = function(){ if (!sel.value && sel.value !== "none") return; var t = JSON.parse(JSON.stringify(design.types)); t[key] = sel.value; setDesign("types", t); cur = sel.value; p.querySelector(".cur").textContent = sel.options[sel.selectedIndex].textContent; };
+    sel.onchange = pick;
+    find.oninput = function(){ sel.innerHTML = options(find.value); if (sel.options.length === 1 + (optional ? 1 : 0) && sel.options[sel.options.length - 1].value){ sel.selectedIndex = sel.options.length - 1; } };
+    find.onkeydown = function(ev){ if (ev.key === "Enter"){ var o = Array.prototype.filter.call(sel.options, function(x){ return x.value && x.value !== "none"; }); if (o.length){ sel.value = o[0].value; pick(); } } else if (ev.key === "ArrowDown"){ sel.focus(); } };
     var lv = p.querySelector("#pp_level"); if (lv) lv.onchange = function(){ setDesign("level", lv.value || null); };
   });
 }
 function settingsPop(x, y){
   openPop(x, y, '<h3>Settings</h3>' +
     '<label>Panels by <select id="sp_mode"><option value="length"' + (design.panel_mode === "length" ? " selected" : "") + '>target length</option><option value="count"' + (design.panel_mode === "count" ? " selected" : "") + '>count</option></select></label>' +
-    '<label>Plan bays <span style="color:#666">blank = panels</span> <input type="number" min="1" step="1" id="sp_bays" value="' + (design.plan_bays === null ? "" : design.plan_bays) + '" placeholder="panels"></label>' +
+    '<label>Cross beams between the posts <span style="color:#666">spread equally; blank = follow the panels</span> <input type="number" min="0" step="1" id="sp_bays" value="' + (design.plan_bays === null ? "" : design.plan_bays - 1) + '" placeholder="panels"></label>' +
     '<label>Revit level <select id="sp_level">' + (DATA.levels || []).map(function(l){ return '<option value="' + esc(l.id) + '"' + (String(l.id) === String(design.level) ? " selected" : "") + '>' + esc(l.name) + ' (' + l.elevation_m.toFixed(3) + ' m)</option>'; }).join("") + '</select></label>' +
     '<label class="check"><span>End posts (the picked posts usually are them)</span><input type="checkbox" id="sp_posts"' + (design.end_posts ? " checked" : "") + '></label>' +
     '<label>Bays per brace diagonal <span style="color:#666">single diagonals</span> <input type="number" min="1" step="1" id="sp_bb" value="' + (design.brace_bays || 1) + '"></label>' +
@@ -317,7 +335,7 @@ function settingsPop(x, y){
     '<label>Stiffener end gap <span style="color:#666">mm</span> <input type="number" step="10" id="sp_gap" value="' + mm(design.stiffener_gap_m) + '"></label>' +
     '<label>Railing inset <span style="color:#666">mm</span> <input type="number" step="10" id="sp_ins" value="' + mm(design.railing_inset_m) + '"></label>', function(p){
     p.querySelector("#sp_mode").onchange = function(ev){ setDesign("panel_mode", ev.target.value); };
-    p.querySelector("#sp_bays").oninput = function(ev){ var v = ev.target.value.trim(); setDesign("plan_bays", v === "" ? null : Math.max(1, Math.round(parseFloat(v)) || 1)); };
+    p.querySelector("#sp_bays").oninput = function(ev){ var v = ev.target.value.trim(); setDesign("plan_bays", v === "" ? null : Math.max(0, Math.round(parseFloat(v)) || 0) + 1); };
     p.querySelector("#sp_level").onchange = function(ev){ setDesign("level", ev.target.value || null); };
     p.querySelector("#sp_posts").onchange = function(ev){ setDesign("end_posts", ev.target.checked); };
     p.querySelector("#sp_bb").oninput = function(ev){ var v = parseInt(ev.target.value, 10); if (!isNaN(v)) setDesign("brace_bays", Math.max(1, v)); };
@@ -354,6 +372,7 @@ function memberRing(role, x, y){
   }
   if (role === "diagonal" || role === "vertical") items.push({label:"Truss type...", run:function(){ $("truss").focus(); }});
   if (role === "bracing" || role === "crossbeam" || role === "stringer"){
+    if (role === "crossbeam") items.push({label:"Cross beams between... (" + (model.layout.bays - 1) + ")", run:function(){ inlineEditAt(x, y, {value:model.layout.bays - 1, unit:"n", min:0, set:function(v){ setDesign("plan_bays", Math.max(0, Math.round(v)) + 1); }}); }});
     [["zigzag","Single diagonals"],["x","X bracing"],["none","No bracing"]].forEach(function(b){ if (b[0] !== design.bracing) items.push({label:b[1], run:function(){ setDesign("bracing", b[0]); }}); });
     if (design.bracing === "zigzag") items.push({label:"Bays per diagonal... (" + (design.brace_bays || 1) + ")", run:function(){ inlineEditAt(x, y, {value:design.brace_bays || 1, unit:"n", min:1, set:function(v){ setDesign("brace_bays", Math.max(1, Math.round(v))); }}); }});
     if (design.bracing === "x" || (design.bracing === "zigzag" && (design.brace_bays || 1) > 1)) items.push({label:design.split_x ? "Whole braces" : "Split braces at crossings", run:function(){ setDesign("split_x", !design.split_x); }});
@@ -394,7 +413,7 @@ function render(){
   var steel = 0; mems.forEach(function(m){ if (FRAMING.indexOf(m.role) >= 0) steel += len3(m); });
   var fall = ef.z1 - ef.z0, grad = Math.abs(fall) > 1e-6 ? "1:" + Math.round(Math.abs(F.span / fall)) : "level";
   $("tiles").innerHTML = ["<div><b>" + fmt(F.span, 3) + " m</b>between post pairs</div>", "<div><b>" + lay.n + "</b>panels of " + fmt(lay.L, 3) + " m</div>",
-    "<div><b>" + fmt(heightOf(design), 2) + " m</b>high" + (design.height_m === null ? " (posts)" : "") + "</div>", "<div><b>" + lay.bays + "</b>plan bays</div>",
+    "<div><b>" + fmt(heightOf(design), 2) + " m</b>high" + (design.height_m === null ? " (posts)" : "") + "</div>", "<div><b>" + (lay.bays - 1) + "</b>cross beams between the posts</div>",
     "<div><b>" + Math.round(fall * 1000) + " mm</b>rise (" + grad + ")</div>", "<div><b>" + fmt(ex.d1 - ex.d0, 2) + " x " + fmt(ex.tl - ex.tr, 2) + " m</b>deck</div>",
     "<div><b>" + mems.length + "</b>members, " + fmt(steel, 1) + " m steel</div>"].join("") + (warn.length ? '<div class="warn">' + warn.join("; ") + '</div>' : "");
 
@@ -481,7 +500,7 @@ function render(){
     else if (m.role === "bracing") c = "var(--brace)"; else if (m.role === "stiffener") c = "var(--stiff)"; else if (m.role === "railing") { c = "var(--rail)"; w = 1.5; }
     if (c){ var l = memberLine(pl, m, PX(m.p1[0]), PY(m.p1[1]), PX(m.p2[0]), PY(m.p2[1]), c, w); if (m.role === "stiffener") l.setAttribute("stroke-dasharray", "6 4"); }
   });
-  if (lay.stations.length > 1) dimH(pl, PX(lay.stations[0]), PX(lay.stations[1]), pp - 14, mm(lay.B) + "  (" + lay.bays + " bays)", {value:lay.bays, unit:"n", min:1, set:function(v){ setDesign("plan_bays", v); }}, "plan bays - click to type the number of bays (blank in Settings follows the panels)");
+  if (lay.stations.length > 1){ var tb2 = dimH(pl, PX(lay.stations[0]), PX(lay.stations[1]), pp - 14, mm(lay.B) + "  (" + (lay.bays - 1) + " cross beams between)", {value:lay.bays - 1, unit:"n", min:0, set:function(v){ setDesign("plan_bays", v + 1); }}, "cross beams between the end ones, spread equally - click to type how many (blank in Settings follows the truss panels)"); tb2.setAttribute("text-anchor", "start"); tb2.setAttribute("x", PX(lay.stations[0])); }
   dimV(pl, pp - 12, PY(ex.tl), PY(ex.tr), mm(ex.tl - ex.tr), null, "deck width - set by the posts and the clearance");
   var sls = stiffenerTs(design);
   if (sls.length){ var sA = res.planes[0], sB = sls[0]; dimV(pl, PW - pp + 16, PY(sA), PY(sB), mm(sA - sB) + (design.stiffener_mode === "count" ? " (" + sls.length + " across)" : ""), {value:sA - sB, unit:"mm", set:function(v){ design.stiffener_mode = "spacing"; setDesign("stiffener_spacing_m", Math.max(0, v)); }}, "stiffener spacing, side beam centre to the first line - click to type the spacing (equal spaces no wider than it)", true); }
@@ -574,9 +593,14 @@ function draw3d(){
       [[a, z0, b, z0], [a, z1, b, z1], [a, z0, a, z1]].forEach(function(e){ var q1 = proj([e[0][0], e[0][1], e[1]]), q2 = proj([e[2][0], e[2][1], e[3]]); prims.push({kind:"seg", a:q1, b:q2, color:"var(--post)", w:3, near:(q1[2] + q2[2]) / 2, role:"post"}); }); }
   });
   model.members.forEach(function(m){ var w = world3(m), q1 = proj(w[0]), q2 = proj(w[1]); prims.push({kind:"seg", a:q1, b:q2, color:colorOf(m.role), w:(m.role === "top_chord" || m.role === "bottom_chord") ? 4 : (m.role === "railing" || m.role === "stiffener") ? 1.5 : 2.2, near:(q1[2] + q2[2]) / 2, m:m, role:m.role, dash:m.role === "stiffener" ? "5 3" : null}); });
-  prims.sort(function(a, b){ return a.near - b.near; });     // far first
+  // far first; the members under the deck are drawn before the deck when seen from
+  // above (the deck hides them) and after it when seen from below
+  var fromAbove = Math.sin(cam.el * Math.PI / 180) > 0, UNDER = {crossbeam:1, bracing:1, stringer:1, stiffener:1};
+  var deckPrim = prims.filter(function(p){ return p.kind === "poly"; })[0];
+  prims.forEach(function(p){ if (deckPrim && p.kind === "seg" && p.m && UNDER[p.m.role]) p.near = deckPrim.near + (fromAbove ? -1e-3 : 1e-3); });
+  prims.sort(function(a, b){ return a.near - b.near; });
   prims.forEach(function(p){
-    if (p.kind === "poly"){ var pg = el(V3, "polygon", {points:p.pts.map(function(q){ return q[0] + "," + q[1]; }).join(" "), fill:p.fill, opacity:.85, stroke:"#a08a60"}); p.node = pg; }
+    if (p.kind === "poly"){ var pg = el(V3, "polygon", {points:p.pts.map(function(q){ return q[0] + "," + q[1]; }).join(" "), fill:p.fill, opacity:.96, stroke:"#a08a60"}); p.node = pg; }
     else { var l = line(V3, p.a[0], p.a[1], p.b[0], p.b[1], p.color, p.w, {"stroke-dasharray":p.dash}); if (p.m && selected === p.m.key) l.setAttribute("stroke", "var(--sel)"); p.node = l; }
   });
   // axis note
@@ -642,7 +666,11 @@ function applyModelDefaults(){
   design.types = design.types || {};
   if (!design.level && DATA.levels && DATA.levels.length){ var below = DATA.levels.filter(function(l){ return l.elevation_m <= F.z0; }); design.level = String((below.length ? below[below.length - 1] : DATA.levels[0]).id); }
   if (!design.types.floor && DATA.floor_types && DATA.floor_types.length) design.types.floor = String(DATA.floor_types[0].id);
-  if (DATA.framing_types && DATA.framing_types.length) FRAMING.forEach(function(r){ if (!design.types[r]) design.types[r] = String(DATA.framing_types[0].id); });
+  var known = function(list, id){ return (list || []).some(function(t){ return String(t.id) === String(id); }); };
+  if (design.types.floor && !known(DATA.floor_types, design.types.floor)) delete design.types.floor;
+  if (DATA.framing_types && DATA.framing_types.length) FRAMING.forEach(function(r){ if (!design.types[r] || !known(DATA.framing_types, design.types[r])) design.types[r] = String(DATA.framing_types[0].id); });
+  if (design.types.stiffener && design.types.stiffener !== "none" && !known(DATA.stiffener_types, design.types.stiffener)) delete design.types.stiffener;
+  if (design.types.railing && design.types.railing !== "none" && !known(DATA.railing_types, design.types.railing)) design.types.railing = "none";
   if (!design.types.stiffener) design.types.stiffener = (DATA.stiffener_types && DATA.stiffener_types.length) ? String(DATA.stiffener_types[0].id) : "none";
   if (!design.types.railing) design.types.railing = "none";
   design.floor_thickness_m = floorThickness();

@@ -957,23 +957,32 @@ floor, stiffener and railing types and levels.
 The page has no settings form: the drawings are the inputs. Blue
 values on the elevation, plan and section are clicked and typed over
 (panel length, truss height, deck top, bottom chord level, chord
-extension, plan bays, clearance, railing inset); the level figure at
+extension, how many cross beams sit between the posts, clearance,
+railing inset); the level figure at
 each end edge is clicked to type a survey level for that end (blank
 goes back to the post base; a typed level is marked with `*` and the
 deck, chords and gradient follow it); clicking a member, the deck or a
 post opens a ring menu for its family, chord piece length, truss
-planes, truss type, bracing, stiffeners per bay or railing, with a
-right-click doing the same. A 3D window alongside draws the whole
-bridge (left-drag orbits freely, over the top and underneath;
-right-drag pans; the wheel zooms about the cursor; Fit, Iso and Under
-buttons) and a right-click on any member there gives the same family
-menu. The browser's own right-click menu is switched off on the
+planes, truss type, bracing, stiffeners or railing, with a right-click
+doing the same. The family menu is a wide list with a search box:
+type part of a name to filter it, Enter takes the first match. A 3D
+window alongside draws the whole bridge (left-drag orbits freely, over
+the top and underneath; right-drag pans; the wheel zooms about the
+cursor; Fit, Iso and Under buttons); seen from above the deck hides
+what is under it, so the cross beams, bracing and stiffeners show from
+below. A right-click on any member there gives the same family menu. The browser's own right-click menu is switched off on the
 drawings, and the ring's label sits just under the clicked spot (a dot
 marks it) so the member stays visible. The rest lives under
-**Settings**: panels by target length or count, plan bays, the Revit
-level, end posts, splitting each X at the crossing, beams between the
-cross beams per bay, the deck stiffeners (set out by spacing or by
-count) and their end gap, railing inset.
+**Settings**: panels by target length or count, the cross beams between
+the posts (blank follows the truss panels), the Revit level, end posts,
+splitting braces where they cross, beams between the cross beams per
+bay, the deck stiffeners (set out by spacing or by count) and their end
+gap, railing inset.
+
+A new bridge starts from the design last built in the model, so the
+family types and settings carry over (the survey levels do not); the
+Defaults button returns to the built-in ones. Types that are not in
+the model fall back to the first type of their kind.
 
 Deck stiffeners are set out across the deck between the side beam
 centrelines (the truss planes, where the bottom chords run), the first
@@ -992,11 +1001,12 @@ Vierendeel are the other choices. There is no top-plan bracing; the
 plan bracing (by default one diagonal at a time from side beam to
 side beam over two bays, alternating, as the drawing - the bays per
 diagonal can be changed, and an X in every bay or none are the other
-choices; "split braces where they cross" cuts a long diagonal at each
-cross beam and an X at its centre), the cross beams and the
-optional beams between the cross beams (a count per bay, spread evenly
-between the truss planes, tops on the floor underside) sit under the
-deck. The deck runs to the outer faces of the posts along the span
+choices; "split braces where they cross", on by default, cuts a long
+diagonal at each cross beam and an X at its centre), the cross beams
+(the end ones on the posts' centre points, the rest spread equally
+between them - type how many) and the optional beams between the cross
+beams (a count per bay, spread evenly between the truss planes, tops
+on the floor underside) sit under the deck. The deck runs to the outer faces of the posts along the span
 (click its "deck end" value to type another offset from the post
 centrelines) and sits inside the posts across, less the clearance.
 Top and bottom chords are split separately on the two piece strips
@@ -1018,10 +1028,13 @@ places everything in one undo step: the deck as a floor from post
 face to post face along the span and inside the posts across (less the
 clearance) with a slope arrow from start to end;
 both trusses on the chosen planes (chords in their pieces, verticals,
-diagonals as braces); the cross beams at every bay line between the
-truss planes, the plan bracing in every bay and any beams between the
-cross beams, all with z justification Top so their top sits on the
-floor underside; the deck
+diagonals as braces); the cross beams between the truss planes, the
+end ones on the post centrelines, the plan bracing and any beams
+between the cross beams, all with z justification Top so their top
+sits on the floor underside - and the cross beams, which run across
+the fall, get a cross-section rotation equal to the slope so their top
+face lies on the sloping underside (the sign is checked against the
+placed instance and flipped if Revit turned it the other way); the deck
 stiffeners hosted on the floor's underside, running along the span
 between the cross beams; and the railings hosted on the deck along both
 edges. Members carry the bridge name in Comments and every element id

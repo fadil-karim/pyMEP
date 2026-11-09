@@ -275,7 +275,35 @@ def create_member(doc, m, symbol, level):
     el = doc.Create.NewFamilyInstance(member_line(m), symbol, level, stype)
     if m.get("zjust") == "top":
         set_top_justified(el)
+    if m.get("roll"):
+        set_roll(doc, el, m["roll"], m.get("up"))
     return el
+
+
+def set_roll(doc, el, angle, up=None):
+    """Cross-Section Rotation about the member's own axis (radians) so a
+    cross beam's top lies on the sloping floor underside. The angle is
+    worked out with the right-hand rule about the member's start-to-end
+    axis; the instance transform is read back and the sign flipped when
+    the section came out tilted the wrong way (farther from the floor
+    normal than an unrotated section would be)."""
+    try:
+        p = el.get_Parameter(BuiltInParameter.STRUCTURAL_BEND_DIR_ANGLE)
+        if p is None or p.IsReadOnly:
+            return False
+        p.Set(float(angle))
+        if up is not None and abs(angle) > 1e-9:
+            try:
+                doc.Regenerate()
+                bz = el.GetTransform().BasisZ
+                want = XYZ(float(up[0]), float(up[1]), float(up[2])).Normalize()
+                if bz.DotProduct(want) < math.cos(angle) - 1e-6:
+                    p.Set(-float(angle))
+            except Exception:
+                pass
+        return True
+    except Exception:
+        return False
 
 
 def set_top_justified(el):
@@ -365,9 +393,14 @@ def set_member_curve(el, m):
     try:
         loc = el.Location
         loc.Curve = member_line(m)
-        return True
     except Exception:
         return False
+    if "roll" in m:
+        try:
+            set_roll(el.Document, el, m["roll"], m.get("up"))
+        except Exception:
+            pass
+    return True
 
 
 def create_deck(doc, deck, floor_type, level):

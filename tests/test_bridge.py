@@ -137,14 +137,14 @@ class Layout(unittest.TestCase):
         self.assertAlmostEqual(lay["s0"], -0.1)              # outer face of the posts
         self.assertAlmostEqual(lay["s1"], 20.1)
         self.assertEqual(lay["n"], 4)
-        self.assertAlmostEqual(lay["d0"], 0.11)              # inner face + clearance
-        self.assertAlmostEqual(lay["d1"], 19.89)
+        self.assertAlmostEqual(lay["d0"], 0.0)               # bays from post centreline to post centreline
+        self.assertAlmostEqual(lay["d1"], 20.0)
         self.assertEqual(lay["bays"], 4)
         self.assertEqual(len(lay["stations"]), 5)
         lay2 = BR.layout(design(chord_extension_m=0.0, plan_bays=10, deck_clearance_m=0.0), FRAME)
         self.assertAlmostEqual(lay2["s0"], 0.0)
         self.assertEqual(lay2["bays"], 10)
-        self.assertAlmostEqual(lay2["d0"], 0.1)
+        self.assertAlmostEqual(lay2["d0"], 0.0)                 # bays always start at the post centreline
         lay3 = BR.layout(design(panel_mode="length", panel_length_m=1.92), FRAME)
         self.assertEqual(lay3["n"], 11)                      # 20.2 / 1.92 = 10.5 -> 11
 
@@ -260,7 +260,7 @@ class Members(unittest.TestCase):
     def test_plan_members_sit_under_the_floor(self):
         mems = BR.members(design(floor_thickness_m=0.15, deck_top_offset_m=0.0), FRAME)
         cb = by_key(mems, u"crossbeam:C:0:0")
-        self.assertAlmostEqual(cb["p1"][0], 0.11)
+        self.assertAlmostEqual(cb["p1"][0], 0.0)                 # on the post centreline
         self.assertAlmostEqual(cb["p1"][1], 1.6)
         self.assertAlmostEqual(cb["p2"][1], -1.6)
         self.assertAlmostEqual(cb["p1"][2], -0.15)
@@ -269,36 +269,38 @@ class Members(unittest.TestCase):
         self.assertEqual(count(mems, "crossbeam"), 5)
         # the default: one diagonal at a time over two bays, side beam to side
         # beam, alternating - the drawing
-        self.assertEqual(count(mems, "bracing"), 2)
-        br = by_key(mems, u"bracing:C:0:0")
-        self.assertAlmostEqual(br["p1"][0], 0.11)
+        whole = BR.members(design(split_x=False, floor_thickness_m=0.15), FRAME)
+        self.assertEqual(count(whole, "bracing"), 2)
+        br = by_key(whole, u"bracing:C:0:0")
+        self.assertAlmostEqual(br["p1"][0], 0.0)
         self.assertAlmostEqual(br["p1"][1], 1.6)
-        self.assertAlmostEqual(br["p2"][0], 0.11 + 19.78 / 2.0)   # two bays on
+        self.assertAlmostEqual(br["p2"][0], 10.0)                 # two bays on
         self.assertAlmostEqual(br["p2"][1], -1.6)
-        br2 = by_key(mems, u"bracing:C:1:0")
+        br2 = by_key(whole, u"bracing:C:1:0")
         self.assertAlmostEqual(br2["p1"][1], -1.6)                # alternates
         self.assertAlmostEqual(br2["p2"][1], 1.6)
         self.assertAlmostEqual(br["p1"][2], -0.15)
         self.assertEqual((br["zjust"], br["stype"]), ("top", "brace"))
         # split where it crosses the middle cross beam: a piece per bay, meeting mid-width
-        sz = BR.members(design(split_x=True), FRAME)
+        sz = mems                                                 # the default splits at the cross beams
         self.assertEqual(count(sz, "bracing"), 4)
         meet = by_key(sz, u"bracing:C:0:0")["p2"]
-        self.assertAlmostEqual(meet[0], 0.11 + 19.78 / 4.0)
+        self.assertAlmostEqual(meet[0], 5.0)
         self.assertAlmostEqual(meet[1], 0.0)
+        self.assertTrue(BR.normalize_design({})["split_x"])        # split at the cross beams by default
         # an odd number of bays: the last diagonal takes the bay that is left
-        odd = BR.members(design(plan_bays=5), FRAME)
+        odd = BR.members(design(plan_bays=5, split_x=False), FRAME)
         self.assertEqual(count(odd, "bracing"), 3)
-        self.assertAlmostEqual(by_key(odd, u"bracing:C:2:0")["p2"][0], 19.89)
+        self.assertAlmostEqual(by_key(odd, u"bracing:C:2:0")["p2"][0], 20.0)
         one = BR.members(design(brace_bays=1), FRAME)
         self.assertEqual(count(one, "bracing"), 4)
         self.assertAlmostEqual(by_key(one, u"bracing:C:1:0")["p1"][1], -1.6)
-        x = BR.members(design(bracing="x"), FRAME)
+        x = BR.members(design(bracing="x", split_x=False), FRAME)
         self.assertEqual(count(x, "bracing"), 8)                  # X in 4 bays
         split = BR.members(design(bracing="x", split_x=True), FRAME)
         self.assertEqual(count(split, "bracing"), 16)
         mid = by_key(split, u"bracing:C:0:0")["p2"]
-        self.assertAlmostEqual(mid[0], (0.11 + 0.11 + 19.78 / 4) / 2.0)
+        self.assertAlmostEqual(mid[0], 2.5)
         self.assertAlmostEqual(mid[1], 0.0)
         self.assertEqual(count(BR.members(design(bracing="none"), FRAME), "bracing"), 0)
         self.assertEqual(BR.normalize_design({"brace_bays": 0})["brace_bays"], 1)
@@ -307,11 +309,11 @@ class Members(unittest.TestCase):
 
     def test_stiffeners_and_railings(self):
         d = design(stiffener_mode="count", stiffeners_across=2, stiffener_gap_m=0.1,
-                   types={"railing": "77"}, railing_inset_m=0.1)
+                   types={"railing": "77"}, railing_inset_m=0.1, floor_thickness_m=0.15)
         mems = BR.members(d, FRAME)
         st = [m for m in mems if m["role"] == "stiffener"]
         self.assertEqual(len(st), 8)                               # 2 per bay x 4 bays
-        self.assertAlmostEqual(st[0]["p1"][0], 0.21)
+        self.assertAlmostEqual(st[0]["p1"][0], 0.1)                # gap from the cross beam on the post centreline
         self.assertAlmostEqual(st[0]["p1"][2], -0.15)
         d0, d1, t_r, t_l = BR.deck_extent(d, FRAME)
         self.assertAlmostEqual(t_l, 1.39)                          # inner face of the post less clearance
@@ -364,15 +366,17 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(typed[0][0], 0.11)
         self.assertAlmostEqual(typed[2][0], 19.89)
         self.assertAlmostEqual(BR.deck_profile(design(deck_end_m=0.0), FRAME)[0][0], 0.0)
-        deck = BR.world_deck(design(deck_top_offset_m=-0.05), FRAME)
+        self.assertAlmostEqual(BR.normalize_design({})["floor_thickness_m"], 0.006)   # a plate deck by default
+        deck = BR.world_deck(design(deck_top_offset_m=-0.05, floor_thickness_m=0.15), FRAME)
         self.assertAlmostEqual(deck["tail_top_z"], 10.0 - 0.1 * 0.1 - 0.05)
         self.assertAlmostEqual(deck["slope"], 0.1)
         self.assertAlmostEqual(deck["thickness_m"], 0.15)
         self.assertAlmostEqual(deck["tail"][0], -0.1)
         self.assertAlmostEqual(deck["head"][0], 20.1)
-        # the cross beams still stop inside the posts
+        # the end cross beams sit on the post centrelines
         mems = BR.members(design(), FRAME)
-        self.assertAlmostEqual(by_key(mems, u"crossbeam:C:0:0")["p1"][0], 0.11)
+        self.assertAlmostEqual(by_key(mems, u"crossbeam:C:0:0")["p1"][0], 0.0)
+        self.assertAlmostEqual(by_key(mems, u"crossbeam:C:4:0")["p1"][0], 20.0)
 
     def test_beams_between_cross_beams(self):
         self.assertEqual(count(BR.members(design(), FRAME), "stringer"), 0)
@@ -410,8 +414,25 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(deck["slope"], 0.125)
         self.assertAlmostEqual(deck["tail_top_z"], 10.0 - 0.125 * 0.1)   # deck tail at the post face
 
+    def test_cross_beams_roll_with_the_fall(self):
+        # 2 m rise over 20 m: the cross beams' sections roll by the slope so
+        # their tops lie on the floor underside; nothing else rolls
+        w = BR.world_members(design(), FRAME)
+        cbs = [m for m in w if m["role"] == "crossbeam"]
+        self.assertTrue(cbs)
+        for cb in cbs:
+            self.assertAlmostEqual(cb["roll"], math.atan(0.1))
+            ux, uy, uz = cb["up"]
+            self.assertAlmostEqual(ux * ux + uy * uy + uz * uz, 1.0)
+            self.assertAlmostEqual(ux, -0.1 / math.sqrt(1.01))     # leans back against the rise (+x)
+            self.assertAlmostEqual(uz, 1.0 / math.sqrt(1.01))
+        self.assertTrue(all("roll" not in m for m in w if m["role"] != "crossbeam"))
+        s, e = posts(z0=10.0, z1=10.0)
+        flat = BR.world_members(design(), BR.frame_from_posts(s, e))
+        self.assertAlmostEqual([m for m in flat if m["role"] == "crossbeam"][0]["roll"], 0.0)
+
     def test_world_follows_the_fall(self):
-        wm = BR.world_members(design(), FRAME)
+        wm = BR.world_members(design(floor_thickness_m=0.15), FRAME)
         top = by_key(wm, u"top_chord:L:0:0")
         self.assertAlmostEqual(top["p1"][2], 10.0 - 0.01 + 2.3)
         self.assertAlmostEqual(top["p2"][2], 12.0 + 0.01 + 2.3)
@@ -426,7 +447,7 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(s["height_m"], 2.3)
         self.assertAlmostEqual(s["deck_width_m"], 2.78)
         self.assertAlmostEqual(s["by_role"]["top_chord"]["length_m"], 40.4)
-        self.assertEqual(s["members"], 2 + 2 + 6 + 8 + 5 + 2 + 6 * 4)   # two long diagonals; six stiffener lines at 500 per bay
+        self.assertEqual(s["members"], 2 + 2 + 6 + 8 + 5 + 4 + 6 * 4)   # two long diagonals in two pieces each; six stiffener lines at 500 per bay
         w = BR.summary(design(truss="warren"), FRAME)
         self.assertEqual(w["by_role"]["diagonal"]["count"], 16)
         self.assertNotIn("vertical", w["by_role"])
@@ -471,6 +492,16 @@ class Files(unittest.TestCase):
         with self.assertRaises(ValueError):
             BR.parse_design_file(json.dumps({"kind": "pymep-bridge", "name": "x", "design": {},
                                              "source": {"start_ids": [1]}}))
+
+    def test_latest_design(self):
+        self.assertIsNone(BR.latest_design({"bridges": {}}))
+        reg = {"bridges": {
+            "Bridge 1": {"design": {"truss": "pratt", "level_end_m": 5.0, "types": {"floor": "1"}}, "stamp": "2026-01-01T10:00:00"},
+            "Bridge 2": {"design": {"truss": "howe", "level_start_m": 4.0, "types": {"floor": "2"}}, "stamp": "2026-02-01T10:00:00"}}}
+        d = BR.latest_design(reg)
+        self.assertEqual(d["truss"], "howe")                     # the newest
+        self.assertEqual(d["types"]["floor"], "2")
+        self.assertNotIn("level_start_m", d)                      # survey levels stay with their bridge
 
     def test_registry(self):
         folder = tempfile.mkdtemp()
