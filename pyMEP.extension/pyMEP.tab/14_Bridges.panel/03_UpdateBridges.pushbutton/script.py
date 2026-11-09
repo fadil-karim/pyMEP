@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Update Bridges - re-align tracked bridges to their end points.
+"""Update Bridges - re-align tracked bridges to their posts.
 
-For every bridge in the tracking file (or the ones you pick) the start
-and end instances are read again - position and deck level - and the
-members are re-curved onto the new geometry, keeping their element ids;
-members a changed span adds or drops are created or deleted. The deck
-floor moves with the bridge when the span and the level difference are
-unchanged, else it is rebuilt. One transaction per bridge.
+For every bridge in the tracking file (or the ones you pick) the four
+posts are read again and the framing members are re-curved onto the
+new geometry, keeping their element ids; members a changed span adds or
+drops are created or deleted. When the bridge only moved (same span,
+width, height and fall) the deck moves with it and its stiffeners and
+railings follow their host; otherwise the deck is rebuilt and the
+stiffeners and railings made again. One transaction per bridge.
 
 IronPython 2.7: .format() only, no f-strings, LF endings.
 """
@@ -47,39 +48,42 @@ if len(names) > 1:
     if not chosen:
         script.exit()
 
-position = RV.project_position(doc)
+HOSTED = ("stiffener", "railing")
 report = []
 for name in chosen:
     rec = bridges[name]
     source = rec["source"]
     design = BR.normalize_design(rec["design"])
-    start_el = doc.GetElement(make_id(int(source["start_id"])))
-    end_el = doc.GetElement(make_id(int(source["end_id"])))
-    if start_el is None or end_el is None:
-        report.append((name, u"SKIPPED - a point is gone (ids {0}, {1})".format(
-            source["start_id"], source["end_id"])))
-        continue
     try:
-        p_start = RV.end_point(doc, start_el, source["level_param"], source["level_mode"], position)
-        p_end = RV.end_point(doc, end_el, source["level_param"], source["level_mode"], position)
-        new_frame = BR.frame_from_points(p_start, p_end)
+        start_posts = RV.posts_from_ids(doc, source["start_ids"])
+        end_posts = RV.posts_from_ids(doc, source["end_ids"])
+        new_frame = BR.frame_from_posts(start_posts, end_posts)
     except ValueError as ex:
         report.append((name, u"SKIPPED - {0}".format(ex)))
         continue
     old_frame = BR.frame_from_record(rec)
     if not BR.frame_changed(old_frame, new_frame):
-        report.append((name, u"unchanged - the points have not moved"))
+        report.append((name, u"unchanged - the posts have not moved"))
         continue
-    mems = BR.world_members(design, new_frame)
-    deck = BR.world_deck(design, new_frame)
-    diff = BR.diff_members(list(rec.get("members", {}).keys()), mems)
-    member_ids = dict(rec.get("members", {}))
     framing = RV.framing_types(doc)
     floors = RV.floor_types(doc)
     levels = RV.levels(doc)
     level = RV.first_of(levels, u"{0}".format(design.get("level") or u""), doc)
     floor_type = RV.first_of(floors, u"{0}".format(design["types"].get("floor") or u""), doc)
-    moved = recurved = created = deleted = 0
+    design["floor_thickness_m"] = RV.floor_thickness_m(floor_type) or design["floor_thickness_m"]
+    stiff_id = u"{0}".format(design["types"].get("stiffener") or u"none")
+    stiffener_sym = RV.by_id(doc, stiff_id) if stiff_id not in (u"", u"none") else None
+    rail_id = u"{0}".format(design["types"].get("railing") or u"none")
+    railing_type = RV.by_id(doc, rail_id) if rail_id not in (u"", u"none") else None
+    mems = BR.world_members(design, new_frame)
+    deck = BR.world_deck(design, new_frame)
+    member_ids = dict(rec.get("members", {}))
+    motion = BR.rigid_motion(old_frame, new_frame)
+    framing_mems = [m for m in mems if m["role"] not in HOSTED]
+    hosted_mems = [m for m in mems if m["role"] in HOSTED]
+    framing_keys = [k for k in member_ids if k.split(":")[0] not in HOSTED]
+    diff = BR.diff_members(framing_keys, framing_mems)
+    recurved = created = deleted = 0
     deck_note = u""
     t = Transaction(doc, u"pyMEP: Update bridge '{0}'".format(name))
     quiet(t)
@@ -87,16 +91,13 @@ for name in chosen:
     try:
         for key, m in diff["update"]:
             el = doc.GetElement(make_id(member_ids[key]))
-            if el is None:
-                diff["create"].append(m)
+            if el is None or not RV.set_member_curve(el, m):
+                if el is not None:
+                    RV.delete_quiet(doc, [member_ids[key]])
                 del member_ids[key]
+                diff["create"].append(m)
                 continue
-            if RV.set_member_curve(el, m):
-                recurved += 1
-            else:
-                RV.delete_quiet(doc, [member_ids[key]])
-                del member_ids[key]
-                diff["create"].append(m)
+            recurved += 1
         for m in diff["create"]:
             sym = RV.first_of(framing, u"{0}".format(design["types"].get(m["role"]) or u""), doc)
             if sym is None:
@@ -113,22 +114,42 @@ for name in chosen:
             deleted += RV.delete_quiet(doc, [member_ids.pop(key)])
         floor_id = rec.get("floor")
         floor = doc.GetElement(make_id(floor_id)) if floor_id else None
-        motion = BR.rigid_motion(old_frame, new_frame)
         if floor is not None and motion is not None:
             dx, dy, dz, da = motion
             RV.move_elements(doc, [floor_id], dx, dy, dz, da, new_frame["origin"])
-            deck_note = u"deck moved"
+            deck_note = u"deck moved with its stiffeners and railings"
         else:
+            # the hosted elements go with the old deck; make them again on the new one
+            hosted_keys = [k for k in member_ids if k.split(":")[0] in HOSTED]
+            RV.delete_quiet(doc, [member_ids.pop(k) for k in hosted_keys])
             if floor is not None:
                 RV.delete_quiet(doc, [floor_id])
             try:
                 floor = RV.create_deck(doc, deck, floor_type, level)
                 RV.set_mark_comments(floor, name)
                 floor_id = id_value(floor.Id)
-                deck_note = u"deck rebuilt (span or fall changed)" if floor is not None else u""
+                doc.Regenerate()
+                deck_note = u"deck rebuilt (span, width, height or fall changed)"
             except Exception as ex:
                 floor_id = None
+                floor = None
                 deck_note = u"deck FAILED: {0}".format(ex)
+            made = 0
+            for m in hosted_mems:
+                try:
+                    if m["role"] == "stiffener" and stiffener_sym is not None:
+                        el = RV.create_stiffener(doc, m, stiffener_sym, floor, level)
+                    elif m["role"] == "railing" and railing_type is not None:
+                        el = RV.create_railing(doc, m, railing_type, floor, level)
+                    else:
+                        continue
+                    RV.set_mark_comments(el, name)
+                    member_ids[m["key"]] = id_value(el.Id)
+                    made += 1
+                except Exception:
+                    continue
+            if made:
+                deck_note += u", {0} stiffener(s) / railing(s) made again".format(made)
         t.Commit()
     except Exception as ex:
         t.RollBack()
@@ -139,7 +160,7 @@ for name in chosen:
     report.append((name, u"{0} member(s) re-aligned, {1} added, {2} removed; {3}; span now "
                          u"{4:.3f} m, rise {5:+.0f} mm".format(
                              recurved, created, deleted, deck_note, new_frame["span"],
-                             (p_end[2] - p_start[2]) * 1000.0)))
+                             (new_frame["z1"] - new_frame["z0"]) * 1000.0)))
 try:
     BR.save_registry(registry_file, registry)
 except Exception as ex:

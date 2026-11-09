@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Bridge Builder - the Revit side shared by the three Bridges buttons:
-reading the two end points and their deck levels, the model's types and
-levels, and making, moving and re-curving the deck floor and the
-framing members.
+reading the four posts, the model's types and levels, and making,
+moving and re-curving the deck floor, the framing members, the deck
+stiffeners and the railings.
 
 IronPython 2.7 only (needs the Revit API): .format() only, LF endings.
 """
@@ -14,8 +14,10 @@ import clr
 clr.AddReference("RevitAPI")
 import System
 from Autodesk.Revit.DB import (BuiltInCategory, BuiltInParameter, CurveArray,
-                               ElementId, ElementTransformUtils, FamilySymbol,
-                               FilteredElementCollector, FloorType, Level, Line, XYZ)
+                               CurveLoop, ElementId, ElementTransformUtils, FamilySymbol,
+                               FilteredElementCollector, FloorType, HostObjectUtils,
+                               Level, Line, XYZ)
+from Autodesk.Revit.DB.Architecture import Railing, RailingType
 from Autodesk.Revit.DB.Structure import StructuralType
 from System.Collections.Generic import List
 
@@ -49,7 +51,7 @@ def project_position(doc):
 
 
 # ---------------------------------------------------------------------------
-# 1. The end points: generic model types, instances, levels
+# 1. The posts: vertical framing or columns picked in the model
 # ---------------------------------------------------------------------------
 def element_label(el):
     try:
@@ -64,160 +66,79 @@ def element_label(el):
         return u"element"
 
 
-def generic_symbols(doc):
-    """[{"id", "label", "family", "type", "count"}] - every generic model
-    type, with how many instances it has, most used first."""
-    out = []
-    counts = {}
-    for el in (FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_GenericModel)
-               .WhereElementIsNotElementType()):
-        try:
-            tid = id_value(el.GetTypeId())
-        except Exception:
-            continue
-        counts[tid] = counts.get(tid, 0) + 1
-    for sym in (FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_GenericModel)
-                .OfClass(FamilySymbol)):
-        try:
-            sid = id_value(sym.Id)
-            out.append({"id": sid, "family": u"{0}".format(sym.FamilyName),
-                        "type": u"{0}".format(sym.Name),
-                        "label": u"{0} : {1}".format(sym.FamilyName, sym.Name),
-                        "count": counts.get(sid, 0)})
-        except Exception:
-            continue
-    out.sort(key=lambda s: (-s["count"], s["label"].lower()))
-    return out
+_SIZE_PARAMS = ("b", "B", "d", "D", "h", "H", "Width", "Depth", "Height", "Size", "bf")
 
 
-def instances_of(doc, symbol_id):
-    out = []
-    for el in (FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_GenericModel)
-               .WhereElementIsNotElementType()):
-        try:
-            if id_value(el.GetTypeId()) == symbol_id:
-                out.append(el)
-        except Exception:
-            continue
-    return out
-
-
-def param_names(elements):
-    """Sorted names of the instance parameters with a value on any of
-    the elements (text, number, whole number)."""
-    names = set()
-    for el in elements[:50]:
-        try:
-            for p in el.Parameters:
-                try:
-                    st = u"{0}".format(p.StorageType).split(".")[-1]
-                    if st in ("String", "Double", "Integer") and p.Definition.Name:
-                        names.add(u"{0}".format(p.Definition.Name))
-                except Exception:
-                    continue
-        except Exception:
-            continue
-    return sorted(names, key=lambda n: n.lower())
-
-
-def point_m(el):
-    """(x, y, z) of the instance's location point in metres, else the
-    centre of its box."""
+def post_size_m(el):
+    """The post's plan size in metres: the largest of its type's section
+    parameters (b, d, h, Width, Depth ...), else its bounding box's
+    smaller plan extent, else 0.2."""
+    best = 0.0
     try:
-        pt = el.Location.Point
-        if pt is not None:
-            return (ft_to_m(pt.X), ft_to_m(pt.Y), ft_to_m(pt.Z))
+        typ = el.Document.GetElement(el.GetTypeId())
+    except Exception:
+        typ = None
+    for name in _SIZE_PARAMS:
+        for holder in (typ, el):
+            if holder is None:
+                continue
+            try:
+                prm = holder.LookupParameter(name)
+                if prm is not None and prm.HasValue and u"{0}".format(prm.StorageType).endswith("Double"):
+                    v = ft_to_m(prm.AsDouble())
+                    if 0.02 < v < 2.0:
+                        best = max(best, v)
+            except Exception:
+                continue
+    if best > 0:
+        return best
+    try:
+        bb = el.get_BoundingBox(None)
+        if bb is not None:
+            v = min(bb.Max.X - bb.Min.X, bb.Max.Y - bb.Min.Y)
+            if v > 0:
+                return ft_to_m(v)
     except Exception:
         pass
-    bb = el.get_BoundingBox(None)
-    if bb is None:
-        raise ValueError(u"{0} has no position".format(element_label(el)))
-    return (ft_to_m((bb.Min.X + bb.Max.X) * 0.5), ft_to_m((bb.Min.Y + bb.Max.Y) * 0.5),
-            ft_to_m((bb.Min.Z + bb.Max.Z) * 0.5))
+    return 0.2
 
 
-def _is_length(p):
+def post_info(el):
+    """{"id", "x", "y", "z_bottom", "z_top", "size_m", "label"} for a
+    vertical framing member or column. ValueError when the element does
+    not stand up."""
+    pts = None
     try:
-        d = p.Definition
-        for getter in ("GetDataType", "GetSpecTypeId"):
-            fn = getattr(d, getter, None)
-            if fn is not None:
-                sp = fn()
-                if sp is not None and sp.TypeId:
-                    return "spec.length" in sp.TypeId
-        return str(d.ParameterType) == "Length"
+        crv = el.Location.Curve
+        a, b = crv.GetEndPoint(0), crv.GetEndPoint(1)
+        pts = (a, b)
     except Exception:
-        return False
+        pts = None
+    if pts is None:
+        bb = el.get_BoundingBox(None)
+        if bb is None:
+            raise ValueError(u"{0} has no position".format(element_label(el)))
+        cx, cy = (bb.Min.X + bb.Max.X) * 0.5, (bb.Min.Y + bb.Max.Y) * 0.5
+        pts = (XYZ(cx, cy, bb.Min.Z), XYZ(cx, cy, bb.Max.Z))
+    a, b = pts
+    if abs(a.Z - b.Z) < 1e-6:
+        raise ValueError(u"{0} is not vertical - pick the posts, not a beam".format(element_label(el)))
+    lo, hi = (a, b) if a.Z < b.Z else (b, a)
+    if math.hypot(hi.X - lo.X, hi.Y - lo.Y) > abs(hi.Z - lo.Z) * 0.3:
+        raise ValueError(u"{0} leans too far to be a post".format(element_label(el)))
+    return {"id": id_value(el.Id), "x": ft_to_m(lo.X), "y": ft_to_m(lo.Y),
+            "z_bottom": ft_to_m(lo.Z), "z_top": ft_to_m(hi.Z), "size_m": post_size_m(el),
+            "label": element_label(el)}
 
 
-def _level_z_m(doc, el):
-    lvl = None
-    try:
-        lid = el.LevelId
-        if lid is not None and id_value(lid) > 0:
-            lvl = doc.GetElement(lid)
-    except Exception:
-        lvl = None
-    if lvl is None:
-        try:
-            p = el.get_Parameter(BuiltInParameter.FAMILY_LEVEL_PARAM)
-            if p is not None and p.HasValue:
-                lvl = doc.GetElement(p.AsElementId())
-        except Exception:
-            lvl = None
-    if lvl is None:
-        return None
-    try:
-        return ft_to_m(getattr(lvl, "ProjectElevation", lvl.Elevation))
-    except Exception:
-        return ft_to_m(lvl.Elevation)
-
-
-def read_level_m(doc, el, param_name, mode, position):
-    """The deck level at this end as an internal elevation in metres.
-
-    param_name blank: the instance's own location z. Else the parameter:
-    a length reads in its stored units, a plain number or text as
-    metres. mode: 'shared' (value is a shared / survey elevation),
-    'internal' (value is an internal elevation) or 'offset' (value is
-    the height above the instance's level). Raises ValueError with a
-    plain reason."""
-    if not param_name:
-        return point_m(el)[2]
-    try:
-        prm = el.LookupParameter(param_name)
-    except Exception:
-        prm = None
-    if prm is None:
-        raise ValueError(u"{0} has no parameter '{1}'".format(element_label(el), param_name))
-    if not prm.HasValue:
-        raise ValueError(u"'{0}' is empty on {1}".format(param_name, element_label(el)))
-    st = u"{0}".format(prm.StorageType).split(".")[-1]
-    if st == "Double":
-        raw = prm.AsDouble()
-        value_m = ft_to_m(raw) if _is_length(prm) else float(raw)
-    elif st == "Integer":
-        value_m = float(prm.AsInteger())
-    else:
-        n = CP.to_number(prm.AsString())
-        if n is None:
-            raise ValueError(u"'{0}' on {1} is '{2}', not a number".format(
-                param_name, element_label(el), prm.AsString()))
-        value_m = float(n)
-    if mode == "shared":
-        return value_m - position.get("elev_m", 0.0)
-    if mode == "offset":
-        lz = _level_z_m(doc, el)
-        if lz is None:
-            raise ValueError(u"{0} has no level to offset from".format(element_label(el)))
-        return lz + value_m
-    return value_m
-
-
-def end_point(doc, el, param_name, mode, position):
-    """(x_m, y_m, z_deck_m) for one end."""
-    x, y, _z = point_m(el)
-    return (x, y, read_level_m(doc, el, param_name, mode, position))
+def posts_from_ids(doc, ids):
+    out = []
+    for i in ids:
+        el = doc.GetElement(make_id(int(i)))
+        if el is None:
+            raise ValueError(u"post {0} is no longer in the model".format(i))
+        out.append(post_info(el))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -245,11 +166,55 @@ def floor_types(doc):
         except Exception:
             pass
         try:
-            out.append({"id": u"{0}".format(id_value(ft.Id)), "name": u"{0}".format(ft.Name)})
+            out.append({"id": u"{0}".format(id_value(ft.Id)), "name": u"{0}".format(ft.Name),
+                        "thickness_m": floor_thickness_m(ft)})
         except Exception:
             continue
     out.sort(key=lambda t: t["name"].lower())
     return out
+
+
+def stiffener_types(doc):
+    """Structural stiffener family types, then structural framing types
+    (a stiffener may be modelled as a small beam)."""
+    out = []
+    for bic in (BuiltInCategory.OST_StructuralStiffener,):
+        try:
+            for sym in FilteredElementCollector(doc).OfCategory(bic).OfClass(FamilySymbol):
+                out.append({"id": u"{0}".format(id_value(sym.Id)),
+                            "name": u"{0} : {1}".format(sym.FamilyName, sym.Name)})
+        except Exception:
+            continue
+    out.sort(key=lambda t: t["name"].lower())
+    return out
+
+
+def railing_types(doc):
+    out = []
+    try:
+        for rt in FilteredElementCollector(doc).OfClass(RailingType):
+            out.append({"id": u"{0}".format(id_value(rt.Id)), "name": u"{0}".format(rt.Name)})
+    except Exception:
+        pass
+    out.sort(key=lambda t: t["name"].lower())
+    return out
+
+
+def floor_thickness_m(floor_type):
+    """The floor type's total thickness in metres (0 when unknown)."""
+    try:
+        cs = floor_type.GetCompoundStructure()
+        if cs is not None:
+            return ft_to_m(cs.GetWidth())
+    except Exception:
+        pass
+    try:
+        p = floor_type.get_Parameter(BuiltInParameter.FLOOR_ATTR_DEFAULT_THICKNESS_PARAM)
+        if p is not None and p.HasValue:
+            return ft_to_m(p.AsDouble())
+    except Exception:
+        pass
+    return 0.0
 
 
 def levels(doc):
@@ -300,9 +265,95 @@ def member_line(m):
 
 
 def create_member(doc, m, symbol, level):
-    """A structural framing instance along the member's line."""
+    """A structural framing instance along the member's line; cross beams
+    and bracing get their TOP on the line (z justification Top) so they
+    sit under the floor."""
     stype = StructuralType.Brace if m["stype"] == "brace" else StructuralType.Beam
-    return doc.Create.NewFamilyInstance(member_line(m), symbol, level, stype)
+    el = doc.Create.NewFamilyInstance(member_line(m), symbol, level, stype)
+    if m.get("zjust") == "top":
+        set_top_justified(el)
+    return el
+
+
+def set_top_justified(el):
+    try:
+        p = el.get_Parameter(BuiltInParameter.Z_JUSTIFICATION)
+        if p is not None and not p.IsReadOnly:
+            p.Set(0)                # 0 Top, 1 Center, 2 Origin, 3 Bottom
+    except Exception:
+        pass
+
+
+def bottom_face(doc, floor):
+    """A reference to the floor's underside, or None."""
+    try:
+        refs = HostObjectUtils.GetBottomFaces(floor)
+        for r in refs:
+            return r
+    except Exception:
+        pass
+    return None
+
+
+def create_stiffener(doc, m, symbol, floor, level):
+    """A deck stiffener along the member's line under the floor: hosted
+    on the floor's underside when the family is face based (line based
+    or point based), else a small beam with its top on the line."""
+    line = member_line(m)
+    face = bottom_face(doc, floor) if floor is not None else None
+    attempts = []
+    if face is not None:
+        attempts.append(lambda: doc.Create.NewFamilyInstance(face, line, symbol))
+        mid = XYZ((line.GetEndPoint(0).X + line.GetEndPoint(1).X) / 2.0,
+                  (line.GetEndPoint(0).Y + line.GetEndPoint(1).Y) / 2.0,
+                  (line.GetEndPoint(0).Z + line.GetEndPoint(1).Z) / 2.0)
+        direction = (line.GetEndPoint(1) - line.GetEndPoint(0)).Normalize()
+        attempts.append(lambda: doc.Create.NewFamilyInstance(face, mid, direction, symbol))
+
+    def as_beam():
+        el = doc.Create.NewFamilyInstance(line, symbol, level, StructuralType.NonStructural)
+        set_top_justified(el)
+        return el
+    attempts.append(as_beam)
+    last = None
+    for make in attempts:
+        try:
+            el = make()
+            if el is not None:
+                return el
+        except Exception as ex:
+            last = ex
+    raise RuntimeError(u"{0}".format(last) if last is not None else u"no stiffener made")
+
+
+def create_railing(doc, m, railing_type, floor, level):
+    """A railing along the member's line, hosted on the deck floor when
+    Revit lets it (else left on the level with its base at the deck)."""
+    lz = level.Elevation
+    a = XYZ(m_to_ft(m["p1"][0]), m_to_ft(m["p1"][1]), lz)
+    b = XYZ(m_to_ft(m["p2"][0]), m_to_ft(m["p2"][1]), lz)
+    loop = CurveLoop()
+    loop.Append(Line.CreateBound(a, b))
+    rail = Railing.Create(doc, loop, railing_type.Id, level.Id)
+    hosted = False
+    if floor is not None:
+        try:
+            rail.HostId = floor.Id
+            hosted = True
+        except Exception:
+            hosted = False
+    if not hosted:
+        try:
+            p = rail.get_Parameter(BuiltInParameter.STAIRS_RAILING_BASE_LEVEL_PARAM)
+        except Exception:
+            p = None
+        try:
+            off = rail.get_Parameter(BuiltInParameter.STAIRS_RAILING_HEIGHT_OFFSET)
+            if off is not None and not off.IsReadOnly:
+                off.Set(m_to_ft(m["p1"][2]) - lz)
+        except Exception:
+            pass
+    return rail
 
 
 def set_member_curve(el, m):

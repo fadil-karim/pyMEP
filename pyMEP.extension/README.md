@@ -940,47 +940,60 @@ the unpin tick is on; one undo step.
 
 ### Bridges
 
-Steel truss footbridges between two points, designed in the browser and
-modelled as a sloped deck floor plus structural framing.
+Steel truss footbridges between two pairs of posts, designed in the
+browser and modelled as a sloped deck floor, structural framing, deck
+stiffeners and railings.
 
-**Bridge Builder** - the start and the end of a bridge are two generic
-model instances; a parameter on each gives the deck level there. The
-dialog asks for the family type at each end (search by any words), the
-level parameter (or the instance's own elevation) and how to read it -
-a shared / survey elevation, an internal elevation, or an offset above
-the instance's level; a length parameter reads in its units, a plain
-number as metres. With one instance of a type it is the point; with
-more you pick it. The builder page then opens in the browser with the
-span, the two levels and the model's framing types, floor types and
-levels: choose the truss type (Warren, Warren with verticals, Pratt,
-Howe, X, Vierendeel), panels by target length or count, truss height
-and spacing, end posts, extensions beyond the points, deck width and
-the deck top against the level value, the levels of bottom chord, cross
-beams and plan bracing (zigzag, X or none), and a framing type per role.
-Elevation, plan-from-below and cross-section previews and the member
-counts update as you type. **Save design** writes `bridge_<name>.json`
-to Downloads.
+**Bridge Builder** - pick the two posts at the start and the two at the
+end: vertical structural framing or columns already in the model (four
+posts selected beforehand are taken as the two pairs). The midpoint of
+each pair is the deck centreline at that end and the line between the
+midpoints is the bridge direction; the post spacing gives the width,
+the post bases the deck level at each end (so the deck slopes between
+them) and the post length the default truss height. The builder page
+then opens in the browser with all of that and the model's framing,
+floor, stiffener and railing types and levels. Settings: truss type
+(Warren, Warren with verticals, Pratt, Howe, X, Vierendeel), panels by
+target length or count, height (blank keeps the post height), where the
+truss planes sit (outside faces of the posts, centrelines or inside
+faces), bottom chord level, top and bottom chord piece lengths (each
+chord split into equal pieces no longer than the length given; blank
+keeps one piece), chord extension past the posts, optional end posts;
+floor type (its thickness is read), deck top against the post base,
+clearance to the posts, level; plan bays (blank follows the truss
+panels), bracing (X in every bay as the reference picture, zigzag or
+none) with an option to split each X at the crossing, stiffener type
+and count per bay with the end gap, railing type (or none) and inset;
+and a framing type per role, so the top and bottom chords can differ.
+Elevation, plan-from-below and section previews update as you type;
+chord splices show as red ticks. **Save design** writes
+`bridge_<name>.json` to Downloads.
 
-**Build Bridge** - reads that file (newest, or a pick), finds the two
-points and reads their levels again, and places everything in one undo
-step: both trusses (chords, end posts, verticals and diagonals as
-beams and braces), the cross beams between the bottom chords, the plan
-bracing, and the deck as a floor with a slope arrow from the start to
-the end so its top follows the two level values. Members carry the
-bridge name in Comments. Every element id is recorded against the
-bridge name in `bridges.json` in the model's pyMEP folder; building a
-name again replaces its elements.
+**Build Bridge** - reads that file, reads the four posts again and
+places everything in one undo step: the deck as a floor fitted inside
+the posts (less the clearance) with a slope arrow from start to end;
+both trusses on the chosen planes (chords in their pieces, verticals,
+diagonals as braces); the cross beams at every bay line between the
+truss planes and the plan bracing in every bay, both with z
+justification Top so their top sits on the floor underside; the deck
+stiffeners hosted on the floor's underside, running along the span
+between the cross beams; and the railings hosted on the deck along both
+edges. Members carry the bridge name in Comments and every element id
+is recorded against the bridge name in `bridges.json` in the model's
+pyMEP folder; building a name again replaces its elements, and opening
+Bridge Builder on posts that already carry a bridge loads its design.
 
-**Update Bridges** - after the points move or their level values
-change: reads them again and puts each tracked member onto its new
-line, keeping the element ids (so tags and dimensions survive); a
-changed span that adds or drops panels creates or deletes just those
-members. The deck floor moves with the bridge when the span and the
-fall are unchanged, otherwise it is rebuilt. One undo step per bridge,
-and a table says what happened to each.
+**Update Bridges** - after the posts move or change: reads them again
+and puts each framing member onto its new line, keeping the element
+ids (so tags and dimensions survive); a changed span that adds or drops
+panels creates or deletes just those members. When only the position
+changed (same span, width, height and fall) the deck moves with the
+bridge and its stiffeners and railings follow their host; otherwise
+the deck is rebuilt and the stiffeners and railings made again. One
+undo step per bridge, and a table says what happened to each.
 
-Railings and parapet infill are not modelled - the trusses are the
-only structure above the deck.
+Railing infill panels are whatever the chosen railing type draws; the
+trusses are the structure above the deck.
 
 ## Lib modules
 

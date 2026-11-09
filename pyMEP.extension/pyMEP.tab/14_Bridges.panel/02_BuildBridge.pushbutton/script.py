@@ -2,12 +2,12 @@
 """Build Bridge - model the bridge a Bridge Builder design describes.
 
 Reads the design file the builder page saved (newest bridge_*.json in
-Downloads, or a pick when several are recent), finds the two end
-points it names and reads their deck levels, then in one transaction
-places the sloped deck floor, both trusses, the cross beams and the plan
-bracing as structural framing. Every element is recorded against the
-bridge name so Update Bridges can move it later; building a name that
-exists replaces its elements.
+Downloads, or a pick), reads the four posts it names, and in one
+transaction places the deck floor inside the posts (sloped from the
+start bases to the end bases), both trusses, the cross beams and plan
+bracing with their tops on the floor underside, the deck stiffeners
+hosted on the floor and the railings along the deck edges. Every element
+is recorded against the bridge name for Update Bridges.
 
 IronPython 2.7: .format() only, no f-strings, LF endings.
 """
@@ -40,12 +40,8 @@ doc = revit.doc
 uidoc = revit.uidoc
 
 
-# ---------------------------------------------------------------------------
-# 1. The design file
-# ---------------------------------------------------------------------------
 def design_files():
-    folder = get_downloads_folder()
-    files = glob.glob(os.path.join(folder, "bridge_*.json"))
+    files = glob.glob(os.path.join(get_downloads_folder(), "bridge_*.json"))
     files.sort(key=lambda p: -os.path.getmtime(p))
     return files
 
@@ -74,55 +70,45 @@ name = design_file["name"]
 design = design_file["design"]
 source = design_file["source"]
 
-# ---------------------------------------------------------------------------
-# 2. The two ends, as they are now
-# ---------------------------------------------------------------------------
-start_el = doc.GetElement(make_id(int(source["start_id"])))
-end_el = doc.GetElement(make_id(int(source["end_id"])))
-if start_el is None or end_el is None:
-    forms.alert("The start or end point this design names is no longer in the model "
-                "(ids {0} and {1}). Run Bridge Builder again.".format(
-                    source["start_id"], source["end_id"]), exitscript=True)
-position = RV.project_position(doc)
+# the posts as they are now
 try:
-    p_start = RV.end_point(doc, start_el, source["level_param"], source["level_mode"], position)
-    p_end = RV.end_point(doc, end_el, source["level_param"], source["level_mode"], position)
-    frame = BR.frame_from_points(p_start, p_end)
+    start_posts = RV.posts_from_ids(doc, source["start_ids"])
+    end_posts = RV.posts_from_ids(doc, source["end_ids"])
+    frame = BR.frame_from_posts(start_posts, end_posts)
 except ValueError as ex:
-    forms.alert(u"{0}".format(ex), exitscript=True)
+    forms.alert(u"{0}\n\nRun Bridge Builder again.".format(ex), exitscript=True)
 
-# ---------------------------------------------------------------------------
-# 3. Types and level
-# ---------------------------------------------------------------------------
+# types and level
 framing = RV.framing_types(doc)
 floors = RV.floor_types(doc)
 levels = RV.levels(doc)
 if not framing:
-    forms.alert("No structural framing family is loaded - load the chord / beam families "
-                "first.", exitscript=True)
+    forms.alert("No structural framing family is loaded.", exitscript=True)
 if not floors or not levels:
     forms.alert("The model needs a floor type and a level for the deck.", exitscript=True)
 symbols = {}
-for role in BR.ROLES:
+for role in BR.FRAMING_ROLES:
     symbols[role] = RV.first_of(framing, u"{0}".format(design["types"].get(role) or u""), doc)
 floor_type = RV.first_of(floors, u"{0}".format(design["types"].get("floor") or u""), doc)
+design["floor_thickness_m"] = RV.floor_thickness_m(floor_type) or design["floor_thickness_m"]
+stiff_id = u"{0}".format(design["types"].get("stiffener") or u"none")
+stiffener_sym = RV.by_id(doc, stiff_id) if stiff_id not in (u"", u"none") else None
+rail_id = u"{0}".format(design["types"].get("railing") or u"none")
+railing_type = RV.by_id(doc, rail_id) if rail_id not in (u"", u"none") else None
 level = RV.first_of(levels, u"{0}".format(design.get("level") or u""), doc)
 if level is None:
-    below = [l for l in levels if l["elevation_m"] <= p_start[2]]
+    below = [l for l in levels if l["elevation_m"] <= frame["z0"]]
     level = RV.by_id(doc, (below[-1] if below else levels[0])["id"])
 
 registry_file = RV.registry_path(doc)
 registry = BR.load_registry(registry_file)
 old = registry["bridges"].get(name)
 if old:
-    if forms.alert(u"'{0}' was built before ({1}). Replace its {2} element(s) with this "
-                   u"design?".format(name, old.get("updated", "?"), len(old.get("members", {})) + 1),
-                   title="Build Bridge", options=["Replace", "Cancel"]) != "Replace":
+    if forms.alert(u"'{0}' was built before ({1}). Replace its elements with this design?".format(
+            name, old.get("updated", "?")), title="Build Bridge",
+            options=["Replace", "Cancel"]) != "Replace":
         script.exit()
 
-# ---------------------------------------------------------------------------
-# 4. Build - one transaction
-# ---------------------------------------------------------------------------
 mems = BR.world_members(design, frame)
 deck = BR.world_deck(design, frame)
 member_ids = {}
@@ -137,23 +123,36 @@ try:
                         ([old["floor"]] if old.get("floor") else []))
     for sym in set(s for s in symbols.values() if s is not None):
         RV.activate(sym, doc)
-    for m in mems:
-        sym = symbols.get(m["role"])
-        if sym is None:
-            failed.append((m, u"no framing type"))
-            continue
-        try:
-            el = RV.create_member(doc, m, sym, level)
-            RV.set_mark_comments(el, name)
-            member_ids[m["key"]] = id_value(el.Id)
-        except Exception as ex:
-            failed.append((m, u"{0}".format(ex)))
+    if stiffener_sym is not None:
+        RV.activate(stiffener_sym, doc)
+    floor = None
     try:
         floor = RV.create_deck(doc, deck, floor_type, level)
         RV.set_mark_comments(floor, name)
         floor_id = id_value(floor.Id)
+        doc.Regenerate()
     except Exception as ex:
         failed.append(({"key": "deck", "role": "deck"}, u"{0}".format(ex)))
+    for m in mems:
+        try:
+            if m["role"] == "stiffener":
+                if stiffener_sym is None:
+                    continue
+                el = RV.create_stiffener(doc, m, stiffener_sym, floor, level)
+            elif m["role"] == "railing":
+                if railing_type is None:
+                    continue
+                el = RV.create_railing(doc, m, railing_type, floor, level)
+            else:
+                sym = symbols.get(m["role"])
+                if sym is None:
+                    failed.append((m, u"no framing type"))
+                    continue
+                el = RV.create_member(doc, m, sym, level)
+            RV.set_mark_comments(el, name)
+            member_ids[m["key"]] = id_value(el.Id)
+        except Exception as ex:
+            failed.append((m, u"{0}".format(ex)))
     t.Commit()
 except Exception as ex:
     t.RollBack()
@@ -167,9 +166,6 @@ except Exception as ex:
     output.print_md("**Could not save the tracking file** ({0}) - Update Bridges will not "
                     "know this bridge.".format(ex))
 
-# ---------------------------------------------------------------------------
-# 5. Report
-# ---------------------------------------------------------------------------
 try:
     from System.Collections.Generic import List
     ids = List[ElementId]()
@@ -180,27 +176,34 @@ try:
     uidoc.Selection.SetElementIds(ids)
 except Exception:
     pass
-summ = BR.summary(design, frame["span"], mems)
+summ = BR.summary(design, frame, mems)
 output.print_md("### Build Bridge - {0}".format(name))
-output.print_md("**Span:** {0:.3f} m  |  **Rise:** {1:+.0f} mm  |  **Panels:** {2} x {3:.3f} m  |  "
-                "**Members placed:** {4}  |  **Failed:** {5}  |  **Deck:** {6}  |  **Level:** {7}".format(
-                    frame["span"], (p_end[2] - p_start[2]) * 1000.0, summ["panels"],
-                    summ["panel_length_m"], len(member_ids), len(failed),
-                    output.linkify(make_id(floor_id)) if floor_id else "not made", level.Name))
+output.print_md("**Span:** {0:.3f} m  |  **Rise:** {1:+.0f} mm  |  **Height:** {2:.3f} m  |  "
+                "**Panels:** {3} x {4:.3f} m  |  **Plan bays:** {5}  |  **Placed:** {6}  |  "
+                "**Failed:** {7}  |  **Deck:** {8}  |  **Level:** {9}".format(
+                    frame["span"], (frame["z1"] - frame["z0"]) * 1000.0, summ["height_m"],
+                    summ["panels"], summ["panel_length_m"], summ["bays"], len(member_ids),
+                    len(failed), output.linkify(make_id(floor_id)) if floor_id else "not made",
+                    level.Name))
 rows = []
 for role in BR.ROLES:
     r = summ["by_role"].get(role)
-    if r:
+    if not r:
+        continue
+    if role == "stiffener":
+        tname = RV.element_label(stiffener_sym) if stiffener_sym is not None else u"(none)"
+    elif role == "railing":
+        tname = u"{0}".format(railing_type.Name) if railing_type is not None else u"(none)"
+    else:
         sym = symbols.get(role)
-        rows.append([BR.ROLE_LABELS[role], r["count"], "{0:.2f}".format(r["length_m"]),
-                     u"{0} : {1}".format(sym.FamilyName, sym.Name) if sym is not None else "-"])
+        tname = u"{0} : {1}".format(sym.FamilyName, sym.Name) if sym is not None else u"-"
+    rows.append([BR.ROLE_LABELS[role], r["count"], "{0:.2f}".format(r["length_m"]), tname])
 output.print_table(table_data=rows, title="Members", columns=["Role", "Count", "Length (m)", "Type"])
 if failed:
     output.print_table(table_data=[[m.get("key"), why] for m, why in failed],
                        title="Failed ({0})".format(len(failed)), columns=["Member", "Why"])
-output.print_md("Tracked in `{0}` - move the end points or change their levels and run "
-                "**Update Bridges**.".format(registry_file))
-forms.alert(u"'{0}' built: {1} member(s){2} and the deck{3}.\n\nThe elements are selected; one "
+output.print_md("Tracked in `{0}` - move the posts and run **Update Bridges**.".format(registry_file))
+forms.alert(u"'{0}' built: {1} element(s){2} and the deck{3}.\n\nThe elements are selected; one "
             u"undo step removes them.".format(
                 name, len(member_ids), u", {0} failed".format(len(failed)) if failed else u"",
                 u"" if floor_id else u" (deck FAILED - see the output window)"),

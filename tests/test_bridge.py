@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Unit tests for pymep_bridge - the design defaults, the truss layouts,
-the frame between two points, what an update changes, the design file
-and the registry.
+"""Unit tests for pymep_bridge - the design defaults, the frame from four
+posts, the layouts, the members, what an update changes, the design
+file and the registry.
 
 Run:  python3 tests/test_bridge.py
 """
@@ -21,240 +21,313 @@ sys.path.insert(0, os.path.join(
 import pymep_bridge as BR
 
 
+def post(x, y, zb, zt, size=0.2):
+    return {"x": x, "y": y, "z_bottom": zb, "z_top": zt, "size_m": size}
+
+
+def posts(span=20.0, width=3.0, z0=10.0, z1=12.0, h=2.3, size=0.2, x0=0.0, y0=0.0):
+    """Two pairs along +x: start at x0, end at x0 + span; left is +y."""
+    return ([post(x0, y0 + width / 2, z0, z0 + h, size), post(x0, y0 - width / 2, z0, z0 + h, size)],
+            [post(x0 + span, y0 + width / 2, z1, z1 + h, size), post(x0 + span, y0 - width / 2, z1, z1 + h, size)])
+
+
 def design(**kw):
-    d = dict(DEFAULT_OVERRIDES)
+    d = {"panel_mode": "count", "panels": 4}
     d.update(kw)
     return BR.normalize_design(d)
-
-
-DEFAULT_OVERRIDES = {"panel_mode": "count", "panels": 4, "truss_spacing_m": 3.0,
-                     "deck_width_m": 2.7, "truss_height_m": 1.8}
 
 
 def count(mems, role, side=None):
     return len([m for m in mems if m["role"] == role and (side is None or m["side"] == side)])
 
 
+def by_key(mems, key):
+    return [m for m in mems if m["key"] == key][0]
+
+
+FRAME = BR.frame_from_posts(*posts())
+
+
 class Design(unittest.TestCase):
 
-    def test_defaults_and_types(self):
+    def test_defaults(self):
         d = BR.normalize_design({})
         self.assertEqual(d["truss"], "warren_verticals")
-        self.assertEqual(d["panel_mode"], "length")
-        self.assertIsInstance(d["panels"], int)
-        self.assertEqual(d["types"], {})
-        d2 = BR.normalize_design({"panels": "6", "truss_height_m": "2", "end_posts": 0})
-        self.assertEqual((d2["panels"], d2["truss_height_m"], d2["end_posts"]), (6, 2.0, False))
+        self.assertIsNone(d["height_m"])
+        self.assertEqual(d["truss_plane"], "outside")
+        self.assertEqual(d["bracing"], "x")
+        self.assertFalse(d["end_posts"])
+        self.assertEqual(d["stiffeners_across"], 1)
+        d2 = BR.normalize_design({"height_m": "2.5", "plan_bays": "6", "split_x": 1,
+                                  "top_chord_split_m": "6"})
+        self.assertEqual((d2["height_m"], d2["plan_bays"], d2["split_x"], d2["top_chord_split_m"]),
+                         (2.5, 6, True, 6.0))
 
     def test_refusals(self):
-        for bad in ({"truss": "bowstring"}, {"bracing": "k"}, {"panel_length_m": 0},
-                    {"truss_height_m": -1}, {"panels": "many"}, {"panel_mode": "auto"}):
+        for bad in ({"truss": "bowstring"}, {"bracing": "k"}, {"truss_plane": "above"},
+                    {"panel_length_m": 0}, {"height_m": 0}, {"panels": "many"},
+                    {"floor_thickness_m": -1}, {"bottom_chord_split_m": -2}):
             with self.assertRaises(ValueError):
                 BR.normalize_design(bad)
 
 
+class Frame(unittest.TestCase):
+
+    def test_from_posts(self):
+        f = FRAME
+        self.assertAlmostEqual(f["span"], 20.0)
+        self.assertAlmostEqual(f["tL"], 1.5)
+        self.assertAlmostEqual(f["tR"], -1.5)
+        self.assertAlmostEqual(f["post_size"], 0.2)
+        self.assertAlmostEqual(f["post_height"], 2.3)
+        self.assertEqual((f["z0"], f["z1"]), (10.0, 12.0))
+        self.assertAlmostEqual(f["gradient"], 0.1)
+        self.assertEqual(f["origin"], (0.0, 0.0))
+        self.assertAlmostEqual(f["angle"], 0.0)
+
+    def test_midpoints_give_centreline_and_direction(self):
+        """The pair midpoints are the deck centreline; posts need not be
+        symmetric about anything else."""
+        s = [post(-1.0, 0.0, 10.0, 12.0), post(2.0, 0.0, 10.0, 12.0)]       # midpoint x = 0.5
+        e = [post(-1.0, 20.0, 10.0, 12.0), post(2.0, 20.0, 10.0, 12.0)]     # midpoint x = 0.5
+        f = BR.frame_from_posts(s, e)
+        self.assertEqual(f["origin"], (0.5, 0.0))
+        self.assertAlmostEqual(f["span"], 20.0)
+        self.assertAlmostEqual(f["angle"], math.pi / 2)        # runs north
+        self.assertAlmostEqual(f["tL"], 1.5)
+        self.assertAlmostEqual(f["tR"], -1.5)
+        x, y, z = BR.to_world(f, 10.0, 1.5, 0.0)
+        self.assertAlmostEqual(x, -1.0)                         # left of north is west
+        self.assertAlmostEqual(y, 10.0)
+        self.assertAlmostEqual(z, 10.0)
+        self.assertAlmostEqual(BR.to_world(f, 20.0, 0.0, 0.0)[2], 10.0)
+        corners = BR.deck_profile(design(), f)
+        ts = sorted(set(round(t, 6) for _s, t in corners))
+        self.assertAlmostEqual(ts[0], -ts[1])                   # deck centred on the midpoints
+
+    def test_refusals(self):
+        with self.assertRaises(ValueError):
+            BR.frame_from_posts([post(0, 1, 0, 2)], [post(5, 1, 0, 2), post(5, -1, 0, 2)])
+        with self.assertRaises(ValueError):
+            BR.frame_from_posts([post(0, 1, 0, 2), post(0, 1, 0, 2)], [post(5, 1, 0, 2), post(5, -1, 0, 2)])
+        with self.assertRaises(ValueError):
+            BR.frame_from_posts(*posts(span=0.0))
+
+    def test_planes_and_height(self):
+        d = design()
+        self.assertEqual(BR.planes(d, FRAME), (1.6, -1.6))
+        self.assertEqual(BR.planes(design(truss_plane="inside"), FRAME), (1.4, -1.4))
+        self.assertEqual(BR.planes(design(truss_plane="centre"), FRAME), (1.5, -1.5))
+        self.assertAlmostEqual(BR.height(d, FRAME), 2.3)
+        self.assertAlmostEqual(BR.height(design(height_m=1.8), FRAME), 1.8)
+
+    def test_from_points_helper(self):
+        f = BR.frame_from_points((0.0, 0.0, 5.0), (0.0, 10.0, 6.0), width=4.0)
+        self.assertAlmostEqual(f["span"], 10.0)
+        self.assertAlmostEqual(f["tL"], 2.0)
+        self.assertAlmostEqual(f["angle"], math.pi / 2)
+
+
 class Layout(unittest.TestCase):
 
-    def test_by_count_and_by_length(self):
-        lay = BR.layout(design(), 27.5)
+    def test_chords_and_deck_extents(self):
+        lay = BR.layout(design(), FRAME)
+        self.assertAlmostEqual(lay["s0"], -0.1)              # outer face of the posts
+        self.assertAlmostEqual(lay["s1"], 20.1)
         self.assertEqual(lay["n"], 4)
-        self.assertAlmostEqual(lay["L"], 6.875)
-        self.assertEqual(len(lay["points"]), 5)
-        lay2 = BR.layout(design(panel_mode="length", panel_length_m=1.92), 27.5)
-        self.assertEqual(lay2["n"], 14)                       # 27.5 / 1.92 = 14.3
-        self.assertAlmostEqual(lay2["L"], 27.5 / 14)
-        self.assertAlmostEqual(lay2["points"][-1], 27.5)
+        self.assertAlmostEqual(lay["d0"], 0.11)              # inner face + clearance
+        self.assertAlmostEqual(lay["d1"], 19.89)
+        self.assertEqual(lay["bays"], 4)
+        self.assertEqual(len(lay["stations"]), 5)
+        lay2 = BR.layout(design(chord_extension_m=0.0, plan_bays=10, deck_clearance_m=0.0), FRAME)
+        self.assertAlmostEqual(lay2["s0"], 0.0)
+        self.assertEqual(lay2["bays"], 10)
+        self.assertAlmostEqual(lay2["d0"], 0.1)
+        lay3 = BR.layout(design(panel_mode="length", panel_length_m=1.92), FRAME)
+        self.assertEqual(lay3["n"], 11)                      # 20.2 / 1.92 = 10.5 -> 11
 
-    def test_extensions(self):
-        lay = BR.layout(design(start_extension_m=0.5, end_extension_m=0.25), 10.0)
-        self.assertAlmostEqual(lay["s0"], -0.5)
-        self.assertAlmostEqual(lay["s1"], 10.25)
-        self.assertAlmostEqual(lay["total"], 10.75)
-
-    def test_zero_span_refused(self):
-        with self.assertRaises(ValueError):
-            BR.layout(design(), 0.0)
+    def test_pieces(self):
+        self.assertEqual(BR.pieces(0.0, 20.0, 0.0), [(0.0, 20.0)])
+        self.assertEqual(BR.pieces(0.0, 20.0, 25.0), [(0.0, 20.0)])
+        ps = BR.pieces(0.0, 20.0, 6.0)
+        self.assertEqual(len(ps), 4)
+        self.assertAlmostEqual(ps[0][1], 5.0)
+        self.assertAlmostEqual(ps[-1][1], 20.0)
+        self.assertEqual(len(BR.pieces(0.0, 12.0, 6.0)), 2)
 
 
 class Members(unittest.TestCase):
 
-    def test_warren_with_verticals(self):
-        mems = BR.members(design(), 20.0)
+    def test_trusses_sit_on_the_planes(self):
+        mems = BR.members(design(), FRAME)
         self.assertEqual(count(mems, "top_chord"), 2)
         self.assertEqual(count(mems, "bottom_chord"), 2)
-        self.assertEqual(count(mems, "end_post"), 4)
-        self.assertEqual(count(mems, "vertical"), 2 * 3)          # interior panel points
-        self.assertEqual(count(mems, "diagonal"), 2 * 4)
-        self.assertEqual(count(mems, "crossbeam"), 5)
-        self.assertEqual(count(mems, "bracing"), 4)
-        keys = [m["key"] for m in mems]
-        self.assertEqual(len(keys), len(set(keys)))                 # stable unique keys
-        # a diagonal zigzags: panel 0 bottom->top, panel 1 top->bottom
-        d = [m for m in mems if m["role"] == "diagonal" and m["side"] == "L"]
-        self.assertAlmostEqual(d[0]["p1"][2], -0.35)
-        self.assertAlmostEqual(d[0]["p2"][2], -0.35 + 1.8)
-        self.assertAlmostEqual(d[1]["p1"][2], -0.35 + 1.8)
-        # left truss at +1.5, right at -1.5
-        self.assertAlmostEqual([m for m in mems if m["key"] == u"top_chord:L:0:0"][0]["p1"][1], 1.5)
-        self.assertAlmostEqual([m for m in mems if m["key"] == u"top_chord:R:0:0"][0]["p1"][1], -1.5)
+        self.assertEqual(count(mems, "end_post"), 0)           # the posts are there already
+        self.assertEqual(count(mems, "vertical"), 6)
+        self.assertEqual(count(mems, "diagonal"), 8)
+        top = by_key(mems, u"top_chord:L:0:0")
+        self.assertAlmostEqual(top["p1"][1], 1.6)
+        self.assertAlmostEqual(top["p1"][2], 2.3)                # post height
+        self.assertAlmostEqual(top["p1"][0], -0.1)
+        bot = by_key(mems, u"bottom_chord:R:0:0")
+        self.assertAlmostEqual(bot["p1"][1], -1.6)
+        self.assertAlmostEqual(bot["p1"][2], 0.0)
+        self.assertEqual(top["zjust"], "centre")
+        with_posts = BR.members(design(end_posts=True, truss="warren"), FRAME)
+        self.assertEqual(count(with_posts, "end_post"), 4)
+        self.assertEqual(count(with_posts, "vertical"), 0)
 
-    def test_other_trusses(self):
-        plain = BR.members(design(truss="warren"), 20.0)
-        self.assertEqual(count(plain, "vertical"), 0)
-        self.assertEqual(count(plain, "end_post"), 4)
-        x = BR.members(design(truss="x"), 20.0)
-        self.assertEqual(count(x, "diagonal"), 2 * 4 * 2)
-        v = BR.members(design(truss="vierendeel"), 20.0)
-        self.assertEqual(count(v, "diagonal"), 0)
-        self.assertEqual(count(v, "vertical"), 6)
-        pratt = [m for m in BR.members(design(truss="pratt"), 20.0)
-                 if m["role"] == "diagonal" and m["side"] == "L"]
-        # left half: top at s_a down to bottom at s_b; right half mirrored
-        self.assertGreater(pratt[0]["p1"][2], pratt[0]["p2"][2])
-        self.assertLess(pratt[3]["p1"][2], pratt[3]["p2"][2])
-        howe = [m for m in BR.members(design(truss="howe"), 20.0)
-                if m["role"] == "diagonal" and m["side"] == "L"]
-        self.assertLess(howe[0]["p1"][2], howe[0]["p2"][2])
+    def test_split_chords(self):
+        mems = BR.members(design(top_chord_split_m=6.0, bottom_chord_split_m=12.0), FRAME)
+        self.assertEqual(count(mems, "top_chord", "L"), 4)       # 20.2 / 6 -> 4 pieces of 5.05
+        self.assertEqual(count(mems, "bottom_chord", "L"), 2)
+        t1 = by_key(mems, u"top_chord:L:1:0")
+        self.assertAlmostEqual(t1["p1"][0], -0.1 + 5.05)
+        self.assertAlmostEqual(t1["p2"][0], -0.1 + 10.1)
+        b1 = by_key(mems, u"bottom_chord:L:1:0")
+        self.assertAlmostEqual(b1["p1"][0], -0.1 + 10.1)
+        self.assertAlmostEqual(b1["p2"][0], 20.1)
 
-    def test_crossbeams_and_bracing(self):
-        two = BR.members(design(crossbeams_per_panel=2, bracing="x"), 20.0)
-        self.assertEqual(count(two, "crossbeam"), 9)
-        self.assertEqual(count(two, "bracing"), 16)
-        none = BR.members(design(bracing="none", end_posts=False), 20.0)
-        self.assertEqual(count(none, "bracing"), 0)
-        self.assertEqual(count(none, "end_post"), 0)
-        cb = [m for m in two if m["role"] == "crossbeam"][0]
-        self.assertAlmostEqual(cb["p1"][1], 1.5)
-        self.assertAlmostEqual(cb["p2"][1], -1.5)
-        self.assertAlmostEqual(cb["p1"][2], -0.25)
+    def test_plan_members_sit_under_the_floor(self):
+        mems = BR.members(design(floor_thickness_m=0.15, deck_top_offset_m=0.0), FRAME)
+        cb = by_key(mems, u"crossbeam:C:0:0")
+        self.assertAlmostEqual(cb["p1"][0], 0.11)
+        self.assertAlmostEqual(cb["p1"][1], 1.6)
+        self.assertAlmostEqual(cb["p2"][1], -1.6)
+        self.assertAlmostEqual(cb["p1"][2], -0.15)
+        self.assertEqual(cb["zjust"], "top")
         self.assertEqual(cb["stype"], "beam")
-        self.assertEqual([m for m in two if m["role"] == "bracing"][0]["stype"], "brace")
+        self.assertEqual(count(mems, "crossbeam"), 5)
+        self.assertEqual(count(mems, "bracing"), 8)               # X in 4 bays
+        br = by_key(mems, u"bracing:C:0:0")
+        self.assertAlmostEqual(br["p1"][2], -0.15)
+        self.assertEqual((br["zjust"], br["stype"]), ("top", "brace"))
+        split = BR.members(design(split_x=True), FRAME)
+        self.assertEqual(count(split, "bracing"), 16)
+        mid = by_key(split, u"bracing:C:0:0")["p2"]
+        self.assertAlmostEqual(mid[0], (0.11 + 0.11 + 19.78 / 4) / 2.0)
+        self.assertAlmostEqual(mid[1], 0.0)
+        zig = BR.members(design(bracing="zigzag"), FRAME)
+        self.assertEqual(count(zig, "bracing"), 4)
+        self.assertEqual(count(BR.members(design(bracing="none"), FRAME), "bracing"), 0)
+        more = BR.members(design(plan_bays=8), FRAME)
+        self.assertEqual(count(more, "crossbeam"), 9)
+
+    def test_stiffeners_and_railings(self):
+        d = design(stiffeners_across=2, stiffener_gap_m=0.1, types={"railing": "77"},
+                   railing_inset_m=0.1)
+        mems = BR.members(d, FRAME)
+        st = [m for m in mems if m["role"] == "stiffener"]
+        self.assertEqual(len(st), 8)                               # 2 per bay x 4 bays
+        self.assertAlmostEqual(st[0]["p1"][0], 0.21)
+        self.assertAlmostEqual(st[0]["p1"][2], -0.15)
+        d0, d1, t_r, t_l = BR.deck_extent(d, FRAME)
+        self.assertAlmostEqual(t_l, 1.39)                          # inner face of the post less clearance
+        self.assertAlmostEqual(t_r, -1.39)
+        self.assertAlmostEqual(st[0]["p1"][1], t_r + (t_l - t_r) / 3.0)
+        self.assertEqual(st[0]["stype"], "stiffener")
+        rails = [m for m in mems if m["role"] == "railing"]
+        self.assertEqual(len(rails), 2)
+        self.assertAlmostEqual(rails[0]["p1"][1], 1.29)
+        self.assertAlmostEqual(rails[0]["p1"][2], 0.0)
+        self.assertEqual(count(BR.members(design(stiffeners_across=0), FRAME), "stiffener"), 0)
+        self.assertEqual(count(BR.members(design(), FRAME), "railing"), 0)      # no railing type
+
+    def test_deck_inside_the_posts(self):
+        corners = BR.deck_profile(design(), FRAME)
+        self.assertAlmostEqual(corners[0][0], 0.11)
+        self.assertAlmostEqual(corners[0][1], 1.39)
+        self.assertAlmostEqual(corners[2][0], 19.89)
+        self.assertAlmostEqual(corners[2][1], -1.39)
+        inside = BR.deck_profile(design(truss_plane="inside"), FRAME)
+        self.assertAlmostEqual(inside[0][1], 1.4 - 0.01)          # inside the inner truss plane too
+        deck = BR.world_deck(design(deck_top_offset_m=-0.05), FRAME)
+        self.assertAlmostEqual(deck["tail_top_z"], 10.0 + 0.1 * 0.11 - 0.05)
+        self.assertAlmostEqual(deck["slope"], 0.1)
+        self.assertAlmostEqual(deck["thickness_m"], 0.15)
+        self.assertAlmostEqual(deck["tail"][0], 0.11)
+        self.assertAlmostEqual(deck["head"][0], 19.89)
+
+    def test_world_follows_the_fall(self):
+        wm = BR.world_members(design(), FRAME)
+        top = by_key(wm, u"top_chord:L:0:0")
+        self.assertAlmostEqual(top["p1"][2], 10.0 - 0.01 + 2.3)
+        self.assertAlmostEqual(top["p2"][2], 12.0 + 0.01 + 2.3)
+        cb = by_key(wm, u"crossbeam:C:2:0")
+        self.assertAlmostEqual(cb["p1"][0], 10.0)
+        self.assertAlmostEqual(cb["p1"][2], 11.0 - 0.15)
 
     def test_summary(self):
-        s = BR.summary(design(), 20.0)
+        s = BR.summary(design(), FRAME)
         self.assertEqual(s["panels"], 4)
-        self.assertEqual(s["members"], 2 + 2 + 4 + 6 + 8 + 5 + 4)
-        self.assertAlmostEqual(s["by_role"]["top_chord"]["length_m"], 40.0)
-        self.assertAlmostEqual(s["deck_area_m2"], 54.0)
-
-
-class Frame(unittest.TestCase):
-
-    def test_frame_and_world(self):
-        f = BR.frame_from_points((100.0, 200.0, 4.715), (100.0, 227.5, 4.863))
-        self.assertAlmostEqual(f["span"], 27.5)
-        self.assertAlmostEqual(f["gradient"], 0.148 / 27.5)
-        self.assertAlmostEqual(f["angle"], math.pi / 2)
-        x, y, z = BR.to_world(f, 10.0, 1.5, -0.35)
-        self.assertAlmostEqual(x, 100.0 - 1.5)         # left of a northward span is west
-        self.assertAlmostEqual(y, 210.0)
-        self.assertAlmostEqual(z, 4.715 + 0.148 * 10 / 27.5 - 0.35)
-        self.assertAlmostEqual(BR.deck_z(f, 27.5), 4.863)
-        self.assertAlmostEqual(BR.deck_z(f, -1.0), 4.715 - 0.148 / 27.5)
-
-    def test_world_members_follow_the_slope(self):
-        f = BR.frame_from_points((0.0, 0.0, 10.0), (20.0, 0.0, 12.0))
-        wm = BR.world_members(design(deck_top_offset_m=0.1), f)
-        top = [m for m in wm if m["key"] == u"top_chord:L:0:0"][0]
-        self.assertAlmostEqual(top["p1"][2], 10.0 + 0.1 - 0.35 + 1.8)
-        self.assertAlmostEqual(top["p2"][2], 12.0 + 0.1 - 0.35 + 1.8)
-        self.assertAlmostEqual(top["p1"][1], 1.5)
-        cb = [m for m in wm if m["role"] == "crossbeam"][2]
-        self.assertAlmostEqual(cb["p1"][0], 10.0)
-        self.assertAlmostEqual(cb["p1"][2], 11.0 + 0.1 - 0.25)
-
-    def test_world_deck(self):
-        f = BR.frame_from_points((0.0, 0.0, 10.0), (20.0, 0.0, 12.0))
-        deck = BR.world_deck(design(start_extension_m=0.5), f)
-        self.assertEqual(len(deck["corners"]), 4)
-        self.assertAlmostEqual(deck["corners"][0][0], -0.5)
-        self.assertAlmostEqual(deck["corners"][0][1], 1.35)
-        self.assertAlmostEqual(deck["tail"][0], -0.5)
-        self.assertAlmostEqual(deck["head"][0], 20.0)
-        self.assertAlmostEqual(deck["tail_top_z"], 10.0 - 0.05)
-        self.assertAlmostEqual(deck["slope"], 0.1)
-        self.assertAlmostEqual(deck["length_m"], 20.5)
-
-    def test_same_point_refused(self):
-        with self.assertRaises(ValueError):
-            BR.frame_from_points((1.0, 1.0, 0.0), (1.0, 1.0, 5.0))
+        self.assertEqual(s["bays"], 4)
+        self.assertAlmostEqual(s["height_m"], 2.3)
+        self.assertAlmostEqual(s["deck_width_m"], 2.78)
+        self.assertAlmostEqual(s["by_role"]["top_chord"]["length_m"], 40.4)
+        self.assertEqual(s["members"], 2 + 2 + 6 + 8 + 5 + 8 + 4)
 
 
 class Updates(unittest.TestCase):
 
     def test_diff(self):
-        d = design()
-        old = [m["key"] for m in BR.members(d, 20.0)]
-        new = BR.members(design(panels=5), 20.0)
+        old = [m["key"] for m in BR.members(design(), FRAME)]
+        new = BR.members(design(panels=5), FRAME)
         diff = BR.diff_members(old, new)
-        self.assertTrue(all(k in old for k, _m in diff["update"]))
         self.assertTrue(any(m["key"] == u"vertical:L:4:0" for m in diff["create"]))
         self.assertIn(u"crossbeam:C:4:0", [k for k, _m in diff["update"]])
-        same = BR.diff_members(old, BR.members(d, 25.0))
+        same = BR.diff_members(old, BR.members(design(), BR.frame_from_posts(*posts(span=25.0))))
         self.assertEqual((len(same["create"]), len(same["delete"])), (0, 0))
-        self.assertEqual(len(same["update"]), len(old))
 
     def test_rigid_motion(self):
-        a = BR.frame_from_points((0.0, 0.0, 10.0), (20.0, 0.0, 12.0))
-        b = BR.frame_from_points((5.0, 5.0, 11.0), (5.0, 25.0, 13.0))
+        a = FRAME
+        b = BR.frame_from_posts(*posts(x0=5.0, y0=5.0, z0=11.0, z1=13.0))
         dx, dy, dz, da = BR.rigid_motion(a, b)
-        self.assertEqual((dx, dy, dz), (5.0, 5.0, 1.0))
-        self.assertAlmostEqual(da, math.pi / 2)
-        c = BR.frame_from_points((0.0, 0.0, 10.0), (21.0, 0.0, 12.0))
-        self.assertIsNone(BR.rigid_motion(a, c))
-        d = BR.frame_from_points((0.0, 0.0, 10.0), (20.0, 0.0, 12.5))
-        self.assertIsNone(BR.rigid_motion(a, d))
-        self.assertFalse(BR.frame_changed(a, BR.frame_from_points((0.0, 0.0, 10.0), (20.0, 0.0, 12.0))))
-        self.assertTrue(BR.frame_changed(a, d))
+        self.assertEqual((dx, dy, dz, da), (5.0, 5.0, 1.0, 0.0))
+        self.assertIsNone(BR.rigid_motion(a, BR.frame_from_posts(*posts(span=21.0))))
+        self.assertIsNone(BR.rigid_motion(a, BR.frame_from_posts(*posts(width=3.5))))
+        self.assertIsNone(BR.rigid_motion(a, BR.frame_from_posts(*posts(z1=12.5))))
+        self.assertIsNone(BR.rigid_motion(a, BR.frame_from_posts(*posts(h=2.0))))
+        self.assertFalse(BR.frame_changed(a, BR.frame_from_posts(*posts())))
         self.assertTrue(BR.frame_changed(a, b))
+        self.assertTrue(BR.frame_changed(a, BR.frame_from_posts(*posts(h=2.0))))
 
 
 class Files(unittest.TestCase):
 
     def test_design_file_round_trip(self):
         d = design(truss="pratt")
-        src = {"start_id": 11, "end_id": 12, "level_param": u"Deck Level", "level_mode": "shared"}
-        text = BR.design_file_text(u"Bridge 1", d, src, extra={"saved": "now"})
-        back = BR.parse_design_file(text)
+        src = {"start_ids": [11, 12], "end_ids": [13, 14]}
+        back = BR.parse_design_file(BR.design_file_text(u"Bridge 1", d, src))
         self.assertEqual(back["name"], u"Bridge 1")
         self.assertEqual(back["design"]["truss"], "pratt")
-        self.assertEqual(back["source"]["level_param"], u"Deck Level")
+        self.assertEqual(back["source"]["end_ids"], [13, 14])
         with self.assertRaises(ValueError):
             BR.parse_design_file(u"{not json")
         with self.assertRaises(ValueError):
-            BR.parse_design_file(json.dumps({"name": "x"}))
-        with self.assertRaises(ValueError):
             BR.parse_design_file(json.dumps({"kind": "pymep-bridge", "name": "x", "design": {},
-                                             "source": {"start_id": 1}}))
+                                             "source": {"start_ids": [1]}}))
 
     def test_registry(self):
         folder = tempfile.mkdtemp()
         try:
             path = os.path.join(folder, "sub", "bridges.json")
             reg = BR.load_registry(path)
-            self.assertEqual(reg, {"bridges": {}})
             self.assertEqual(BR.next_name(reg), u"Bridge 1")
-            f = BR.frame_from_points((0.0, 0.0, 10.0), (20.0, 0.0, 12.0))
-            rec = BR.record(u"Bridge 1", design(), {"start_id": 1, "end_id": 2},
-                            f, {u"top_chord:L:0:0": 501}, 600, u"2026-11-09 10:00")
+            rec = BR.record(u"Bridge 1", design(), {"start_ids": [1, 2], "end_ids": [3, 4]},
+                            FRAME, {u"top_chord:L:0:0": 501}, 600, u"2026-11-09 10:00")
             reg["bridges"][u"Bridge 1"] = rec
             BR.save_registry(path, reg)
             back = BR.load_registry(path)
-            self.assertEqual(back["bridges"][u"Bridge 1"]["floor"], 600)
-            self.assertEqual(BR.next_name(back), u"Bridge 2")
             f2 = BR.frame_from_record(back["bridges"][u"Bridge 1"])
-            self.assertAlmostEqual(f2["span"], 20.0)
-            self.assertAlmostEqual(f2["gradient"], 0.1)
-            self.assertAlmostEqual(f2["u"][0], 1.0)
-            self.assertFalse(BR.frame_changed(f, f2))
+            for k in BR.FRAME_KEYS:
+                self.assertAlmostEqual(f2[k], FRAME[k])
+            self.assertFalse(BR.frame_changed(FRAME, f2))
+            self.assertEqual(BR.next_name(back), u"Bridge 2")
         finally:
             shutil.rmtree(folder, ignore_errors=True)
 
     def test_fill_page(self):
-        page = u"<script>var D = /*__BRIDGE_DATA__*/null;</script>"
-        out = BR.fill_page(page, {"a": u"</script>", "b": 1})
-        self.assertIn(u'"b": 1', out)
-        self.assertNotIn(u"</script>\"", out)              # closing tag escaped
+        out = BR.fill_page(u"<script>var D = /*__BRIDGE_DATA__*/null;</script>", {"a": u"</script>"})
         self.assertIn(u"<\\/script>", out)
         with self.assertRaises(ValueError):
             BR.fill_page(u"<html></html>", {})
