@@ -1,0 +1,2 @@
+title: "Id"
+tooltip: "Pick an element and its id goes straight to the clipboard - no window, the id shows in Revit's status bar while you pick the next one. Keep picking; Esc stops. With one element already selected its id is copied at once."

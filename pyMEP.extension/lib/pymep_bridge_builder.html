@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Bridge Builder</title>
+<style>
+:root{--ink:#222;--muted:#666;--line:#ddd;--pane:#f4f4f4;--acc:#f2a900;--steel:#3a4a5c;--deck:#c9b89a;--brace:#8a9bb0}
+body{font-family:Segoe UI,Arial,sans-serif;font-size:13px;color:var(--ink);margin:0;background:#fff;display:flex;flex-direction:column;height:100vh}
+header{background:var(--pane);padding:10px 18px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:18px;flex-wrap:wrap}
+header h1{font-size:17px;margin:0}
+header .meta{color:var(--muted);font-size:12px}
+main{display:flex;flex:1;min-height:0}
+aside{width:340px;min-width:300px;border-right:1px solid var(--line);overflow:auto;padding:10px 14px 30px 14px;background:#fbfbfb}
+section.views{flex:1;overflow:auto;padding:10px 18px 30px 18px}
+fieldset{border:1px solid var(--line);border-radius:4px;margin:0 0 10px 0;padding:8px 10px 10px 10px}
+legend{font-weight:600;padding:0 4px}
+label{display:grid;grid-template-columns:1fr 120px;align-items:center;gap:8px;margin:5px 0;font-size:12.5px}
+label span.u{color:var(--muted);font-size:11px}
+input[type=number],input[type=text],select{height:24px;border:1px solid #bbb;border-radius:3px;padding:0 6px;font:inherit;width:100%;box-sizing:border-box}
+label.check{grid-template-columns:auto 1fr;justify-content:start}
+.hint{color:var(--muted);font-size:11px;margin:2px 0 0 0}
+.tiles{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px 0}
+.tiles div{border:1px solid var(--line);border-radius:4px;padding:6px 10px;min-width:100px;background:#fff}
+.tiles b{display:block;font-size:17px}
+h2{font-size:13.5px;margin:14px 0 4px 0;color:#333}
+svg{width:100%;background:#fff;border:1px solid var(--line);border-radius:4px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
+button{border:1px solid #999;background:#fff;border-radius:3px;padding:5px 12px;font:inherit;cursor:pointer}
+button.primary{background:var(--acc);border-color:#c98b00;font-weight:600}
+button:hover{background:#f0f0f0}
+button.primary:hover{background:#ffb81c}
+.status{color:#2e7d32;font-size:12px}
+.warn{color:#b00020;font-size:12px}
+table.roles{border-collapse:collapse;width:100%;font-size:12px}
+table.roles th,table.roles td{border:1px solid var(--line);padding:3px 6px;text-align:left}
+table.roles td.n{text-align:right}
+.legend span{display:inline-block;width:12px;height:3px;margin:0 4px 2px 10px;vertical-align:middle}
+</style>
+</head>
+<body>
+<header>
+  <h1>Bridge Builder</h1>
+  <div class="meta" id="meta"></div>
+</header>
+<main>
+<aside>
+  <fieldset><legend>Bridge</legend>
+    <label>Name <input type="text" id="name"></label>
+    <div class="hint" id="points"></div>
+  </fieldset>
+  <fieldset><legend>Truss</legend>
+    <label>Type <select id="truss"></select></label>
+    <label>Panels by <select id="panel_mode"><option value="length">target length</option><option value="count">count</option></select></label>
+    <label id="row_panel_length">Panel length <span class="u">m</span> <input type="number" step="0.01" id="panel_length_m"></label>
+    <label id="row_panels">Panels <input type="number" step="1" min="1" id="panels"></label>
+    <label>Truss height <span class="u">m, chord centres</span> <input type="number" step="0.05" id="truss_height_m"></label>
+    <label>Truss spacing <span class="u">m, centre to centre</span> <input type="number" step="0.05" id="truss_spacing_m"></label>
+    <label class="check"><input type="checkbox" id="end_posts"> End posts at both ends</label>
+    <label>Start extension <span class="u">m beyond the point</span> <input type="number" step="0.05" id="start_extension_m"></label>
+    <label>End extension <span class="u">m beyond the point</span> <input type="number" step="0.05" id="end_extension_m"></label>
+  </fieldset>
+  <fieldset><legend>Deck</legend>
+    <label>Deck width <span class="u">m</span> <input type="number" step="0.05" id="deck_width_m"></label>
+    <label>Deck top vs level value <span class="u">m</span> <input type="number" step="0.01" id="deck_top_offset_m"></label>
+    <label>Floor type <select id="type_floor"></select></label>
+    <label>Level <select id="level"></select></label>
+    <div class="hint">The deck is a floor with a slope arrow from the start to the end; its top follows the two level values. Members are placed with their own z, the level is only their reference.</div>
+  </fieldset>
+  <fieldset><legend>Member levels <span class="u">relative to the deck top, m</span></legend>
+    <label>Bottom chord <input type="number" step="0.01" id="bottom_chord_offset_m"></label>
+    <label>Cross beams <input type="number" step="0.01" id="crossbeam_offset_m"></label>
+    <label>Cross beams per panel <select id="crossbeams_per_panel"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
+    <label>Plan bracing <select id="bracing"></select></label>
+    <label>Bracing level <input type="number" step="0.01" id="bracing_offset_m"></label>
+  </fieldset>
+  <fieldset><legend>Member types <span class="u">structural framing</span></legend>
+    <div id="types"></div>
+    <div class="hint">Types come from the model. Load the framing families you want before opening the builder; a missing role keeps the first type.</div>
+  </fieldset>
+  <div class="bar">
+    <button class="primary" id="save">Save design</button>
+    <button id="load">Load design...</button>
+    <input type="file" id="file" accept=".json" style="display:none">
+    <button id="reset">Defaults</button>
+  </div>
+  <div class="status" id="status"></div>
+  <div class="hint">Save writes bridge_&lt;name&gt;.json to your Downloads. Back in Revit, Bridges &gt; Build Bridge reads it and models the bridge between the two points; Update Bridges re-aligns it after the points move or their levels change.</div>
+</aside>
+<section class="views">
+  <div class="tiles" id="tiles"></div>
+  <div class="warn" id="warn"></div>
+  <h2>Elevation (left truss) <span class="legend"><span style="background:var(--steel)"></span>chords and posts <span style="background:var(--brace)"></span>diagonals <span style="background:var(--deck)"></span>deck</span></h2>
+  <svg id="elev" viewBox="0 0 1000 300" preserveAspectRatio="xMidYMid meet"></svg>
+  <h2>Plan from below (cross beams and bracing)</h2>
+  <svg id="plan" viewBox="0 0 1000 260" preserveAspectRatio="xMidYMid meet"></svg>
+  <h2>Cross section</h2>
+  <svg id="sect" viewBox="0 0 600 320" preserveAspectRatio="xMidYMid meet"></svg>
+  <h2>Members</h2>
+  <table class="roles" id="roles"></table>
+</section>
+</main>
+<script>
+var DATA = /*__BRIDGE_DATA__*/null;
+var DEFAULTS = {truss:"warren_verticals",panel_mode:"length",panel_length_m:1.92,panels:14,truss_height_m:1.8,
+  truss_spacing_m:3.0,deck_width_m:2.7,deck_top_offset_m:0.0,bottom_chord_offset_m:-0.35,crossbeam_offset_m:-0.25,
+  crossbeams_per_panel:1,bracing:"zigzag",bracing_offset_m:-0.45,end_posts:true,start_extension_m:0.0,end_extension_m:0.0,types:{},level:null};
+var TRUSSES = [["warren","Warren (zigzag diagonals, no verticals)"],["warren_verticals","Warren with verticals"],
+  ["pratt","Pratt (diagonals lean to the centre)"],["howe","Howe (diagonals lean to the ends)"],["x","X braced (both diagonals)"],["vierendeel","Vierendeel (verticals only)"]];
+var BRACINGS = [["none","none"],["zigzag","zigzag (Warren)"],["x","X in every bay"]];
+var ROLES = [["top_chord","Top chord"],["bottom_chord","Bottom chord"],["end_post","End post"],["vertical","Vertical"],["diagonal","Diagonal"],["crossbeam","Cross beam"],["bracing","Plan bracing"]];
+var NUM = ["panel_length_m","panels","truss_height_m","truss_spacing_m","deck_width_m","deck_top_offset_m","bottom_chord_offset_m","crossbeam_offset_m","bracing_offset_m","start_extension_m","end_extension_m"];
+var $ = function(id){return document.getElementById(id);};
+
+// ---- the same geometry as lib/pymep_bridge.py, for the preview ----
+function layout(d, span){
+  var s0 = -d.start_extension_m, s1 = span + d.end_extension_m, total = s1 - s0;
+  var n = d.panel_mode === "count" ? Math.max(1, d.panels) : Math.max(1, Math.round(total / d.panel_length_m));
+  var L = total / n, pts = [];
+  for (var i = 0; i <= n; i++) pts.push(s0 + L * i);
+  return {s0:s0, s1:s1, n:n, L:L, points:pts, total:total};
+}
+function diagonal(truss, i, n, sa, sb){
+  if (truss === "vierendeel") return [];
+  if (truss === "x") return [[["bottom",sa],["top",sb]],[["top",sa],["bottom",sb]]];
+  if (truss === "warren" || truss === "warren_verticals") return i % 2 === 0 ? [[["bottom",sa],["top",sb]]] : [[["top",sa],["bottom",sb]]];
+  var left = (i + 0.5) < n / 2;
+  if (truss === "pratt") return left ? [[["top",sa],["bottom",sb]]] : [[["bottom",sa],["top",sb]]];
+  if (truss === "howe") return left ? [[["bottom",sa],["top",sb]]] : [[["top",sa],["bottom",sb]]];
+  return [];
+}
+function members(d, span){
+  var lay = layout(d, span), half = d.truss_spacing_m / 2, zb = d.bottom_chord_offset_m, zt = zb + d.truss_height_m;
+  var zc = d.crossbeam_offset_m, zx = d.bracing_offset_m, pts = lay.points, n = lay.n, out = [];
+  function add(role, side, i, p1, p2){ out.push({role:role, side:side, i:i, p1:p1, p2:p2}); }
+  [["L", half], ["R", -half]].forEach(function(st){
+    var side = st[0], t = st[1];
+    add("top_chord", side, 0, [lay.s0,t,zt], [lay.s1,t,zt]);
+    add("bottom_chord", side, 0, [lay.s0,t,zb], [lay.s1,t,zb]);
+    if (d.end_posts){ add("end_post", side, 0, [lay.s0,t,zb], [lay.s0,t,zt]); add("end_post", side, 1, [lay.s1,t,zb], [lay.s1,t,zt]); }
+    if (d.truss !== "warren") for (var i = 1; i < n; i++) add("vertical", side, i, [pts[i],t,zb], [pts[i],t,zt]);
+    for (var j = 0; j < n; j++) diagonal(d.truss, j, n, pts[j], pts[j+1]).forEach(function(ab){
+      add("diagonal", side, j, [ab[0][1], t, ab[0][0]==="bottom"?zb:zt], [ab[1][1], t, ab[1][0]==="bottom"?zb:zt]);
+    });
+  });
+  var per = Math.max(1, d.crossbeams_per_panel), stations = [];
+  for (var i2 = 0; i2 < n; i2++) for (var k = 0; k < per; k++) stations.push(pts[i2] + lay.L * k / per);
+  stations.push(pts[n]);
+  stations.forEach(function(s, j){ add("crossbeam", "C", j, [s,half,zc], [s,-half,zc]); });
+  if (d.bracing !== "none") for (var j2 = 0; j2 < stations.length - 1; j2++){
+    var sa = stations[j2], sb = stations[j2+1];
+    if (d.bracing === "x"){ add("bracing","C",j2,[sa,half,zx],[sb,-half,zx]); add("bracing","C",j2,[sa,-half,zx],[sb,half,zx]); }
+    else if (j2 % 2 === 0) add("bracing","C",j2,[sa,half,zx],[sb,-half,zx]); else add("bracing","C",j2,[sa,-half,zx],[sb,half,zx]);
+  }
+  return {members:out, layout:lay};
+}
+function len3(m){ var dx=m.p1[0]-m.p2[0], dy=m.p1[1]-m.p2[1], dz=m.p1[2]-m.p2[2]; return Math.sqrt(dx*dx+dy*dy+dz*dz); }
+
+// ---- form state ----
+var design = JSON.parse(JSON.stringify(DEFAULTS));
+function fillSelect(sel, items, value){
+  sel.innerHTML = "";
+  items.forEach(function(it){ var o = document.createElement("option"); o.value = it[0]; o.textContent = it[1]; sel.appendChild(o); });
+  if (value !== undefined && value !== null) sel.value = String(value);
+}
+function typeRows(){
+  var box = $("types"); box.innerHTML = "";
+  var items = (DATA.framing_types || []).map(function(t){ return [String(t.id), t.name]; });
+  ROLES.forEach(function(r){
+    var lab = document.createElement("label"); lab.textContent = r[1] + " ";
+    var sel = document.createElement("select"); sel.id = "type_" + r[0];
+    fillSelect(sel, items.length ? items : [["", "(no framing types loaded)"]], design.types[r[0]]);
+    sel.addEventListener("change", read); lab.appendChild(sel); box.appendChild(lab);
+  });
+}
+function write(){
+  $("name").value = DATA.name || "Bridge 1";
+  fillSelect($("truss"), TRUSSES, design.truss);
+  fillSelect($("bracing"), BRACINGS, design.bracing);
+  $("panel_mode").value = design.panel_mode;
+  NUM.forEach(function(k){ $(k).value = design[k]; });
+  $("crossbeams_per_panel").value = String(design.crossbeams_per_panel);
+  $("end_posts").checked = !!design.end_posts;
+  var floors = (DATA.floor_types || []).map(function(t){ return [String(t.id), t.name]; });
+  fillSelect($("type_floor"), floors.length ? floors : [["", "(no floor types)"]], design.types.floor);
+  var levels = (DATA.levels || []).map(function(l){ return [String(l.id), l.name + "  (" + l.elevation_m.toFixed(3) + " m)"]; });
+  fillSelect($("level"), levels.length ? levels : [["", "(no levels)"]], design.level);
+  typeRows();
+  render();
+}
+function read(){
+  design.truss = $("truss").value; design.bracing = $("bracing").value; design.panel_mode = $("panel_mode").value;
+  NUM.forEach(function(k){ var v = parseFloat($(k).value); if (!isNaN(v)) design[k] = v; });
+  design.panels = Math.max(1, Math.round(design.panels));
+  design.crossbeams_per_panel = parseInt($("crossbeams_per_panel").value, 10);
+  design.end_posts = $("end_posts").checked;
+  design.types = {}; ROLES.forEach(function(r){ var s = $("type_" + r[0]); if (s && s.value) design.types[r[0]] = s.value; });
+  if ($("type_floor").value) design.types.floor = $("type_floor").value;
+  design.level = $("level").value || null;
+  render();
+}
+
+// ---- drawing ----
+function svgLine(svg, x1, y1, x2, y2, color, w){
+  var l = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  l.setAttribute("x1", x1); l.setAttribute("y1", y1); l.setAttribute("x2", x2); l.setAttribute("y2", y2);
+  l.setAttribute("stroke", color); l.setAttribute("stroke-width", w || 2); l.setAttribute("stroke-linecap", "round"); svg.appendChild(l);
+}
+function svgText(svg, x, y, text, anchor, size){
+  var t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  t.setAttribute("x", x); t.setAttribute("y", y); t.setAttribute("font-size", size || 11); t.setAttribute("fill", "#555");
+  if (anchor) t.setAttribute("text-anchor", anchor); t.textContent = text; svg.appendChild(t);
+}
+function svgRect(svg, x, y, w, h, fill, stroke){
+  var r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  r.setAttribute("x", x); r.setAttribute("y", y); r.setAttribute("width", w); r.setAttribute("height", h);
+  r.setAttribute("fill", fill); if (stroke) r.setAttribute("stroke", stroke); svg.appendChild(r);
+}
+function clear(svg){ while (svg.firstChild) svg.removeChild(svg.firstChild); }
+var span = Math.max(0.01, DATA.span_m || 10);
+var z0 = DATA.start ? DATA.start.z_m : 0, z1 = DATA.end ? DATA.end.z_m : 0;
+function deckZ(s){ return z0 + (z1 - z0) * s / span; }
+
+function render(){
+  var res, warn = "";
+  try { res = members(design, span); } catch (e) { $("warn").textContent = "Cannot lay out: " + e; return; }
+  var mems = res.members, lay = res.layout;
+  if (design.deck_width_m > design.truss_spacing_m) warn += "The deck is wider than the truss spacing. ";
+  if (lay.L < 0.5) warn += "Panels under 0.5 m - check the panel length. ";
+  if (design.truss_height_m < 1.1) warn += "Truss lower than 1.1 m - a pedestrian parapet is usually 1.1 m or more. ";
+  $("warn").textContent = warn;
+  // tiles
+  var steel = 0; mems.forEach(function(m){ steel += len3(m); });
+  var fall = z1 - z0, grad = fall !== 0 ? "1:" + Math.round(Math.abs(span / fall)) : "level";
+  $("tiles").innerHTML = ["<div><b>" + span.toFixed(3) + " m</b>span between points</div>",
+    "<div><b>" + lay.n + "</b>panels of " + lay.L.toFixed(3) + " m</div>",
+    "<div><b>" + lay.total.toFixed(3) + " m</b>truss length</div>",
+    "<div><b>" + (fall * 1000).toFixed(0) + " mm</b>rise start to end (" + grad + ")</div>",
+    "<div><b>" + mems.length + "</b>members, " + steel.toFixed(1) + " m of steel</div>",
+    "<div><b>" + (lay.total * design.deck_width_m).toFixed(1) + " m²</b>deck</div>"].join("");
+  // elevation of the left truss: s horizontal, true z vertical (exaggerated x1)
+  var el = $("elev"); clear(el);
+  var W = 1000, H = 300, pad = 40, zb = design.bottom_chord_offset_m, zt = zb + design.truss_height_m;
+  var zmin = Math.min(deckZ(lay.s0), deckZ(lay.s1)) + zb - 0.3, zmax = Math.max(deckZ(lay.s0), deckZ(lay.s1)) + zt + 0.3;
+  var sx = (W - 2 * pad) / lay.total, sz = (H - 2 * pad) / (zmax - zmin), sc = Math.min(sx, sz * 1.0);
+  var X = function(s){ return pad + (s - lay.s0) * sx; }, Y = function(z){ return H - pad - (z - zmin) * sz; };
+  // deck slab
+  var tDeck = 0.15;
+  var poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+  poly.setAttribute("points", [X(lay.s0), Y(deckZ(lay.s0) + design.deck_top_offset_m), X(lay.s1), Y(deckZ(lay.s1) + design.deck_top_offset_m),
+    X(lay.s1), Y(deckZ(lay.s1) + design.deck_top_offset_m - tDeck), X(lay.s0), Y(deckZ(lay.s0) + design.deck_top_offset_m - tDeck)].join(" "));
+  poly.setAttribute("fill", "var(--deck)"); poly.setAttribute("opacity", "0.8"); el.appendChild(poly);
+  mems.forEach(function(m){
+    if (m.side !== "L") return;
+    var col = m.role === "diagonal" ? "var(--brace)" : "var(--steel)", w = (m.role === "top_chord" || m.role === "bottom_chord") ? 4 : 2.5;
+    svgLine(el, X(m.p1[0]), Y(deckZ(m.p1[0]) + design.deck_top_offset_m + m.p1[2]), X(m.p2[0]), Y(deckZ(m.p2[0]) + design.deck_top_offset_m + m.p2[2]), col, w);
+  });
+  // points and levels
+  [[0, z0, "start"], [span, z1, "end"]].forEach(function(p){
+    svgLine(el, X(p[0]), Y(zmin), X(p[0]), Y(zmax), "#b00020", 1);
+    svgText(el, X(p[0]), Y(zmax) - 6, p[2] + "  " + p[1].toFixed(3) + " m", "middle", 11);
+  });
+  svgText(el, pad, H - 10, "s = " + lay.s0.toFixed(2) + " m", "start"); svgText(el, W - pad, H - 10, "s = " + lay.s1.toFixed(2) + " m", "end");
+  svgText(el, W / 2, H - 10, "vertical scale x" + (sz / sx).toFixed(1), "middle");
+  // plan from below
+  var pl = $("plan"); clear(pl); var PW = 1000, PH = 260, ppad = 40;
+  var half = design.truss_spacing_m / 2, hw = Math.max(half, design.deck_width_m / 2);
+  var psx = (PW - 2 * ppad) / lay.total, psy = (PH - 2 * ppad) / (2 * hw);
+  var PX = function(s){ return ppad + (s - lay.s0) * psx; }, PY = function(t){ return PH / 2 - t * psy; };
+  svgRect(pl, PX(lay.s0), PY(design.deck_width_m / 2), (lay.s1 - lay.s0) * psx, design.deck_width_m * psy, "var(--deck)", null);
+  mems.forEach(function(m){
+    if (m.role === "bottom_chord"){ svgLine(pl, PX(m.p1[0]), PY(m.p1[1]), PX(m.p2[0]), PY(m.p2[1]), "var(--steel)", 4); }
+    else if (m.role === "crossbeam"){ svgLine(pl, PX(m.p1[0]), PY(m.p1[1]), PX(m.p2[0]), PY(m.p2[1]), "var(--steel)", 2.5); }
+    else if (m.role === "bracing"){ svgLine(pl, PX(m.p1[0]), PY(m.p1[1]), PX(m.p2[0]), PY(m.p2[1]), "var(--brace)", 2); }
+  });
+  svgText(pl, PX(lay.s0), PY(hw) - 8, "left truss", "start"); svgText(pl, PX(lay.s0), PY(-hw) + 16, "right truss", "start");
+  svgText(pl, PW / 2, PH - 8, "plan scale is true; " + (mems.filter(function(m){return m.role==="crossbeam";}).length) + " cross beams", "middle");
+  // cross section
+  var se = $("sect"); clear(se); var SW = 600, SH = 320, spad = 50;
+  var ztop = zt + 0.3, zbot = Math.min(zb, design.crossbeam_offset_m, design.bracing_offset_m) - 0.3;
+  var ssx = (SW - 2 * spad) / (2 * hw + 0.6), ssy = (SH - 2 * spad) / (ztop - zbot), ss = Math.min(ssx, ssy);
+  var SX = function(t){ return SW / 2 - t * ss; }, SY = function(z){ return SH - spad - (z - zbot) * ss; };
+  svgRect(se, SX(design.deck_width_m / 2), SY(design.deck_top_offset_m), design.deck_width_m * ss, tDeck * ss, "var(--deck)", "#a08a60");
+  svgLine(se, SX(half), SY(design.crossbeam_offset_m), SX(-half), SY(design.crossbeam_offset_m), "var(--steel)", 5);
+  if (design.bracing !== "none") svgLine(se, SX(half), SY(design.bracing_offset_m), SX(-half), SY(design.bracing_offset_m), "var(--brace)", 2);
+  [half, -half].forEach(function(t){
+    svgLine(se, SX(t), SY(zb), SX(t), SY(zt), "var(--steel)", 5);
+    var r = 7; svgRect(se, SX(t) - r, SY(zt) - r, 2 * r, 2 * r, "var(--steel)", null); svgRect(se, SX(t) - r, SY(zb) - r, 2 * r, 2 * r, "var(--steel)", null);
+  });
+  svgText(se, SW / 2, SY(design.deck_top_offset_m) - 8, "deck top " + (design.deck_top_offset_m >= 0 ? "+" : "") + design.deck_top_offset_m.toFixed(2) + " m vs level value", "middle");
+  svgText(se, SX(half) - 12, SY(zt) + 4, "top chord " + zt.toFixed(2), "end"); svgText(se, SX(half) - 12, SY(zb) + 4, "bottom chord " + zb.toFixed(2), "end");
+  svgText(se, SX(-half) + 12, SY(design.crossbeam_offset_m) + 4, "cross beam " + design.crossbeam_offset_m.toFixed(2), "start");
+  svgText(se, SW / 2, SH - 12, "truss spacing " + design.truss_spacing_m.toFixed(2) + " m, deck " + design.deck_width_m.toFixed(2) + " m, height " + design.truss_height_m.toFixed(2) + " m", "middle");
+  // roles table
+  var rows = "<tr><th>Role</th><th>Count</th><th>Length (m)</th><th>Type</th></tr>";
+  var typeName = function(id){ var t = (DATA.framing_types || []).filter(function(x){ return String(x.id) === String(id); })[0]; return t ? t.name : "(first type)"; };
+  ROLES.forEach(function(r){
+    var ms = mems.filter(function(m){ return m.role === r[0]; }); if (!ms.length) return;
+    var L = 0; ms.forEach(function(m){ L += len3(m); });
+    rows += "<tr><td>" + r[1] + "</td><td class='n'>" + ms.length + "</td><td class='n'>" + L.toFixed(2) + "</td><td>" + typeName(design.types[r[0]]) + "</td></tr>";
+  });
+  $("roles").innerHTML = rows;
+  $("row_panel_length").style.display = design.panel_mode === "length" ? "" : "none";
+  $("row_panels").style.display = design.panel_mode === "count" ? "" : "none";
+}
+
+// ---- save / load ----
+function safeName(s){ return (s || "bridge").replace(/[^A-Za-z0-9_\-]+/g, "_"); }
+$("save").addEventListener("click", function(){
+  read();
+  var name = $("name").value.trim() || "Bridge 1";
+  var out = {kind:"pymep-bridge", name:name, design:design, source:DATA.source, saved:new Date().toISOString(), model:DATA.model, span_m:span};
+  var blob = new Blob([JSON.stringify(out, null, 2)], {type:"application/json"});
+  var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "bridge_" + safeName(name) + ".json";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  $("status").textContent = "Saved " + a.download + " to Downloads - now run Bridges > Build Bridge in Revit.";
+});
+$("load").addEventListener("click", function(){ $("file").click(); });
+$("file").addEventListener("change", function(){
+  var f = this.files[0]; if (!f) return;
+  var rd = new FileReader();
+  rd.onload = function(){ try { var d = JSON.parse(rd.result); if (d.kind !== "pymep-bridge") throw new Error("not a bridge design");
+    design = JSON.parse(JSON.stringify(DEFAULTS)); Object.keys(d.design || {}).forEach(function(k){ design[k] = d.design[k]; });
+    if (d.name) DATA.name = d.name; write(); $("status").textContent = "Loaded " + f.name + "."; } catch (e) { $("status").textContent = "Could not load: " + e; } };
+  rd.readAsText(f);
+});
+$("reset").addEventListener("click", function(){ design = JSON.parse(JSON.stringify(DEFAULTS)); applyModelDefaults(); write(); });
+["truss","panel_mode","bracing","crossbeams_per_panel","end_posts","type_floor","level"].forEach(function(id){ $(id).addEventListener("change", read); });
+NUM.forEach(function(k){ $(k).addEventListener("input", read); });
+
+function applyModelDefaults(){
+  if (DATA.design) Object.keys(DATA.design).forEach(function(k){ design[k] = DATA.design[k]; });
+  if (!design.level && DATA.levels && DATA.levels.length){
+    var below = DATA.levels.filter(function(l){ return l.elevation_m <= z0; });
+    design.level = String((below.length ? below[below.length - 1] : DATA.levels[0]).id);
+  }
+  if ((!design.types || !design.types.floor) && DATA.floor_types && DATA.floor_types.length){ design.types = design.types || {}; design.types.floor = String(DATA.floor_types[0].id); }
+  if (DATA.framing_types && DATA.framing_types.length) ROLES.forEach(function(r){ if (!design.types[r[0]]) design.types[r[0]] = String(DATA.framing_types[0].id); });
+}
+(function init(){
+  if (!DATA){ $("warn").textContent = "No data - open this page from Revit (Bridges > Bridge Builder)."; DATA = {}; }
+  $("meta").textContent = (DATA.model ? "Model: " + DATA.model + "   |   " : "") + "Start: " + (DATA.start ? DATA.start.label : "-") + "   |   End: " + (DATA.end ? DATA.end.label : "-") +
+    "   |   Level parameter: " + ((DATA.source && DATA.source.level_param) || "-") + " (" + ((DATA.source && DATA.source.level_mode_label) || "") + ")";
+  if (DATA.start && DATA.end) $("points").textContent = "Start " + DATA.start.label + " at " + DATA.start.x_m.toFixed(3) + ", " + DATA.start.y_m.toFixed(3) + " level " + DATA.start.z_m.toFixed(3) + " m;  end " + DATA.end.label + " at " + DATA.end.x_m.toFixed(3) + ", " + DATA.end.y_m.toFixed(3) + " level " + DATA.end.z_m.toFixed(3) + " m  (internal coordinates, metres).";
+  applyModelDefaults(); write();
+})();
+</script>
+</body>
+</html>

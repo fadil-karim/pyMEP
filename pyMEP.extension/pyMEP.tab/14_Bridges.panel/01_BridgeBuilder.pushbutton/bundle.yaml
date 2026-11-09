@@ -1,0 +1,2 @@
+title: "Bridge\nBuilder"
+tooltip: "Design a steel truss footbridge between two generic model instances. Say which family types mark the start and the end and which of their parameters holds the deck level there; the builder opens in your browser with the span and levels filled in - choose the truss type, panels, height, spacing, deck, member types - and saves a design file. Build Bridge then models it; Update Bridges re-aligns it when the points or their levels change."

@@ -1,0 +1,2 @@
+title: "Update\nBridges"
+tooltip: "Re-align built bridges to where their end points are now: reads each tracked bridge's start and end instances and deck levels again, moves the trusses, cross beams and bracing onto their new lines (keeping the element ids) and moves the deck, or rebuilds the deck when the span or the level difference changed. One undo step per bridge."

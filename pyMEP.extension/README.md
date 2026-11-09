@@ -35,7 +35,7 @@ pyMEP.extension/
     07_PipeNetworks.panel/      # 'Pipe Networks': Lines to Pipes (always creates) + Update Pipes (scoped in-place update) + Connect Inflow to Collector + Sync Input Nodes
     03_Topography.panel/        # Align to Topo, Cut Toposolid, Drape Floor
     04_Chambers.panel/          # 'Chamber Drawing Setup': sections workflow, Chamber Plans
-    05_Parameters.panel/        # Bulk Change, CSV to Parameter, Replicate Parameter
+    05_Parameters.panel/        # Bulk Change, CSV to Parameter, Id, Replicate Parameter
     06_ProjectDataTransfer.panel/ # 'Project Data Transfer': Export/Import Project Data (view templates + filters as JSON)
     06_Annotate.panel/          # 3 annotation buttons
     08_Electrical.panel/        # Encasement (shown before Drainage on the ribbon)
@@ -44,6 +44,7 @@ pyMEP.extension/
     11_COBie.panel/             # Populate, Check
     12_Struct.panel/            # Add To Pile Sequence
     13_Site.panel/              # Place At Coordinates, Element Coordinates, Move To Coordinates
+    14_Bridges.panel/           # Bridge Builder, Build Bridge, Update Bridges
 ```
 
 Every button has its own icon.
@@ -550,6 +551,12 @@ source parameter and a writable target parameter; the value is copied onto
 every placed instance of that type, with a preview table and safe type
 coercion.
 
+**Id** - pick an element and its id is on the clipboard, with no
+window: the id shows in Revit's status bar as the prompt for the next
+pick. Keep picking, Esc stops; with one element already selected its id
+is copied at once. Several picks are listed in the output afterwards so
+none is lost.
+
 **CSV to Parameter** - set one instance parameter on the elements of a
 category from a CSV file. Pick the category (or keep to the current
 selection), the CSV, the element parameter and CSV column that identify
@@ -927,6 +934,50 @@ element's level; without it the height stays, and view-specific
 elements only ever move in x, y. The preview lists every move with the
 distance before anything happens; pinned elements are refused unless
 the unpin tick is on; one undo step.
+
+### Bridges
+
+Steel truss footbridges between two points, designed in the browser and
+modelled as a sloped deck floor plus structural framing.
+
+**Bridge Builder** - the start and the end of a bridge are two generic
+model instances; a parameter on each gives the deck level there. The
+dialog asks for the family type at each end (search by any words), the
+level parameter (or the instance's own elevation) and how to read it -
+a shared / survey elevation, an internal elevation, or an offset above
+the instance's level; a length parameter reads in its units, a plain
+number as metres. With one instance of a type it is the point; with
+more you pick it. The builder page then opens in the browser with the
+span, the two levels and the model's framing types, floor types and
+levels: choose the truss type (Warren, Warren with verticals, Pratt,
+Howe, X, Vierendeel), panels by target length or count, truss height
+and spacing, end posts, extensions beyond the points, deck width and
+the deck top against the level value, the levels of bottom chord, cross
+beams and plan bracing (zigzag, X or none), and a framing type per role.
+Elevation, plan-from-below and cross-section previews and the member
+counts update as you type. **Save design** writes `bridge_<name>.json`
+to Downloads.
+
+**Build Bridge** - reads that file (newest, or a pick), finds the two
+points and reads their levels again, and places everything in one undo
+step: both trusses (chords, end posts, verticals and diagonals as
+beams and braces), the cross beams between the bottom chords, the plan
+bracing, and the deck as a floor with a slope arrow from the start to
+the end so its top follows the two level values. Members carry the
+bridge name in Comments. Every element id is recorded against the
+bridge name in `bridges.json` in the model's pyMEP folder; building a
+name again replaces its elements.
+
+**Update Bridges** - after the points move or their level values
+change: reads them again and puts each tracked member onto its new
+line, keeping the element ids (so tags and dimensions survive); a
+changed span that adds or drops panels creates or deletes just those
+members. The deck floor moves with the bridge when the span and the
+fall are unchanged, otherwise it is rebuilt. One undo step per bridge,
+and a table says what happened to each.
+
+Railings and parapet infill are not modelled - the trusses are the
+only structure above the deck.
 
 ## Lib modules
 
