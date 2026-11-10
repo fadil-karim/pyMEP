@@ -1026,7 +1026,11 @@ under the elevation: click **+** to add a split and type the piece
 length, click a length to retype it, and the dashed piece is the
 variable one - it takes whatever is left of the chord and stretches
 or shrinks as the span changes, so the typed pieces keep their
-lengths when the posts move. The last piece is the variable one
+lengths when the posts move. The variable piece's length can be typed
+too: the difference is taken equally from the pieces either side of
+it (all from the one neighbour at a chord end), a neighbour that would
+drop below 500 mm stops there and the other side takes the rest, and
+a change the neighbours cannot cover is refused with a note. The last piece is the variable one
 unless another is marked "Make this variable" on its ring, which also
 offers "Add split after", "Remove piece", "Equal pieces" (fills the
 strip with equal typed pieces) and "One piece". Pieces that add up to

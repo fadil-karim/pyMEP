@@ -410,6 +410,48 @@ def _norm_pieces(name, value):
     return out if len(out) > 1 else []
 
 
+MIN_PIECE_M = 0.5          # the shortest a chord piece is cut to when the variable piece is resized
+
+
+def resize_variable(pieces_list, total, new_len, min_len=MIN_PIECE_M):
+    """The piece list with the variable piece at new_len (the chord's total
+    length is fixed): the change is taken equally from the typed pieces
+    either side of the variable one - a piece at either end of the chord
+    has one neighbour, which takes it all. A neighbour that would drop
+    below min_len is cut to min_len and the other side takes the rest; a
+    longer variable piece gives the length back equally. ValueError when
+    the neighbours cannot give enough, or new_len is below min_len."""
+    lst = list(pieces_list)
+    if len(lst) < 2 or lst.count(None) != 1:
+        raise ValueError(u"the chord has no variable piece to resize")
+    if new_len < min_len - TOL:
+        raise ValueError(u"the variable piece cannot be shorter than {0:.0f} mm".format(min_len * 1000.0))
+    v = lst.index(None)
+    cur = total - sum(x for x in lst if x is not None)
+    delta = new_len - cur
+    nb = [i for i in (v - 1, v + 1) if 0 <= i < len(lst)]
+    if delta <= TOL:
+        for i in nb:
+            lst[i] += -delta / len(nb)
+        return lst
+    caps = dict((i, max(0.0, lst[i] - min_len)) for i in nb)
+    if sum(caps.values()) < delta - TOL:
+        raise ValueError(u"the pieces next to it can give {0:.0f} mm at most (each kept to {1:.0f} mm), "
+                         u"not {2:.0f} mm".format(sum(caps.values()) * 1000.0, min_len * 1000.0, delta * 1000.0))
+    if len(nb) == 1:
+        lst[nb[0]] -= delta
+        return lst
+    a, b = nb
+    take_a = min(delta / 2.0, caps[a])
+    take_b = delta - take_a
+    if take_b > caps[b] + TOL:
+        take_b = caps[b]
+        take_a = delta - take_b
+    lst[a] -= take_a
+    lst[b] -= take_b
+    return lst
+
+
 def piece_spans(s0, s1, pieces_list, max_len=0.0, label=u"chord"):
     """(s_a, s_b) of a chord's pieces between s0 and s1. With a piece
     list the typed lengths run from the start in order and the None
@@ -862,7 +904,7 @@ def fill_page(template, data):
     return template.replace(PLACEHOLDER, text, 1)
 
 
-__all__ = ["piece_spans", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
+__all__ = ["piece_spans", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
            "BRACE_ROLES", "TOP_ALIGNED", "DEFAULTS", "normalize_design", "frame_from_posts",
            "frame_from_points", "effective_frame", "planes", "height", "base_z", "to_world",
            "layout", "pieces",

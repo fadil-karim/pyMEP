@@ -232,6 +232,30 @@ class Members(unittest.TestCase):
         with self.assertRaises(ValueError):
             BR.normalize_design({"top_chord_pieces": [0, 3.0]})
 
+    def test_resize_variable_piece(self):
+        # the change is taken equally from the pieces either side
+        self.assertEqual(BR.resize_variable([6.0, None, 4.0], 20.0, 11.0), [5.5, None, 3.5])
+        # a longer variable gives back equally
+        self.assertEqual(BR.resize_variable([6.0, None, 4.0], 20.0, 8.0), [7.0, None, 5.0])
+        # one side short: cut to 500, the other side takes the rest
+        r = BR.resize_variable([6.0, None, 0.8], 20.0, 14.2)       # variable 13.2 -> 14.2
+        self.assertAlmostEqual(r[2], 0.5)
+        self.assertAlmostEqual(r[0], 6.0 - 0.7)
+        self.assertEqual(r[1], None)
+        # at a chord end there is one neighbour, which takes it all
+        self.assertEqual(BR.resize_variable([None, 5.0, 5.0], 20.0, 12.0), [None, 3.0, 5.0])
+        self.assertEqual(BR.resize_variable([5.0, 5.0, None], 20.0, 9.0), [5.0, 6.0, None])
+        # the variable comes out at exactly the typed length
+        sp = BR.piece_spans(0.0, 20.0, BR.resize_variable([3.0, 2.0, None, 4.0, 1.5], 20.0, 10.0))
+        self.assertAlmostEqual(sp[2][1] - sp[2][0], 10.0)
+        self.assertAlmostEqual(sp[0][1] - sp[0][0], 3.0)           # pieces not next to it are left alone
+        self.assertAlmostEqual(sp[4][1] - sp[4][0], 1.5)
+        for bad in (([1.0, None, 1.0], 10.0, 9.5),                 # neighbours can give 1.0 at most
+                    ([6.0, None, 4.0], 20.0, 0.3),                 # below the minimum
+                    ([6.0, 4.0], 10.0, 5.0)):                      # no variable piece
+            with self.assertRaises(ValueError):
+                BR.resize_variable(*bad)
+
     def test_variable_piece_stretches(self):
         mems = BR.members(design(top_chord_pieces=[6.0, None], bottom_chord_pieces=[None, 4.0, 4.0]), FRAME)
         self.assertEqual(count(mems, "top_chord", "L"), 2)

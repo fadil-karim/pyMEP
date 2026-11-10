@@ -235,6 +235,28 @@ function setPieces(role, list){
   if (list.length && total - fixed <= 0.05){ $("status").textContent = "Those " + ROLES[role].toLowerCase() + " pieces add up to " + fmt(fixed, 3) + " m of a " + fmt(total, 3) + " m chord - nothing left for the variable piece, so not applied."; return false; }
   $("status").textContent = ""; design[role + "_split_m"] = 0; setDesign(role + "_pieces", list); return true;
 }
+var MIN_PIECE = 0.5;   // the shortest a neighbour is cut to when the variable piece is resized
+function resizeVariable(list, total, newLen){
+  // the variable piece at newLen: the change comes equally from the pieces either side (one at a chord end);
+  // a side that would drop below MIN_PIECE stops there and the other side takes the rest
+  var l = list.slice(), v = l.indexOf(null);
+  if (l.length < 2 || v < 0) throw new Error("this chord has no variable piece to resize");
+  if (newLen < MIN_PIECE - 1e-6) throw new Error("the variable piece cannot be shorter than " + mm(MIN_PIECE) + " mm");
+  var fixed = 0; l.forEach(function(x){ if (x !== null) fixed += x; });
+  var delta = newLen - (total - fixed), nb = [v - 1, v + 1].filter(function(i){ return i >= 0 && i < l.length; });
+  if (delta <= 1e-6){ nb.forEach(function(i){ l[i] += -delta / nb.length; }); return l; }
+  var cap = function(i){ return Math.max(0, l[i] - MIN_PIECE); }, capSum = nb.reduce(function(a, i){ return a + cap(i); }, 0);
+  if (capSum < delta - 1e-6) throw new Error("the pieces next to it can give " + mm(capSum) + " mm at most (each kept to " + mm(MIN_PIECE) + " mm), not " + mm(delta) + " mm");
+  if (nb.length === 1){ l[nb[0]] -= delta; return l; }
+  var a = nb[0], b = nb[1], ta = Math.min(delta / 2, cap(a)), tb = delta - ta;
+  if (tb > cap(b) + 1e-6){ tb = cap(b); ta = delta - tb; }
+  l[a] -= ta; l[b] -= tb; return l;
+}
+function setVariableLength(role, newLen){
+  var lay = layout(design);
+  try { setPieces(role, resizeVariable(chordPieces(role), lay.s1 - lay.s0, newLen)); }
+  catch (e) { $("status").textContent = ROLES[role] + ": " + e.message + " - not applied."; }
+}
 function equalPieces(role, maxLen){ var lay = layout(design), sp = pieces(lay.s0, lay.s1, maxLen); if (sp.length < 2) return setPieces(role, []); var list = sp.slice(0, -1).map(function(ab){ return ab[1] - ab[0]; }); list.push(null); setPieces(role, list); }
 function addPiece(role, L, after){
   var list = chordPieces(role); if (!list.length) list = [null];
@@ -252,6 +274,7 @@ function pieceRing(role, k, list, len, x, y){
     return;
   }
   if (!isVar) items.push({label:"Length...", run:function(){ inlineEditAt(x, y, {value:len, unit:"mm", set:function(v){ var l = chordPieces(role); l[k] = Math.max(0.001, v); setPieces(role, l); }}); }});
+  else items.push({label:"Length...", run:function(){ inlineEditAt(x, y, {value:len, unit:"mm", set:function(v){ setVariableLength(role, v); }}); }});
   if (!isVar) items.push({label:"Make this variable", run:function(){ var l = chordPieces(role), lay = layout(design), sp = pieceSpans(lay.s0, lay.s1, l, 0), vi = l.indexOf(null); if (vi >= 0) l[vi] = sp[vi][1] - sp[vi][0]; l[k] = null; setPieces(role, l); }});
   items.push({label:"Add split after...", run:function(){ inlineEditAt(x, y, {value:len / 2, unit:"mm", set:function(v){ addPiece(role, v, k); }}); }});
   if (!isVar) items.push({label:"Remove piece", run:function(){ var l = chordPieces(role); l.splice(k, 1); setPieces(role, l); }});
@@ -526,11 +549,13 @@ function render(){
     spans.forEach(function(ab, k){
       var isVar = list.length ? list[k] === null : !legacy, x1 = X(ab[0]), x2 = X(ab[1]), L = ab[1] - ab[0];
       var r = el(sv, "rect", {x:x1 + 1, y:y, width:Math.max(2, x2 - x1 - 2), height:22, rx:3, fill:isVar ? "#eef3fa" : "#dde5ef", stroke:isVar ? "#0b57d0" : "#8a9bb0", "stroke-width":1, "stroke-dasharray":isVar ? "4 3" : null, "class":"hit"});
-      el(r, "title", {}, isVar ? "variable piece - takes what is left of the chord and stretches or shrinks with it; click for options" : "typed piece - click the length to change it, or the bar for options");
+      el(r, "title", {}, isVar ? "variable piece - takes what is left of the chord and stretches or shrinks with it; click its length to set it (the pieces either side give or take the difference equally, none below 500 mm), or the bar for options" : "typed piece - click the length to change it, or the bar for options");
       var ring = function(ev){ ev.stopPropagation(); ev.preventDefault(); var p = pagePoint(ev); pieceRing(role, k, list, L, p[0], p[1]); };
       r.addEventListener("click", ring); r.addEventListener("contextmenu", ring);
-      var t = el(sv, "text", {x:(x1 + x2) / 2, y:y + 15, "text-anchor":"middle", "font-size":11, "class":isVar ? "lbl" : "dim", "font-style":isVar ? "italic" : null, "pointer-events":(x2 - x1) < 24 ? "none" : null}, (x2 - x1) < 24 ? "" : mm(L) + (isVar && list.length ? " var" : ""));
+      var varEditable = isVar && list.length > 1;
+      var t = el(sv, "text", {x:(x1 + x2) / 2, y:y + 15, "text-anchor":"middle", "font-size":11, "class":(isVar && !varEditable) ? "lbl" : "dim", "font-style":isVar ? "italic" : null, "pointer-events":(x2 - x1) < 24 ? "none" : null}, (x2 - x1) < 24 ? "" : mm(L) + (isVar && list.length ? " var" : ""));
       if (!isVar) t.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(t, {value:L, unit:"mm", set:function(v){ var l = chordPieces(role); if (!l.length) return; l[k] = Math.max(0.001, v); setPieces(role, l); }}); });
+      else if (varEditable) t.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(t, {value:L, unit:"mm", set:function(v){ setVariableLength(role, v); }}); });
       else t.addEventListener("click", ring);
       t.addEventListener("contextmenu", ring);
     });
