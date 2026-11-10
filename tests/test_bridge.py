@@ -34,7 +34,8 @@ def posts(span=20.0, width=3.0, z0=10.0, z1=12.0, h=2.3, size=0.2, x0=0.0, y0=0.
 def design(**kw):
     # the geometry tests set the trusses on the posts' outside faces; the
     # built-in default (centre) has its own test
-    d = {"panel_mode": "count", "panels": 4, "truss": "warren_verticals", "truss_plane": "outside"}
+    d = {"panel_mode": "count", "panels": 4, "truss": "warren_verticals", "truss_plane": "outside",
+         "brace_end_offset_m": 0.0}
     d.update(kw)
     return BR.normalize_design(d)
 
@@ -176,7 +177,7 @@ class Members(unittest.TestCase):
         bot = by_key(mems, u"bottom_chord:R:0:0")
         self.assertAlmostEqual(bot["p1"][1], -1.6)
         self.assertAlmostEqual(bot["p1"][2], 0.0)
-        self.assertEqual(top["zjust"], "centre")
+        self.assertEqual(top["zjust"], "top")                    # the truss height is to the top of steel
         with_posts = BR.members(design(end_posts=True, truss="warren"), FRAME)
         self.assertEqual(count(with_posts, "end_post"), 4)
         self.assertEqual(count(with_posts, "vertical"), 0)
@@ -431,6 +432,45 @@ class Members(unittest.TestCase):
         x = BR.members(design(bracing="x", split_x=False), FRAME)
         self.assertEqual(count(x, "bracing"), 8)                  # the X keeps its flag
 
+    def test_diagonal_angle(self):
+        # angle mode: the panel length follows the typed angle and the height,
+        # rounded to whole panels; the laid-out angle is reported
+        d = design(truss="warren", panel_mode="angle", brace_angle_deg=55.0)
+        lay = BR.layout(d, FRAME)                                 # 20.2 m chord, 2.3 m high
+        self.assertEqual(lay["n"], 6)                             # 2 x 2.3 / tan 55 = 3.22 -> 6.27 panels
+        self.assertAlmostEqual(BR.brace_angle(d, FRAME), math.degrees(math.atan2(2.3, 20.2 / 6.0 / 2.0)))
+        self.assertAlmostEqual(BR.summary(d, FRAME)["brace_angle_deg"], BR.brace_angle(d, FRAME))
+        steep = design(truss="warren", panel_mode="angle", brace_angle_deg=70.0)
+        self.assertEqual(BR.layout(steep, FRAME)["n"], 12)        # 2 x 2.3 / tan 70 = 1.67 -> 12.06
+        pratt = design(truss="pratt", panel_mode="angle", brace_angle_deg=55.0)
+        self.assertEqual(BR.layout(pratt, FRAME)["n"], 13)        # 2.3 / tan 55 = 1.61 -> 12.5 -> 13
+        self.assertAlmostEqual(BR.brace_angle(design(truss="warren"), FRAME),
+                               math.degrees(math.atan2(2.3, 20.2 / 4.0 / 2.0)))   # as drawn: from the panels
+        self.assertEqual(BR.brace_angle(design(truss="vierendeel"), FRAME), 0.0)
+        for bad in (4.0, 86.0):
+            with self.assertRaises(ValueError):
+                BR.normalize_design({"brace_angle_deg": bad})
+
+    def test_end_diagonal_clearance(self):
+        # the end diagonals start in from the chord ends at the bottom, clear
+        # of the posts; the top nodes and the inner diagonals do not move
+        mems = BR.members(design(truss="warren", brace_end_offset_m=0.15), FRAME)
+        first = by_key(mems, u"diagonal:L:0:0")
+        self.assertAlmostEqual(first["p1"][0], -0.1 + 0.15)
+        self.assertAlmostEqual(first["p1"][2], 0.0)
+        self.assertAlmostEqual(first["p2"][0], -0.1 + 20.2 / 8.0)   # mid-panel top node as before
+        last = by_key(mems, u"diagonal:L:3:1")
+        self.assertAlmostEqual(last["p2"][0], 20.1 - 0.15)
+        inner = by_key(mems, u"diagonal:L:1:0")
+        self.assertAlmostEqual(inner["p1"][0], -0.1 + 20.2 / 4.0)
+        pratt = BR.members(design(truss="pratt", brace_end_offset_m=0.2), FRAME)
+        feet = [m["p1"][0] for m in pratt if m["role"] == "diagonal" and m["side"] == "L" and abs(m["p1"][2]) < 1e-9]
+        feet += [m["p2"][0] for m in pratt if m["role"] == "diagonal" and m["side"] == "L" and abs(m["p2"][2]) < 1e-9]
+        self.assertTrue(all(f > -0.1 + 0.2 - 1e-9 and f < 20.1 - 0.2 + 1e-9 for f in feet))
+        self.assertAlmostEqual(BR.normalize_design({})["brace_end_offset_m"], 0.15)
+        with self.assertRaises(ValueError):
+            BR.normalize_design({"brace_end_offset_m": -0.1})
+
     def test_beams_between_cross_beams(self):
         self.assertEqual(count(BR.members(design(), FRAME), "stringer"), 0)
         mems = BR.members(design(stringers_across=2, floor_thickness_m=0.15), FRAME)
@@ -525,7 +565,10 @@ class Updates(unittest.TestCase):
         self.assertIsNone(BR.rigid_motion(a, BR.frame_from_posts(*posts(span=21.0))))
         self.assertIsNone(BR.rigid_motion(a, BR.frame_from_posts(*posts(width=3.5))))
         self.assertIsNone(BR.rigid_motion(a, BR.frame_from_posts(*posts(z1=12.5))))
-        self.assertIsNone(BR.rigid_motion(a, BR.frame_from_posts(*posts(h=2.0))))
+        # a post height change leaves the deck alone (the posts are set to the
+        # truss top on every build), so it is a rigid motion of nothing
+        self.assertEqual(BR.rigid_motion(a, BR.frame_from_posts(*posts(h=2.0))), (0.0, 0.0, 0.0, 0.0))
+        self.assertTrue(BR.frame_changed(a, BR.frame_from_posts(*posts(h=2.0))))
         self.assertFalse(BR.frame_changed(a, BR.frame_from_posts(*posts())))
         self.assertTrue(BR.frame_changed(a, b))
         self.assertTrue(BR.frame_changed(a, BR.frame_from_posts(*posts(h=2.0))))

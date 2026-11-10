@@ -306,6 +306,54 @@ def set_roll(doc, el, angle, up=None):
         return False
 
 
+def rise_above_line(doc, el, m):
+    """How far the member's top of steel sits above its line (metres):
+    0 for a top justified beam, half the depth for one on its centre."""
+    try:
+        doc.Regenerate()
+        bb = el.get_BoundingBox(None)
+        if bb is None:
+            return 0.0
+        top = max(m_to_ft(m["p1"][2]), m_to_ft(m["p2"][2]))
+        r = ft_to_m(bb.Max.Z - top)
+        return r if 0.0 <= r < 0.6 else 0.0
+    except Exception:
+        return 0.0
+
+
+def set_post_tops(doc, ids, z_top_m):
+    """Lengthen or shorten vertical posts so their tops are at z_top_m
+    (model metres): framing by its location curve, columns by their top
+    offset. Returns how many were set."""
+    done = 0
+    z = m_to_ft(z_top_m)
+    for i in ids:
+        el = doc.GetElement(make_id(int(i)))
+        if el is None:
+            continue
+        try:
+            loc = el.Location
+            crv = loc.Curve
+            a, b = crv.GetEndPoint(0), crv.GetEndPoint(1)
+            if a.Z >= b.Z:
+                loc.Curve = Line.CreateBound(XYZ(a.X, a.Y, z), b)
+            else:
+                loc.Curve = Line.CreateBound(a, XYZ(b.X, b.Y, z))
+            done += 1
+            continue
+        except Exception:
+            pass
+        try:
+            p_lvl = el.get_Parameter(BuiltInParameter.SCHEDULE_TOP_LEVEL_PARAM)
+            p_off = el.get_Parameter(BuiltInParameter.SCHEDULE_TOP_LEVEL_OFFSET_PARAM)
+            lvl = doc.GetElement(p_lvl.AsElementId())
+            p_off.Set(z - lvl.Elevation)
+            done += 1
+        except Exception:
+            pass
+    return done
+
+
 def set_top_justified(el):
     try:
         p = el.get_Parameter(BuiltInParameter.Z_JUSTIFICATION)

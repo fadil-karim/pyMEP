@@ -50,11 +50,12 @@ ROLE_LABELS = {"top_chord": u"Top chord", "bottom_chord": u"Bottom chord",
                "diagonal": u"Diagonal", "crossbeam": u"Cross beam", "bracing": u"Plan bracing",
                "stringer": u"Beam between cross beams", "stiffener": u"Deck stiffener", "railing": u"Railing"}
 BRACE_ROLES = ("diagonal", "bracing")       # placed as braces, the rest as beams
-TOP_ALIGNED = ("crossbeam", "bracing", "stringer")  # the member's top sits on the line (floor underside)
+TOP_ALIGNED = ("crossbeam", "bracing", "stringer", "top_chord")  # the member's top sits on the line: the floor underside, or the truss height as top of steel
 
 DEFAULTS = {
     "truss": "warren",
-    "panel_mode": "length",          # "length": aim for panel_length_m; "count": panels
+    "panel_mode": "length",          # "length": aim for panel_length_m; "count": panels; "angle": from brace_angle_deg
+    "brace_angle_deg": 55.0,         # the side diagonals' angle to the horizontal, in angle mode
     "panel_length_m": 2.5,
     "panels": 9,
     "height_m": None,                # top chord centreline above the post base; None = post height
@@ -67,6 +68,7 @@ DEFAULTS = {
     "top_chord_pieces": [],          # typed piece lengths from the start, None = the variable
     "bottom_chord_pieces": [],       # piece that takes the rest; [] = one piece (then *_split_m)
     "chord_extension_m": None,       # chords run this far past the post centrelines; None = outer face
+    "brace_end_offset_m": 0.15,      # the end diagonals start this far in from the chord ends at the bottom, clear of the posts
     "end_posts": False,              # the posts are already there
     "deck_top_offset_m": 0.0,        # deck top relative to the post base
     "deck_end_m": None,              # deck end past the post centrelines; None = the outer face
@@ -105,7 +107,8 @@ def normalize_design(d):
         raise ValueError(u"stiffener_mode must be 'spacing' or 'count'")
     for k in ("panel_length_m", "bottom_chord_offset_m", "top_chord_split_m",
               "bottom_chord_split_m", "deck_top_offset_m", "deck_clearance_m",
-              "floor_thickness_m", "stiffener_gap_m", "stiffener_spacing_m", "railing_inset_m"):
+              "floor_thickness_m", "stiffener_gap_m", "stiffener_spacing_m", "railing_inset_m",
+              "brace_end_offset_m"):
         try:
             out[k] = float(out[k])
         except (TypeError, ValueError):
@@ -126,8 +129,14 @@ def normalize_design(d):
             out["plan_bays"] = max(1, int(round(float(out["plan_bays"]))))
         except (TypeError, ValueError):
             raise ValueError(u"'plan_bays' must be a whole number or blank")
-    if out["panel_mode"] not in ("length", "count"):
-        raise ValueError(u"panel_mode must be 'length' or 'count'")
+    if out["panel_mode"] not in ("length", "count", "angle"):
+        raise ValueError(u"panel_mode must be 'length', 'count' or 'angle'")
+    try:
+        out["brace_angle_deg"] = float(out["brace_angle_deg"])
+    except (TypeError, ValueError):
+        raise ValueError(u"'brace_angle_deg' must be a number")
+    if not (5.0 <= out["brace_angle_deg"] <= 85.0):
+        raise ValueError(u"the diagonal angle must be between 5 and 85 degrees")
     if out["panel_length_m"] <= 0 or out["panels"] < 1:
         raise ValueError(u"panel length must be positive and panels at least 1")
     if out["height_m"] is not None and out["height_m"] <= 0:
@@ -138,6 +147,8 @@ def normalize_design(d):
         raise ValueError(u"a chord split length cannot be negative")
     if out["stiffener_spacing_m"] < 0:
         raise ValueError(u"the stiffener spacing cannot be negative")
+    if out["brace_end_offset_m"] < 0:
+        raise ValueError(u"the end diagonal clearance cannot be negative")
     for k in ("top_chord_pieces", "bottom_chord_pieces"):
         out[k] = _norm_pieces(k, out[k])
     out["stiffeners_across"] = max(0, out["stiffeners_across"])
@@ -278,6 +289,13 @@ def layout(design, frame):
     total = s1 - s0
     if design["panel_mode"] == "count":
         n = max(1, int(design["panels"]))
+    elif design["panel_mode"] == "angle":
+        # the panel length that gives the diagonals the typed angle: a Warren
+        # diagonal runs half a panel, the shared-node layouts a whole one
+        rise = height(design, frame) - design["bottom_chord_offset_m"]
+        run = rise / math.tan(math.radians(design["brace_angle_deg"]))
+        target = 2.0 * run if design["truss"] in ("warren", "warren_verticals") else run
+        n = max(1, int(round(total / target))) if target > TOL else 1
     else:
         n = max(1, int(round(total / design["panel_length_m"])))
     L = total / n
@@ -292,6 +310,19 @@ def layout(design, frame):
             "points": [s0 + L * i for i in range(n + 1)],
             "d0": d0, "d1": d1, "bays": bays, "B": B,
             "stations": [d0 + B * j for j in range(bays + 1)]}
+
+
+def brace_angle(design, frame):
+    """The side diagonals' angle to the horizontal, in degrees, as laid
+    out (the typed angle rounds to whole panels)."""
+    if design["truss"] == "vierendeel":
+        return 0.0
+    lay = layout(design, frame)
+    rise = height(design, frame) - design["bottom_chord_offset_m"]
+    run = lay["L"] / 2.0 if design["truss"] in ("warren", "warren_verticals") else lay["L"]
+    if run <= TOL:
+        return 90.0
+    return math.degrees(math.atan2(rise, run))
 
 
 def _diagonal(truss, i, n, s_a, s_b):
@@ -436,6 +467,15 @@ def members(design, frame):
                     "stype": stype, "zjust": "top" if role in TOP_ALIGNED else "centre"})
 
     warren = design["truss"] in ("warren", "warren_verticals")
+    off = design["brace_end_offset_m"]
+
+    def foot(s):
+        # a diagonal's bottom end at a chord end moves in by the clearance, off the post
+        if abs(s - lay["s0"]) < TOL:
+            return s + off
+        if abs(s - lay["s1"]) < TOL:
+            return s - off
+        return s
     for side, t in (("L", tl), ("R", tr)):
         for k, (a, b) in enumerate(piece_spans(lay["s0"], lay["s1"], design["top_chord_pieces"],
                                                design["top_chord_split_m"], u"top chord")):
@@ -452,8 +492,8 @@ def members(design, frame):
             # one at every node
             for i in range(n):
                 mid = (pts[i] + pts[i + 1]) / 2.0
-                add("diagonal", side, i, (pts[i], t, zb), (mid, t, zt), 0)
-                add("diagonal", side, i, (mid, t, zt), (pts[i + 1], t, zb), 1)
+                add("diagonal", side, i, (foot(pts[i]), t, zb), (mid, t, zt), 0)
+                add("diagonal", side, i, (mid, t, zt), (foot(pts[i + 1]), t, zb), 1)
             if design["truss"] == "warren_verticals":
                 for i in range(1, n):
                     add("vertical", side, i, (pts[i], t, zb), (pts[i], t, zt), 0)
@@ -467,7 +507,9 @@ def members(design, frame):
                 for sub, (a, b) in enumerate(_diagonal(design["truss"], i, n, pts[i], pts[i + 1])):
                     za = zb if a[0] == "bottom" else zt
                     zb2 = zb if b[0] == "bottom" else zt
-                    add("diagonal", side, i, (a[1], t, za), (b[1], t, zb2), sub)
+                    sa = foot(a[1]) if a[0] == "bottom" else a[1]
+                    sb = foot(b[1]) if b[0] == "bottom" else b[1]
+                    add("diagonal", side, i, (sa, t, za), (sb, t, zb2), sub)
 
     # cross beams at every bay line, between the truss planes, tops on the
     # floor underside; the end ones sit on the posts' centre points and run
@@ -565,6 +607,7 @@ def summary(design, frame, mems=None):
             steel += d
     d0, d1, t_r, t_l = deck_extent(design, frame)
     return {"span_m": frame["span"], "panels": lay["n"], "panel_length_m": lay["L"],
+            "brace_angle_deg": brace_angle(design, frame),
             "truss_length_m": lay["total"], "bays": lay["bays"], "bay_length_m": lay["B"],
             "members": len(mems), "steel_length_m": steel, "by_role": by_role,
             "deck_length_m": d1 - d0, "deck_width_m": t_l - t_r,
@@ -625,7 +668,7 @@ def diff_members(old_keys, new_members):
             "delete": [k for k in old if k not in new_by_key]}
 
 
-_SHAPE_KEYS = ("span", "tL", "tR", "post_size", "post_height")
+_SHAPE_KEYS = ("span", "tL", "tR", "post_size")      # the deck does not care about the post height
 
 
 def rigid_motion(old_frame, new_frame, tol=0.001):
@@ -654,7 +697,7 @@ def frame_changed(old_frame, new_frame, tol=0.0005):
     a, b = old_frame["origin"], new_frame["origin"]
     if abs(a[0] - b[0]) > tol or abs(a[1] - b[1]) > tol:
         return True
-    for k in _SHAPE_KEYS + ("z0", "z1"):
+    for k in _SHAPE_KEYS + ("z0", "z1", "post_height"):     # a post height change re-curves the trusses
         if abs(float(old_frame.get(k, 0.0)) - float(new_frame.get(k, 0.0))) > tol:
             return True
     return abs(old_frame["angle"] - new_frame["angle"]) > 1e-7
@@ -778,7 +821,7 @@ def fill_page(template, data):
     return template.replace(PLACEHOLDER, text, 1)
 
 
-__all__ = ["piece_spans", "stiffener_positions", "latest_design", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
+__all__ = ["piece_spans", "stiffener_positions", "latest_design", "brace_angle", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
            "BRACE_ROLES", "TOP_ALIGNED", "DEFAULTS", "normalize_design", "frame_from_posts",
            "frame_from_points", "effective_frame", "planes", "height", "base_z", "to_world",
            "layout", "pieces",

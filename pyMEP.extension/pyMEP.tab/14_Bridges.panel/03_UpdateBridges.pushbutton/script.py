@@ -151,11 +151,28 @@ for name in chosen:
                     continue
             if made:
                 deck_note += u", {0} stiffener(s) / railing(s) made again".format(made)
+        # the posts follow the top of steel of the top chords
+        try:
+            eff = BR.effective_frame(design, new_frame, shared_elev)
+            zt = BR.height(design, new_frame)
+            rise = 0.0
+            for m in mems:
+                if m["role"] == "top_chord" and m["key"] in member_ids:
+                    rise = RV.rise_above_line(doc, doc.GetElement(make_id(member_ids[m["key"]])), m)
+                    break
+            RV.set_post_tops(doc, source["start_ids"], BR.to_world(eff, 0.0, 0.0, zt)[2] + rise)
+            RV.set_post_tops(doc, source["end_ids"], BR.to_world(eff, new_frame["span"], 0.0, zt)[2] + rise)
+        except Exception as ex:
+            deck_note += u"; posts not adjusted: {0}".format(ex)
         t.Commit()
     except Exception as ex:
         t.RollBack()
         report.append((name, u"FAILED, nothing changed - {0}".format(ex)))
         continue
+    try:
+        new_frame = BR.frame_from_posts(RV.posts_from_ids(doc, source["start_ids"]), RV.posts_from_ids(doc, source["end_ids"]))
+    except Exception:
+        pass
     stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     bridges[name] = BR.record(name, design, source, new_frame, member_ids, floor_id, stamp)
     report.append((name, u"{0} member(s) re-aligned, {1} added, {2} removed; {3}; span now "

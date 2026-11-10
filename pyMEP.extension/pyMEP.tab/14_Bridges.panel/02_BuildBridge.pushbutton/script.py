@@ -154,10 +154,32 @@ try:
             member_ids[m["key"]] = id_value(el.Id)
         except Exception as ex:
             failed.append((m, u"{0}".format(ex)))
+    # the posts reach the top of steel of the top chords
+    posts_note = u""
+    try:
+        eff = BR.effective_frame(design, frame, shared_elev)
+        zt = BR.height(design, frame)
+        rise = 0.0
+        for m in mems:
+            if m["role"] == "top_chord" and m["key"] in member_ids:
+                rise = RV.rise_above_line(doc, doc.GetElement(make_id(member_ids[m["key"]])), m)
+                break
+        z_start = BR.to_world(eff, 0.0, 0.0, zt)[2] + rise
+        z_end = BR.to_world(eff, frame["span"], 0.0, zt)[2] + rise
+        n_posts = RV.set_post_tops(doc, source["start_ids"], z_start) + RV.set_post_tops(doc, source["end_ids"], z_end)
+        posts_note = u"{0} post(s) set to the top of steel of the top chord ({1:.3f} / {2:.3f} m)".format(
+            n_posts, z_start + shared_elev, z_end + shared_elev)
+    except Exception as ex:
+        posts_note = u"posts not adjusted: {0}".format(ex)
     t.Commit()
 except Exception as ex:
     t.RollBack()
     forms.alert(u"Failed, nothing built:\n\n{0}".format(ex), exitscript=True)
+# the posts as they are now, for the tracking record
+try:
+    frame = BR.frame_from_posts(RV.posts_from_ids(doc, source["start_ids"]), RV.posts_from_ids(doc, source["end_ids"]))
+except Exception:
+    pass
 
 stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 registry["bridges"][name] = BR.record(name, design, source, frame, member_ids, floor_id, stamp)
@@ -180,6 +202,7 @@ except Exception:
 summ = BR.summary(design, frame, mems)
 eff = BR.effective_frame(design, frame, shared_elev)
 output.print_md("### Build Bridge - {0}".format(name))
+output.print_md(u"**Posts:** {0}".format(posts_note))
 output.print_md("**Span:** {0:.3f} m  |  **Rise:** {1:+.0f} mm  |  **Height:** {2:.3f} m  |  "
                 "**Panels:** {3} x {4:.3f} m  |  **Plan bays:** {5}  |  **Placed:** {6}  |  "
                 "**Failed:** {7}  |  **Deck:** {8}  |  **Level:** {9}".format(

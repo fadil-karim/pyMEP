@@ -973,7 +973,10 @@ what is under it, so the cross beams, bracing and stiffeners show from
 below. A right-click on any member there gives the same family menu. The browser's own right-click menu is switched off on the
 drawings, and the ring's label sits just under the clicked spot (a dot
 marks it) so the member stays visible. The rest lives under
-**Settings**: panels by target length or count, the cross beams between
+**Settings**: panels by target length, count or diagonal angle (the
+panel length then follows the typed angle and the truss height, in
+whole panels, and the laid-out angle shows by the first diagonal,
+where it can also be typed), the end diagonal clearance, the cross beams between
 the posts (blank follows the truss panels), the Revit level, end posts,
 splitting braces where they cross, beams between the cross beams per
 bay, the deck stiffeners (set out by spacing or by count) and their end
@@ -998,7 +1001,12 @@ across), the end gap and none.
 The default truss is the Warren of the reference drawing: top nodes at
 mid-panel, no verticals, so a 22.5 m chord in 2.5 m panels puts the
 first top node 1.25 m in; Warren with verticals, Pratt, Howe, X and
-Vierendeel are the other choices. There is no top-plan bracing; the
+Vierendeel are the other choices. The end diagonals start a clearance
+(150 mm by default) in from the chord ends at the bottom so they clear
+the posts. The truss height is to the top of steel of the top chord
+(top chords are top justified), and Build Bridge sets the tops of the
+four original posts to it - lengthening or shortening them - and
+Update Bridges keeps them there. There is no top-plan bracing; the
 plan bracing (by default one diagonal at a time from side beam to
 side beam over two bays, alternating, as the drawing - the bays per
 diagonal can be changed, and an X in every bay or none are the other
