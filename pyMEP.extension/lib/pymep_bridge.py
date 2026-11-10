@@ -228,16 +228,32 @@ def frame_from_points(start, end, width=3.0, post_size=0.2, height=1.8):
 
 
 def effective_frame(design, frame, shared_elev_m=0.0):
-    """The frame with the design's typed end levels applied: a typed
-    level is a shared / survey elevation of the deck datum (the post
-    base line) at that end, so z = level - shared_elev_m; a blank one
-    keeps the post base. The other keys are untouched."""
+    """The frame with the design's typed end levels applied. A typed
+    level is the survey level of the FLOOR TOP at that end of the deck -
+    at the deck's end edge, which is at the posts' outer faces by default,
+    where a level is taken - so the floor comes out at exactly the typed
+    figures there; z = level - shared_elev_m - deck top offset, carried
+    back to the post centreline along the slope. A blank end keeps the
+    post base at its centreline. The other keys are untouched."""
     f = dict(frame)
-    if design.get("level_start_m") is not None:
-        f["z0"] = float(design["level_start_m"]) - float(shared_elev_m)
-    if design.get("level_end_m") is not None:
-        f["z1"] = float(design["level_end_m"]) - float(shared_elev_m)
-    f["gradient"] = (f["z1"] - f["z0"]) / f["span"] if f["span"] else 0.0
+    span = f["span"]
+    half = f["post_size"] / 2.0
+    ext = design["deck_end_m"] if design.get("deck_end_m") is not None else half
+    d0, d1 = -ext, span + ext
+    top = float(design.get("deck_top_offset_m") or 0.0)
+    t0 = None if design.get("level_start_m") is None else float(design["level_start_m"]) - float(shared_elev_m) - top
+    t1 = None if design.get("level_end_m") is None else float(design["level_end_m"]) - float(shared_elev_m) - top
+    if t0 is not None and t1 is not None:
+        g = (t1 - t0) / (d1 - d0) if abs(d1 - d0) > TOL else 0.0
+        f["z0"] = t0 - g * d0
+        f["z1"] = f["z0"] + g * span
+    elif t0 is not None:
+        g = (f["z1"] - t0) / (span - d0) if abs(span - d0) > TOL else 0.0
+        f["z0"] = t0 - g * d0
+    elif t1 is not None:
+        g = (t1 - f["z0"]) / d1 if abs(d1) > TOL else 0.0
+        f["z1"] = f["z0"] + g * span
+    f["gradient"] = (f["z1"] - f["z0"]) / span if span else 0.0
     return f
 
 

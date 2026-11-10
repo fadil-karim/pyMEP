@@ -536,21 +536,32 @@ class Members(unittest.TestCase):
         self.assertEqual(d["stringers_across"], 0)
 
     def test_typed_end_levels(self):
-        """Clicking an end and typing a survey level moves that end's
-        datum; shared elevation offset is taken off."""
-        d = design(level_start_m=14.0, level_end_m=16.5)
+        """A typed level is the floor top at that end of the deck - its end
+        edge at the post faces, where a level is taken - as a survey level;
+        the shared elevation offset is taken off."""
+        d = design(level_start_m=14.0, level_end_m=16.5)          # the deck runs -0.1 .. 20.1
         ef = BR.effective_frame(d, FRAME, shared_elev_m=4.0)
-        self.assertEqual((ef["z0"], ef["z1"]), (10.0, 12.5))
-        self.assertAlmostEqual(ef["gradient"], 0.125)
-        only_end = BR.effective_frame(design(level_end_m=16.5), FRAME, shared_elev_m=4.0)
-        self.assertEqual((only_end["z0"], only_end["z1"]), (10.0, 12.5))
-        wm = BR.world_members(d, FRAME, shared_elev_m=4.0)
-        bot = by_key(wm, u"bottom_chord:L:0:0")
-        self.assertAlmostEqual(bot["p1"][2], 10.0 - 0.0125)
-        self.assertAlmostEqual(bot["p2"][2], 12.5 + 0.0125)
+        g = 2.5 / 20.2
+        self.assertAlmostEqual(ef["gradient"], g)
+        self.assertAlmostEqual(ef["z0"] + g * -0.1, 10.0)        # floor top at the deck start = typed
+        self.assertAlmostEqual(ef["z1"] + g * 0.1, 12.5)          # and at the deck end
         deck = BR.world_deck(d, FRAME, shared_elev_m=4.0)
-        self.assertAlmostEqual(deck["slope"], 0.125)
-        self.assertAlmostEqual(deck["tail_top_z"], 10.0 - 0.125 * 0.1)   # deck tail at the post face
+        self.assertAlmostEqual(deck["slope"], g)
+        self.assertAlmostEqual(deck["tail_top_z"], 10.0)         # exactly the typed figures at the floor ends
+        self.assertAlmostEqual(deck["tail_top_z"] + deck["slope"] * 20.2, 12.5)
+        only_end = BR.effective_frame(design(level_end_m=16.5), FRAME, shared_elev_m=4.0)
+        self.assertEqual(only_end["z0"], 10.0)                    # the start keeps the post base
+        self.assertAlmostEqual(only_end["z1"] + only_end["gradient"] * 0.1, 12.5)
+        only_start = BR.effective_frame(design(level_start_m=14.0), FRAME, shared_elev_m=4.0)
+        self.assertEqual(only_start["z1"], 12.0)
+        self.assertAlmostEqual(only_start["z0"] - only_start["gradient"] * 0.1, 10.0)
+        off = BR.effective_frame(design(level_start_m=14.0, level_end_m=16.5, deck_top_offset_m=0.05), FRAME, shared_elev_m=4.0)
+        self.assertAlmostEqual(off["z0"] + off["gradient"] * -0.1 + 0.05, 10.0)   # a deck top offset: still the floor top
+        # the model case: 5.105 and 4.920 typed at the floor ends come out as typed
+        fr = BR.frame_from_posts(*posts(span=27.3, z0=5.1, z1=4.9))
+        dk = BR.world_deck(design(level_start_m=5.105, level_end_m=4.920), fr)
+        self.assertAlmostEqual(dk["tail_top_z"], 5.105)
+        self.assertAlmostEqual(dk["tail_top_z"] + dk["slope"] * 27.5, 4.920)
 
     def test_cross_beams_roll_with_the_fall(self):
         # 2 m rise over 20 m: the cross beams' sections roll by the slope so

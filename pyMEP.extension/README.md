@@ -959,9 +959,11 @@ values on the elevation, plan and section are clicked and typed over
 (panel length, truss height, deck top, bottom chord level, chord
 extension, how many cross beams sit between the posts, clearance,
 railing inset); the level figure at
-each end edge is clicked to type a survey level for that end (blank
-goes back to the post base; a typed level is marked with `*` and the
-deck, chords and gradient follow it); clicking a member, the deck or a
+each end edge is clicked to type a survey level for that end - the
+floor top at that end of the deck, where the floor stops at the post
+faces, so the floor comes out at exactly the typed figures there
+(blank goes back to the post base; a typed level is marked with `*`
+and the deck, chords and gradient follow it); clicking a member, the deck or a
 post opens a ring menu for its family, chord piece length, truss
 planes, truss type, bracing, stiffeners or railing, with a right-click
 doing the same. The family menu is a wide list with a search box:

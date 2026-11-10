@@ -103,7 +103,17 @@ var SHARED = (DATA && DATA.shared_elev_m) || 0;      // internal z + SHARED = su
 
 // ---- the frame from the posts (same maths as lib/pymep_bridge.py) ----
 var F = (DATA && DATA.frame) ? DATA.frame : {span:22.5, tL:1.5, tR:-1.5, post_size:0.2, post_height:1.8, z0:0, z1:0, gradient:0, origin:[0,0]};
-function effFrame(d){ var f = {}; for (var k in F) f[k] = F[k]; if (d.level_start_m !== null) f.z0 = d.level_start_m - SHARED; if (d.level_end_m !== null) f.z1 = d.level_end_m - SHARED; f.gradient = (f.z1 - f.z0) / f.span; return f; }
+function effFrame(d){
+  // a typed level is the floor top at that end of the deck (its end edge), carried back to the post centreline along the slope
+  var f = {}; for (var k in F) f[k] = F[k];
+  var half = F.post_size / 2, ext = (d.deck_end_m === null || d.deck_end_m === undefined) ? half : d.deck_end_m, d0 = -ext, d1 = F.span + ext, top = d.deck_top_offset_m || 0, g;
+  var t0 = (d.level_start_m === null || d.level_start_m === undefined) ? null : d.level_start_m - SHARED - top;
+  var t1 = (d.level_end_m === null || d.level_end_m === undefined) ? null : d.level_end_m - SHARED - top;
+  if (t0 !== null && t1 !== null){ g = (t1 - t0) / (d1 - d0); f.z0 = t0 - g * d0; f.z1 = f.z0 + g * F.span; }
+  else if (t0 !== null){ g = (f.z1 - t0) / (F.span - d0); f.z0 = t0 - g * d0; }
+  else if (t1 !== null){ g = (t1 - f.z0) / d1; f.z1 = f.z0 + g * F.span; }
+  f.gradient = F.span ? (f.z1 - f.z0) / F.span : 0; return f;
+}
 function planes(d){ return [F.tL, F.tR]; }   // the side frames are always on the posts' centre points
 function heightOf(d){ return (d.height_m !== null && d.height_m !== undefined) ? d.height_m : F.post_height; }
 function layout(d){
@@ -451,14 +461,15 @@ function render(){
   var sx = (W - padL - padR) / lay.total, sz = (H - padT - padB) / (zmax - zmin);
   var X = function(s){ return padL + (s - lay.s0) * sx; }, Y = function(z){ return H - padB - (z - zmin) * sz; };
   // posts
-  [[0, "start", "level_start_m", ef.z0], [F.span, "end", "level_end_m", ef.z1]].forEach(function(p){
+  var deckTopAt = function(s){ return ef.z0 + ef.gradient * s + design.deck_top_offset_m; };
+  [[0, "start", "level_start_m", deckTopAt(ex.d0)], [F.span, "end", "level_end_m", deckTopAt(ex.d1)]].forEach(function(p){
     var g = el(sv, "rect", {x:X(p[0] - half), y:Y(baseZ(p[0]) + zt), width:Math.max(3, 2 * half * sx), height:zt * sz, fill:"var(--post)", "class":"hit"});
     el(g, "title", {}, p[1] + " posts - click the edge for the level");
     g.addEventListener("click", function(ev){ ev.stopPropagation(); var p2 = pagePoint(ev); levelRing(p[2], p[1], p2[0], p2[1]); });
     // the end edge: a hit line at the post with the level label
     var yl = Y(baseZ(p[0])), txt = fmt(p[3] + SHARED, 3) + (design[p[2]] === null ? "" : " *");
     var t = el(sv, "text", {x:X(p[0]) + (p[0] === 0 ? -8 : 8), y:yl + 16, "text-anchor":p[0] === 0 ? "end" : "start", "font-size":12, "class":"dim"}, txt);
-    el(t, "title", {}, "deck datum at the " + p[1] + " as a survey level (m). " + (design[p[2]] === null ? "From the post base - click to type a level." : "Typed - clear it to go back to the post base."));
+    el(t, "title", {}, "floor top at the " + p[1] + " end of the deck (its end edge) as a survey level (m). " + (design[p[2]] === null ? "From the post base - click to type a level." : "Typed - the floor comes out at exactly this here; clear it to go back to the post base."));
     t.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(t, {value:p[3] + SHARED, unit:"level", allowBlank:true, blankLabel:"posts", set:function(v){ setDesign(p[2], v); }}); });
     line(sv, X(p[0]), yl - 6, X(p[0]), yl + 6, "#0b57d0", 2);
   });
@@ -587,7 +598,7 @@ function render(){
 }
 function levelRing(key, which, x, y){
   openRadial(x, y, which + " level", [
-    {label:"Type level...", run:function(){ var ef = effFrame(design); inlineEditAt(x, y, {value:(key === "level_start_m" ? ef.z0 : ef.z1) + SHARED, unit:"level", allowBlank:true, blankLabel:"posts", set:function(v){ setDesign(key, v); }}); }},
+    {label:"Type level...", run:function(){ var ef = effFrame(design), ex = deckExtent(design), s = key === "level_start_m" ? ex.d0 : ex.d1; inlineEditAt(x, y, {value:ef.z0 + ef.gradient * s + design.deck_top_offset_m + SHARED, unit:"level", allowBlank:true, blankLabel:"posts", set:function(v){ setDesign(key, v); }}); }},
     {label:"Use post base", run:function(){ setDesign(key, null); }},
     {label:"Truss height...", run:function(){ inlineEditAt(x, y, {value:heightOf(design), unit:"mm", set:function(v){ setDesign("height_m", v); }}); }}
   ]);
