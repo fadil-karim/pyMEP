@@ -28,6 +28,7 @@ from Autodesk.Revit.DB import Transaction
 from pyrevit import revit, forms, script
 
 import pymep_bridge as BR
+import pymep_bridge_dialog as DLG
 import pymep_bridge_revit as RV
 from pymep_revit import id_value, make_id, quiet
 
@@ -40,13 +41,16 @@ bridges = registry["bridges"]
 if not bridges:
     forms.alert("No bridge has been built in this model yet (nothing tracked in {0}).".format(
         registry_file), exitscript=True)
-names = sorted(bridges)
-chosen = names
-if len(names) > 1:
-    chosen = forms.SelectFromList.show(names, title="Which bridges to update?",
-                                       button_name="Update", multiselect=True)
-    if not chosen:
-        script.exit()
+rows = RV.bridge_rows(doc, registry)
+choice = DLG.choose(
+    rows, "update",
+    intro=u"Tick the bridges to update. Their posts are read again and the framing is re-aligned, "
+          u"the deck moved or rebuilt and the stiffeners and railings made to follow.",
+    hint=u"'posts moved': the posts are not where the bridge was built. 'unchanged': nothing to do. "
+         u"'posts missing': a post is gone, so that bridge cannot be updated.")
+if choice is None:
+    script.exit()
+chosen = [n for n in choice[1] if n in bridges]
 
 HOSTED = ("stiffener", "railing")
 report = []

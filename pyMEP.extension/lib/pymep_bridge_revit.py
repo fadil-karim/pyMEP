@@ -37,6 +37,36 @@ def ft_to_m(x):
     return float(x) * FT
 
 
+def bridge_rows(doc, registry):
+    """One row per tracked bridge for the Bridges dialog: name, post ids,
+    member count, last build and a status against the posts as they are
+    now - unchanged, posts moved (a rigid move), posts moved / levels
+    changed, or posts missing."""
+    import pymep_bridge as BR
+    rows = []
+    for name in sorted(registry.get("bridges", {})):
+        rec = registry["bridges"][name]
+        src = rec.get("source", {})
+        ids = list(src.get("start_ids", [])) + list(src.get("end_ids", []))
+        try:
+            start = posts_from_ids(doc, src.get("start_ids", []))
+            end = posts_from_ids(doc, src.get("end_ids", []))
+            new = BR.frame_from_posts(start, end)
+            old = BR.frame_from_record(rec)
+            if not BR.frame_changed(old, new):
+                status = u"unchanged"
+            elif BR.rigid_motion(old, new) is not None:
+                status = u"posts moved"
+            else:
+                status = u"posts moved / levels changed"
+        except Exception:
+            status = u"posts missing"
+        rows.append({"name": name, "posts": u", ".join(u"{0}".format(i) for i in ids),
+                     "members": len(rec.get("members", {})), "updated": rec.get("updated", u""),
+                     "status": status, "checked": True})
+    return rows
+
+
 def registry_path(doc):
     return os.path.join(get_export_folder(doc), "bridges.json")
 

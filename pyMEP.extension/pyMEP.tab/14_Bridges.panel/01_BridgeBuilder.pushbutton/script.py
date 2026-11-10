@@ -31,6 +31,7 @@ from Autodesk.Revit.UI.Selection import ISelectionFilter, ObjectType
 from pyrevit import revit, forms, script
 
 import pymep_bridge as BR
+import pymep_bridge_dialog as DLG
 import pymep_bridge_revit as RV
 from pymep_config import get_export_folder
 from pymep_dashboard_launch import launch_html
@@ -75,18 +76,20 @@ def pick_pair(which, preselected):
 
 # edit a bridge already built here, or build a new one on four posts
 registry = BR.load_registry(RV.registry_path(doc))
-names = sorted(registry["bridges"].keys())
+rows = RV.bridge_rows(doc, registry)
 editing = None
-if names:
-    NEW = u"Build a new bridge (pick its four posts)"
-    opts = [NEW] + [u"Edit {0}   ({1} members, {2})".format(
-        n, len(registry["bridges"][n].get("members", {})), registry["bridges"][n].get("updated", u"")) for n in names]
-    pick = forms.SelectFromList.show(opts, title="Bridge Builder - edit an existing bridge or build a new one?",
-                                     button_name="Open", multiselect=False)
-    if not pick:
+if rows:
+    choice = DLG.choose(
+        rows, "edit",
+        intro=u"Bridges built in this model. Edit one - the page opens on its posts with its saved "
+              u"design - or build a new bridge on four other posts.",
+        hint=u"A bridge's posts cannot be used for another bridge. 'posts moved': the posts are not "
+             u"where the bridge was built - editing lays its design out on them as they are now, or "
+             u"run Update Bridges to move the bridge.")
+    if choice is None:
         script.exit()
-    if pick != NEW:
-        editing = names[opts.index(pick) - 1]
+    if choice[0] == "edit":
+        editing = choice[1]
 
 if editing:
     rec = registry["bridges"][editing]

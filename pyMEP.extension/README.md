@@ -945,8 +945,12 @@ browser and modelled as a sloped deck floor, structural framing, deck
 stiffeners and railings.
 
 **Bridge Builder** - once a bridge has been built in the model it is
-kept as a bridge, so the button first asks whether to edit one of the
-bridges built here or build a new one. Editing opens the page on that
+kept as a bridge, so the button first opens the Bridges dialog (the
+same WPF window style as the other pyMEP dialogs): a grid of the
+bridges built here with their posts, member count, last build and a
+status against the posts as they are now (unchanged, posts moved,
+posts moved / levels changed, posts missing), with **Edit this bridge**
+and **Build a new bridge** buttons. Editing opens the page on that
 bridge's own posts with its saved design, and building it again
 replaces it (under a new name too, if the name was changed on the
 page). For a new bridge, pick the two posts at the start and the two
@@ -1089,7 +1093,9 @@ is recorded against the bridge name in `bridges.json` in the model's
 pyMEP folder; building a name again replaces its elements, as does
 building the same posts under a new name.
 
-**Update Bridges** - after the posts move or change: reads them again
+**Update Bridges** - after the posts move or change: opens the same
+Bridges dialog with a tick box per bridge and its status, then for the
+ticked ones reads the posts again
 and puts each framing member onto its new line, keeping the element
 ids (so tags and dimensions survive); a changed span that adds or drops
 panels creates or deletes just those members. When only the position

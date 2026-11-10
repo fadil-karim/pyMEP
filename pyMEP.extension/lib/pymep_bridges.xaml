@@ -1,0 +1,67 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Bridges"
+        Width="720" Height="420" MinWidth="600" MinHeight="300"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False"
+        Background="White">
+    <Window.Resources>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#888888"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Margin" Value="0,6,0,0"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style x:Key="DialogButton" TargetType="Button">
+            <Setter Property="MinWidth" Value="96"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
+            <Setter Property="Padding" Value="10,4"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="TxtIntro" Grid.Row="0" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+        <DataGrid x:Name="GridBridges" Grid.Row="1"
+                  AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                  CanUserReorderColumns="False" SelectionMode="Single" SelectionUnit="FullRow"
+                  HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                  RowHeaderWidth="0" MouseDoubleClick="on_row_double_click">
+            <DataGrid.Columns>
+                <DataGridTemplateColumn x:Name="ColPick" Header="" Width="34">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <CheckBox IsChecked="{Binding Pick, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Bridge" Binding="{Binding Name}" IsReadOnly="True" Width="*"/>
+                <DataGridTextColumn Header="Posts" Binding="{Binding Posts}" IsReadOnly="True" Width="170"/>
+                <DataGridTextColumn Header="Members" Binding="{Binding Members}" IsReadOnly="True" Width="72"/>
+                <DataGridTextColumn Header="Built / updated" Binding="{Binding Updated}" IsReadOnly="True" Width="118"/>
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" IsReadOnly="True" Width="150"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <TextBlock x:Name="TxtHint" Grid.Row="2" Style="{StaticResource Hint}"/>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button x:Name="BtnNew" Content="Build a new bridge"
+                    Style="{StaticResource DialogButton}" Click="on_new"/>
+            <Button x:Name="BtnEdit" Content="Edit this bridge"
+                    Style="{StaticResource DialogButton}" Click="on_edit"/>
+            <Button x:Name="BtnUpdate" Content="Update ticked bridges"
+                    Style="{StaticResource DialogButton}" Click="on_update"/>
+            <Button x:Name="BtnCancel" Content="Cancel"
+                    Style="{StaticResource DialogButton}" IsCancel="True" Click="on_cancel"/>
+        </StackPanel>
+    </Grid>
+</Window>
