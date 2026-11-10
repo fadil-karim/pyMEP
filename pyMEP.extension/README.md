@@ -988,8 +988,9 @@ Deck stiffeners are set out across the deck between the side beam
 centrelines (the truss planes, where the bottom chords run), the first
 and last one spacing in from the side beams: at 500 mm on a 3.5 m
 centre-to-centre deck that is six lines exactly 500 apart, as the
-reference drawing. A width that is not a multiple gets equal spaces no
-wider than the spacing. The spacing is the dimension on the plan's
+reference drawing. The spacing is exact, counted in from both side
+beams, and a width that is not a multiple leaves the odd gap in the
+middle. The spacing is the dimension on the plan's
 right edge and under the section, clicked to retype; a stiffener's
 ring offers the spacing, one more or fewer (which switches to a count
 across), the end gap and none.
@@ -1001,8 +1002,8 @@ Vierendeel are the other choices. There is no top-plan bracing; the
 plan bracing (by default one diagonal at a time from side beam to
 side beam over two bays, alternating, as the drawing - the bays per
 diagonal can be changed, and an X in every bay or none are the other
-choices; "split braces where they cross", on by default, cuts a long
-diagonal at each cross beam and an X at its centre), the cross beams
+choices; a diagonal is always cut at every cross beam it crosses, and
+"split each X at its centre" does the same for an X), the cross beams
 (the end ones on the posts' centre points, the rest spread equally
 between them - type how many) and the optional beams between the cross
 beams (a count per bay, spread evenly between the truss planes, tops
@@ -1027,16 +1028,23 @@ ticks. **Save design** writes
 places everything in one undo step: the deck as a floor from post
 face to post face along the span and inside the posts across (less the
 clearance) with a slope arrow from start to end;
-both trusses on the chosen planes (chords in their pieces, verticals,
-diagonals as braces); the cross beams between the truss planes, the
-end ones on the post centrelines, the plan bracing and any beams
+both trusses on the chosen planes - the posts' centre points by
+default, so the side frames line up with the original four posts, with
+the outside or inside faces as options; on the centres the chords butt
+against the posts' inner faces, alongside the posts they run to the
+outer faces - (chords in their pieces, verticals, diagonals as braces); the cross beams between the truss planes, the
+end ones on the post centrelines and running between the posts' inner
+faces, the plan bracing cut at every cross beam it crosses and any beams
 between the cross beams, all with z justification Top so their top
 sits on the floor underside - and the cross beams, which run across
 the fall, get a cross-section rotation equal to the slope so their top
 face lies on the sloping underside (the sign is checked against the
 placed instance and flipped if Revit turned it the other way); the deck
 stiffeners hosted on the floor's underside, running along the span
-between the cross beams; and the railings hosted on the deck along both
+between the cross beams - after placing one, its geometry is checked
+against its line and a family that comes out above the underside is
+flipped to the other side of its face, or moved down, so it hangs
+below a thin plate deck rather than through it; and the railings hosted on the deck along both
 edges. Members carry the bridge name in Comments and every element id
 is recorded against the bridge name in `bridges.json` in the model's
 pyMEP folder; building a name again replaces its elements, and opening

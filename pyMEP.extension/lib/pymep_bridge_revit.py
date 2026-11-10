@@ -351,10 +351,56 @@ def create_stiffener(doc, m, symbol, floor, level):
         try:
             el = make()
             if el is not None:
+                settle_under(doc, el, m)
                 return el
         except Exception as ex:
             last = ex
     raise RuntimeError(u"{0}".format(last) if last is not None else u"no stiffener made")
+
+
+def settle_under(doc, el, m):
+    """Make sure a stiffener's geometry hangs below its line (the floor
+    underside). A family modelled on the wrong side of its reference
+    comes out above the line - through a thin plate deck; a work-plane
+    based instance is flipped to the other side of its face, anything
+    else is moved down so its top sits on the line. Returns a note when
+    it could not be settled."""
+    try:
+        doc.Regenerate()
+        bb = el.get_BoundingBox(None)
+    except Exception:
+        return u""
+    if bb is None:
+        return u""
+    top_line = max(m_to_ft(m["p1"][2]), m_to_ft(m["p2"][2]))
+    lo_line = min(m_to_ft(m["p1"][2]), m_to_ft(m["p2"][2]))
+    tol = m_to_ft(0.003)
+
+    def above():
+        b = el.get_BoundingBox(None)
+        return None if b is None else ((b.Min.Z + b.Max.Z) / 2.0 > (top_line + lo_line) / 2.0 + tol, b)
+    state = above()
+    if state is None or not state[0]:
+        return u""
+    try:
+        if el.CanFlipWorkPlane:
+            el.IsWorkPlaneFlipped = not el.IsWorkPlaneFlipped
+            doc.Regenerate()
+            state = above()
+            if state is None or not state[0]:
+                return u""
+    except Exception:
+        pass
+    try:
+        dz = top_line - state[1].Max.Z
+        ElementTransformUtils.MoveElement(doc, el.Id, XYZ(0, 0, dz))
+        doc.Regenerate()
+        state = above()
+        if state is None or not state[0]:
+            return u""
+    except Exception:
+        pass
+    return u"stiffener family sits above its line - model it below its reference plane or use a face based family"
 
 
 def create_railing(doc, m, railing_type, floor, level):

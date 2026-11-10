@@ -60,7 +60,7 @@ DEFAULTS = {
     "height_m": None,                # top chord centreline above the post base; None = post height
     "level_start_m": None,           # deck datum at the start as a SHARED elevation; None = post base
     "level_end_m": None,             # same at the end
-    "truss_plane": "outside",        # where the truss planes sit against the posts
+    "truss_plane": "centre",         # the side frames on the posts' centre points        # where the truss planes sit against the posts
     "bottom_chord_offset_m": 0.0,    # bottom chord centreline relative to the post base
     "top_chord_split_m": 0.0,        # longest top chord piece; 0 = one piece
     "bottom_chord_split_m": 0.0,     # longest bottom chord piece; 0 = one piece
@@ -75,7 +75,7 @@ DEFAULTS = {
     "plan_bays": None,               # cross beam bays along the deck; None = one per truss panel
     "bracing": "zigzag",
     "brace_bays": 2,                 # bays each zigzag diagonal spans (2: side beam to side beam over two bays)
-    "split_x": True,                 # braces split where they cross: a long diagonal at each cross beam, an X at its centre
+    "split_x": True,                 # an X split at its centre (long diagonals are always cut at the cross beams)
     "stiffener_mode": "spacing",     # "spacing": lines at stiffener_spacing_m; "count": stiffeners_across lines
     "stiffener_spacing_m": 0.5,      # between the side beam centres (the truss planes), first and last included
     "stiffeners_across": 1,          # stiffener lines per bay across the deck in count mode; 0 = none
@@ -267,7 +267,13 @@ def layout(design, frame):
     with stations at every bay line."""
     span = frame["span"]
     half = frame["post_size"] / 2.0
-    ext = design["chord_extension_m"] if design["chord_extension_m"] is not None else half
+    if design["chord_extension_m"] is not None:
+        ext = design["chord_extension_m"]
+    else:
+        # to the post face: the inner face when the chord runs through the
+        # post centre (it butts against the post), the outer face when it
+        # runs alongside the post
+        ext = -half if design["truss_plane"] == "centre" else half
     s0, s1 = -ext, span + ext
     total = s1 - s0
     if design["panel_mode"] == "count":
@@ -368,11 +374,11 @@ def pieces(s0, s1, max_len):
 def stiffener_positions(design, frame):
     """t of every deck stiffener line, set out between the side beam
     centrelines (the truss planes, where the bottom chords run). By
-    spacing: equal spaces no wider than stiffener_spacing_m, counted
-    from the side beam centre, so a width that is a multiple of the
-    spacing gives exactly that spacing (3.5 m at 0.5 m: six lines, the
-    first and last 0.5 m from the side beams). By count:
-    stiffeners_across lines equally spaced."""
+    spacing: exactly stiffener_spacing_m apart, counted in from both
+    side beams, so the first and last lines are one spacing from the
+    side beam centres (3.5 m at 0.5 m: six lines all 0.5 m apart); a
+    width that is not a multiple leaves the odd gap in the middle. By
+    count: stiffeners_across lines equally spaced."""
     tl, tr = planes(design, frame)
     width = tl - tr
     if design["stiffener_mode"] == "count":
@@ -381,9 +387,14 @@ def stiffener_positions(design, frame):
     sp = design["stiffener_spacing_m"]
     if sp <= TOL or width <= sp + TOL:
         return []
-    n = int(math.ceil(width / sp - 1e-9))
-    step = width / n
-    return [tl - step * m for m in range(1, n)]
+    k = int(math.floor(width / sp + 1e-9))        # full spacings that fit
+    rem = width - k * sp
+    n = k if rem > TOL else k - 1                 # lines: one fewer than the spacings when exact
+    a = int(math.ceil(n / 2.0))                   # from the left side beam
+    b = n - a                                     # from the right
+    left = [tl - sp * m for m in range(1, a + 1)]
+    right = [tr + sp * m for m in range(1, b + 1)]
+    return left + sorted(right, reverse=True)
 
 
 def deck_extent(design, frame):
@@ -458,10 +469,17 @@ def members(design, frame):
                     zb2 = zb if b[0] == "bottom" else zt
                     add("diagonal", side, i, (a[1], t, za), (b[1], t, zb2), sub)
 
-    # cross beams at every bay line, between the truss planes, tops on the floor underside
+    # cross beams at every bay line, between the truss planes, tops on the
+    # floor underside; the end ones sit on the posts' centre points and run
+    # between the posts' inner faces so they do not pass through the posts
     st = lay["stations"]
+    half = frame["post_size"] / 2.0
     for j, s in enumerate(st):
-        add("crossbeam", "C", j, (s, tl, zu), (s, tr, zu))
+        if j == 0 or j == len(st) - 1:
+            ta, tb = min(tl, frame["tL"] - half), max(tr, frame["tR"] + half)
+        else:
+            ta, tb = tl, tr
+        add("crossbeam", "C", j, (s, ta, zu), (s, tb, zu))
     # plan bracing: an X in every bay, or one diagonal at a time from side
     # beam to side beam over brace_bays bays, alternating (the drawing has
     # each diagonal over two bays, crossing the middle cross beam mid-width)
@@ -484,8 +502,9 @@ def members(design, frame):
         while j < len(st) - 1:
             j2 = min(j + bb, len(st) - 1)
             t_a, t_b = (tl, tr) if k % 2 == 0 else (tr, tl)
-            if design["split_x"] and j2 - j > 1:
-                # one piece per bay, meeting on the cross beams it crosses
+            if j2 - j > 1:
+                # always one piece per bay: a diagonal is cut at every cross
+                # beam it crosses, the pieces meeting on the cross beam
                 for q in range(j, j2):
                     f0 = (st[q] - st[j]) / (st[j2] - st[j])
                     f1 = (st[q + 1] - st[j]) / (st[j2] - st[j])
@@ -705,7 +724,7 @@ def latest_design(registry):
         return None
     recs.sort(key=lambda r: u"{0}".format(r.get("updated") or r.get("stamp") or r.get("built") or u""))
     d = dict(recs[-1]["design"])
-    for k in ("level_start_m", "level_end_m"):
+    for k in ("level_start_m", "level_end_m", "truss_plane"):
         d.pop(k, None)
     return d
 

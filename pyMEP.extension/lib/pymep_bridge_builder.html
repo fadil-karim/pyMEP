@@ -89,7 +89,7 @@ text.lbl{fill:#555}
 <script>
 var DATA = /*__BRIDGE_DATA__*/null;
 var DEFAULTS = {truss:"warren",panel_mode:"length",panel_length_m:2.5,panels:9,height_m:null,level_start_m:null,level_end_m:null,
-  truss_plane:"outside",bottom_chord_offset_m:0,top_chord_split_m:0,bottom_chord_split_m:0,top_chord_pieces:[],bottom_chord_pieces:[],chord_extension_m:null,end_posts:false,
+  truss_plane:"centre",bottom_chord_offset_m:0,top_chord_split_m:0,bottom_chord_split_m:0,top_chord_pieces:[],bottom_chord_pieces:[],chord_extension_m:null,end_posts:false,
   deck_top_offset_m:0,deck_end_m:null,deck_clearance_m:0.01,floor_thickness_m:0.006,plan_bays:null,bracing:"zigzag",brace_bays:2,split_x:true,stringers_across:0,
   stiffener_mode:"spacing",stiffener_spacing_m:0.5,stiffeners_across:1,stiffener_gap_m:0.1,railing_inset_m:0.1,types:{},level:null};
 var TRUSSES = [["warren","Warren - top nodes at mid-panel (as the drawing)"],["warren_verticals","Warren with verticals"],
@@ -106,7 +106,7 @@ function effFrame(d){ var f = {}; for (var k in F) f[k] = F[k]; if (d.level_star
 function planes(d){ var h = F.post_size / 2; if (d.truss_plane === "outside") return [F.tL + h, F.tR - h]; if (d.truss_plane === "inside") return [F.tL - h, F.tR + h]; return [F.tL, F.tR]; }
 function heightOf(d){ return (d.height_m !== null && d.height_m !== undefined) ? d.height_m : F.post_height; }
 function layout(d){
-  var half = F.post_size / 2, ext = (d.chord_extension_m === null) ? half : d.chord_extension_m;
+  var half = F.post_size / 2, ext = (d.chord_extension_m === null) ? (d.truss_plane === "centre" ? -half : half) : d.chord_extension_m;
   var s0 = -ext, s1 = F.span + ext, total = s1 - s0;
   var n = d.panel_mode === "count" ? Math.max(1, d.panels) : Math.max(1, Math.round(total / d.panel_length_m));
   var L = total / n, pts = []; for (var i = 0; i <= n; i++) pts.push(s0 + L * i);
@@ -134,7 +134,11 @@ function stiffenerTs(d){
   var pl = planes(d), tl = pl[0], tr = pl[1], width = tl - tr, out = [];
   if (d.stiffener_mode === "count"){ var k = Math.max(0, d.stiffeners_across); for (var m = 0; m < k; m++) out.push(tl - width * (m + 1) / (k + 1)); return out; }
   var sp = d.stiffener_spacing_m; if (sp <= 1e-6 || width <= sp + 1e-6) return out;
-  var n = Math.ceil(width / sp - 1e-9), step = width / n; for (var q = 1; q < n; q++) out.push(tl - step * q); return out;
+  // exactly the spacing, counted in from both side beams; the odd gap sits in the middle
+  var k = Math.floor(width / sp + 1e-9), rem = width - k * sp, n = rem > 1e-6 ? k : k - 1, a = Math.ceil(n / 2), b = n - a, right = [];
+  for (var q = 1; q <= a; q++) out.push(tl - sp * q);
+  for (var r = 1; r <= b; r++) right.push(tr + sp * r);
+  right.sort(function(x, y){ return y - x; }); return out.concat(right);
 }
 function deckExtent(d){ var half = F.post_size / 2, pl = planes(d), ext = (d.deck_end_m === null || d.deck_end_m === undefined) ? half : d.deck_end_m; var left = Math.min(F.tL - half, pl[0]), right = Math.max(F.tR + half, pl[1]); return {d0:-ext, d1:F.span + ext, tr:right + d.deck_clearance_m, tl:left - d.deck_clearance_m}; }
 function members(d){
@@ -155,7 +159,8 @@ function members(d){
     }
   });
   var st = lay.stations;
-  st.forEach(function(s, j){ add("crossbeam", "C", j, [s,tl,zu], [s,tr,zu]); });
+  var halfP = F.post_size / 2;
+  st.forEach(function(s, j){ var endB = j === 0 || j === st.length - 1, ta = endB ? Math.min(tl, F.tL - halfP) : tl, tb = endB ? Math.max(tr, F.tR + halfP) : tr; add("crossbeam", "C", j, [s,ta,zu], [s,tb,zu]); });
   if (d.bracing === "x") for (var j2 = 0; j2 < st.length - 1; j2++){
     var sa = st[j2], sb = st[j2+1];
     if (d.split_x){ var sm = (sa+sb)/2, tm = (tl+tr)/2; add("bracing","C",j2,[sa,tl,zu],[sm,tm,zu],0); add("bracing","C",j2,[sm,tm,zu],[sb,tr,zu],1); add("bracing","C",j2,[sa,tr,zu],[sm,tm,zu],2); add("bracing","C",j2,[sm,tm,zu],[sb,tl,zu],3); }
@@ -165,7 +170,7 @@ function members(d){
     var bb = Math.max(1, d.brace_bays || 1), jz = 0, kz = 0;
     while (jz < st.length - 1){
       var jb = Math.min(jz + bb, st.length - 1), ta = kz % 2 === 0 ? tl : tr, tb = kz % 2 === 0 ? tr : tl;
-      if (d.split_x && jb - jz > 1){ for (var q = jz; q < jb; q++){ var f0 = (st[q] - st[jz]) / (st[jb] - st[jz]), f1 = (st[q+1] - st[jz]) / (st[jb] - st[jz]); add("bracing","C",kz,[st[q], ta + (tb - ta) * f0, zu],[st[q+1], ta + (tb - ta) * f1, zu], q - jz); } }
+      if (jb - jz > 1){ for (var q = jz; q < jb; q++){ var f0 = (st[q] - st[jz]) / (st[jb] - st[jz]), f1 = (st[q+1] - st[jz]) / (st[jb] - st[jz]); add("bracing","C",kz,[st[q], ta + (tb - ta) * f0, zu],[st[q+1], ta + (tb - ta) * f1, zu], q - jz); } }
       else add("bracing","C",kz,[st[jz],ta,zu],[st[jb],tb,zu],0);
       jz = jb; kz++;
     }
@@ -327,7 +332,7 @@ function settingsPop(x, y){
     '<label>Revit level <select id="sp_level">' + (DATA.levels || []).map(function(l){ return '<option value="' + esc(l.id) + '"' + (String(l.id) === String(design.level) ? " selected" : "") + '>' + esc(l.name) + ' (' + l.elevation_m.toFixed(3) + ' m)</option>'; }).join("") + '</select></label>' +
     '<label class="check"><span>End posts (the picked posts usually are them)</span><input type="checkbox" id="sp_posts"' + (design.end_posts ? " checked" : "") + '></label>' +
     '<label>Bays per brace diagonal <span style="color:#666">single diagonals</span> <input type="number" min="1" step="1" id="sp_bb" value="' + (design.brace_bays || 1) + '"></label>' +
-    '<label class="check"><span>Split braces where they cross (the X centre, the cross beams)</span><input type="checkbox" id="sp_splitx"' + (design.split_x ? " checked" : "") + '></label>' +
+    '<label class="check"><span>Split each X at its centre (diagonals are always cut at the cross beams)</span><input type="checkbox" id="sp_splitx"' + (design.split_x ? " checked" : "") + '></label>' +
     '<label>Beams between cross beams <span style="color:#666">per bay, 0 = none</span> <input type="number" min="0" step="1" id="sp_str" value="' + (design.stringers_across || 0) + '"></label>' +
     '<label>Stiffeners set out by <select id="sp_smode"><option value="spacing"' + (design.stiffener_mode === "spacing" ? " selected" : "") + '>spacing</option><option value="count"' + (design.stiffener_mode === "count" ? " selected" : "") + '>count</option></select></label>' +
     '<label>Stiffener spacing <span style="color:#666">mm, side beam centre to centre</span> <input type="number" min="0" step="50" id="sp_ssp" value="' + mm(design.stiffener_spacing_m) + '"></label>' +
@@ -342,8 +347,8 @@ function settingsPop(x, y){
     p.querySelector("#sp_splitx").onchange = function(ev){ setDesign("split_x", ev.target.checked); };
     p.querySelector("#sp_str").oninput = function(ev){ var v = parseInt(ev.target.value, 10); if (!isNaN(v)) setDesign("stringers_across", Math.max(0, v)); };
     p.querySelector("#sp_smode").onchange = function(ev){ setDesign("stiffener_mode", ev.target.value); };
-    p.querySelector("#sp_ssp").oninput = function(ev){ var v = parseFloat(ev.target.value); if (!isNaN(v) && v >= 0) setDesign("stiffener_spacing_m", v / 1000); };
-    p.querySelector("#sp_stiff").oninput = function(ev){ var v = parseInt(ev.target.value, 10); if (!isNaN(v)) setDesign("stiffeners_across", Math.max(0, v)); };
+    p.querySelector("#sp_ssp").oninput = function(ev){ var v = parseFloat(ev.target.value); if (!isNaN(v) && v >= 0){ design.stiffener_mode = "spacing"; p.querySelector("#sp_smode").value = "spacing"; setDesign("stiffener_spacing_m", v / 1000); } };
+    p.querySelector("#sp_stiff").oninput = function(ev){ var v = parseInt(ev.target.value, 10); if (!isNaN(v)){ design.stiffener_mode = "count"; p.querySelector("#sp_smode").value = "count"; setDesign("stiffeners_across", Math.max(0, v)); } };
     p.querySelector("#sp_gap").oninput = function(ev){ var v = parseFloat(ev.target.value); if (!isNaN(v)) setDesign("stiffener_gap_m", v / 1000); };
     p.querySelector("#sp_ins").oninput = function(ev){ var v = parseFloat(ev.target.value); if (!isNaN(v)) setDesign("railing_inset_m", v / 1000); };
   });
@@ -375,7 +380,7 @@ function memberRing(role, x, y){
     if (role === "crossbeam") items.push({label:"Cross beams between... (" + (model.layout.bays - 1) + ")", run:function(){ inlineEditAt(x, y, {value:model.layout.bays - 1, unit:"n", min:0, set:function(v){ setDesign("plan_bays", Math.max(0, Math.round(v)) + 1); }}); }});
     [["zigzag","Single diagonals"],["x","X bracing"],["none","No bracing"]].forEach(function(b){ if (b[0] !== design.bracing) items.push({label:b[1], run:function(){ setDesign("bracing", b[0]); }}); });
     if (design.bracing === "zigzag") items.push({label:"Bays per diagonal... (" + (design.brace_bays || 1) + ")", run:function(){ inlineEditAt(x, y, {value:design.brace_bays || 1, unit:"n", min:1, set:function(v){ setDesign("brace_bays", Math.max(1, Math.round(v))); }}); }});
-    if (design.bracing === "x" || (design.bracing === "zigzag" && (design.brace_bays || 1) > 1)) items.push({label:design.split_x ? "Whole braces" : "Split braces at crossings", run:function(){ setDesign("split_x", !design.split_x); }});
+    if (design.bracing === "x") items.push({label:design.split_x ? "Whole X pieces" : "Split X at centre", run:function(){ setDesign("split_x", !design.split_x); }});
     items.push({label:"Beams between... (" + (design.stringers_across || 0) + ")", run:function(){ inlineEditAt(x, y, {value:design.stringers_across || 0, unit:"n", min:0, set:function(v){ setDesign("stringers_across", Math.max(0, Math.round(v))); }}); }});
     if (role === "stringer") items.push({label:"One fewer", run:function(){ setDesign("stringers_across", Math.max(0, design.stringers_across - 1)); }}, {label:"One more", run:function(){ setDesign("stringers_across", (design.stringers_across || 0) + 1); }});
   }
@@ -503,7 +508,7 @@ function render(){
   if (lay.stations.length > 1){ var tb2 = dimH(pl, PX(lay.stations[0]), PX(lay.stations[1]), pp - 14, mm(lay.B) + "  (" + (lay.bays - 1) + " cross beams between)", {value:lay.bays - 1, unit:"n", min:0, set:function(v){ setDesign("plan_bays", v + 1); }}, "cross beams between the end ones, spread equally - click to type how many (blank in Settings follows the truss panels)"); tb2.setAttribute("text-anchor", "start"); tb2.setAttribute("x", PX(lay.stations[0])); }
   dimV(pl, pp - 12, PY(ex.tl), PY(ex.tr), mm(ex.tl - ex.tr), null, "deck width - set by the posts and the clearance");
   var sls = stiffenerTs(design);
-  if (sls.length){ var sA = res.planes[0], sB = sls[0]; dimV(pl, PW - pp + 16, PY(sA), PY(sB), mm(sA - sB) + (design.stiffener_mode === "count" ? " (" + sls.length + " across)" : ""), {value:sA - sB, unit:"mm", set:function(v){ design.stiffener_mode = "spacing"; setDesign("stiffener_spacing_m", Math.max(0, v)); }}, "stiffener spacing, side beam centre to the first line - click to type the spacing (equal spaces no wider than it)", true); }
+  if (sls.length){ var sA = res.planes[0], sB = sls[0]; dimV(pl, PW - pp + 16, PY(sA), PY(sB), mm(sA - sB) + (design.stiffener_mode === "count" ? " (" + sls.length + " across)" : ""), {value:sA - sB, unit:"mm", set:function(v){ design.stiffener_mode = "spacing"; setDesign("stiffener_spacing_m", Math.max(0, v)); }}, "stiffener spacing, side beam centre to the first line - click to type it (exact, counted in from both side beams; any odd gap is in the middle)", true); }
   var cl = el(pl, "text", {x:PX(ex.d0) + 6, y:PY(ex.tl) + 14, "font-size":11, "class":"dim"}, "clearance " + mm(design.deck_clearance_m));
   cl.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(cl, {value:design.deck_clearance_m, unit:"mm", set:function(v){ setDesign("deck_clearance_m", Math.max(0, v)); }}); });
   el(pl, "text", {x:PW / 2, y:PH - 6, "text-anchor":"middle", "font-size":11, "class":"lbl"}, mems.filter(function(m){ return m.role === "crossbeam"; }).length + " cross beams - " + (design.bracing === "zigzag" ? "single diagonals over " + (design.brace_bays || 1) + (design.brace_bays === 1 ? " bay" : " bays") : design.bracing + " bracing") + " - " + (design.stringers_across ? design.stringers_across + " beams between per bay - " : "") + mems.filter(function(m){ return m.role === "stiffener"; }).length + " stiffeners" + (sls.length ? " (" + sls.length + " across" + (design.stiffener_mode === "spacing" ? " at " + mm(design.stiffener_spacing_m) : "") + ")" : "") + " - railing " + typeName("railing"));
