@@ -37,7 +37,7 @@ def design(**kw):
     # the geometry tests run the chords to the posts' outer faces (as the
     # drawing measures); the trusses are always on the post centres
     d = {"panel_mode": "count", "panels": 4, "truss": "warren_verticals", "chord_extension_m": 0.1,
-         "brace_end_offset_m": 0.0, "bottom_chord_offset_m": 0.0}
+         "brace_end_offset_m": 0.0, "bottom_chord_offset_m": 0.0, "bottom_chord_cutback_m": 0.0}
     d.update(kw)
     return BR.normalize_design(d)
 
@@ -237,6 +237,26 @@ class Members(unittest.TestCase):
             BR.normalize_design({"top_chord_pieces": [None, None, 3.0]})
         with self.assertRaises(ValueError):
             BR.normalize_design({"top_chord_pieces": [0, 3.0]})
+
+    def test_bottom_chord_cutback(self):
+        # the bottom chords stop the cutback short of the post faces at each
+        # end; the top chords, the diagonals and the cross beams do not move
+        d = design(bottom_chord_cutback_m=0.01)
+        self.assertEqual(BR.chord_extent(d, FRAME, "bottom_chord"), (-0.1 + 0.01, 20.1 - 0.01))
+        self.assertEqual(BR.chord_extent(d, FRAME, "top_chord"), (-0.1, 20.1))
+        mems = BR.members(d, FRAME)
+        bc = by_key(mems, u"bottom_chord:L:0:0")
+        self.assertAlmostEqual(bc["p1"][0], -0.09)
+        self.assertAlmostEqual(bc["p2"][0], 20.09)
+        self.assertAlmostEqual(by_key(mems, u"top_chord:L:0:0")["p1"][0], -0.1)
+        self.assertAlmostEqual(by_key(mems, u"crossbeam:C:0:0")["p1"][0], -0.1)
+        # typed pieces are measured within the cut-back chord: the variable piece takes the rest
+        p = BR.members(design(bottom_chord_cutback_m=0.01, bottom_chord_pieces=[6.0, None]), FRAME)
+        self.assertAlmostEqual(by_key(p, u"bottom_chord:L:0:0")["p2"][0], -0.09 + 6.0)
+        self.assertAlmostEqual(by_key(p, u"bottom_chord:L:1:0")["p2"][0], 20.09)
+        self.assertAlmostEqual(BR.normalize_design({})["bottom_chord_cutback_m"], 0.01)   # 10 mm by default
+        with self.assertRaises(ValueError):
+            BR.normalize_design({"bottom_chord_cutback_m": -0.01})
 
     def test_resize_variable_piece(self):
         # the change is taken equally from the pieces either side
