@@ -90,7 +90,7 @@ text.lbl{fill:#555}
 <script>
 var DATA = /*__BRIDGE_DATA__*/null;
 var DEFAULTS = {truss:"warren",panel_mode:"length",brace_angle_deg:55,panel_length_m:2.5,panels:9,height_m:null,level_start_m:null,level_end_m:null,
-  truss_plane:"centre",bottom_chord_offset_m:0,top_chord_split_m:0,bottom_chord_split_m:0,top_chord_pieces:[],bottom_chord_pieces:[],chord_extension_m:null,brace_end_offset_m:0.15,end_posts:false,
+  truss_plane:"centre",bottom_chord_offset_m:null,crossbeam_depth_m:0,top_chord_split_m:0,bottom_chord_split_m:0,top_chord_pieces:[],bottom_chord_pieces:[],chord_extension_m:null,brace_end_offset_m:0.15,end_posts:false,
   deck_top_offset_m:0,deck_end_m:null,deck_clearance_m:0.01,floor_thickness_m:0.006,bottom_chord_depth_m:0,plan_bays:null,bracing:"zigzag",brace_bays:2,split_x:true,stringers_across:0,
   stiffener_mode:"spacing",stiffener_spacing_m:0.5,stiffeners_across:1,stiffener_gap_m:0.1,railing_inset_m:0.1,railing_width_m:null,types:{},level:null};
 var TRUSSES = [["warren","Warren - top nodes at mid-panel (as the drawing)"],["warren_verticals","Warren with verticals"],
@@ -122,10 +122,10 @@ function layout(d){
   var off = Math.min(d.brace_end_offset_m || 0, Math.max(0, total / 2 - 1e-6)), r0 = s0 + off, r1 = s1 - off, run = r1 - r0;
   var n;
   if (d.panel_mode === "count") n = Math.max(1, d.panels);
-  else if (d.panel_mode === "angle"){ var rise = heightOf(d) - d.bottom_chord_offset_m, horiz = rise / Math.tan(d.brace_angle_deg * Math.PI / 180), target = (d.truss === "warren" || d.truss === "warren_verticals") ? 2 * horiz : horiz; n = target > 1e-6 ? Math.max(1, Math.round(run / target)) : 1; }
+  else if (d.panel_mode === "angle"){ var rise = heightOf(d) - chordLevel(d), horiz = rise / Math.tan(d.brace_angle_deg * Math.PI / 180), target = (d.truss === "warren" || d.truss === "warren_verticals") ? 2 * horiz : horiz; n = target > 1e-6 ? Math.max(1, Math.round(run / target)) : 1; }
   else n = Math.max(1, Math.round(total / d.panel_length_m));
   var L = run / n, pts = []; for (var i = 0; i <= n; i++) pts.push(r0 + L * i);
-  var d0 = 0, d1 = F.span;
+  var d0 = r0, d1 = r1;   // the cross beams land on the side frames' nodes, clearance included
   var bays = d.plan_bays ? Math.max(1, d.plan_bays) : n, B = (d1 - d0) / bays, st = []; for (var j = 0; j <= bays; j++) st.push(d0 + B * j);
   return {s0:s0, s1:s1, n:n, L:L, total:total, run:run, r0:r0, r1:r1, points:pts, d0:d0, d1:d1, bays:bays, B:B, stations:st};
 }
@@ -133,7 +133,7 @@ function pieces(s0, s1, maxLen){ var total = s1 - s0; if (maxLen <= 1e-6 || tota
 function braceAngle(d){
   // the side diagonals' angle to the horizontal as laid out (degrees)
   if (d.truss === "vierendeel") return 0;
-  var lay = layout(d), rise = heightOf(d) - d.bottom_chord_offset_m, run = (d.truss === "warren" || d.truss === "warren_verticals") ? lay.L / 2 : lay.L;
+  var lay = layout(d), rise = heightOf(d) - chordLevel(d), run = (d.truss === "warren" || d.truss === "warren_verticals") ? lay.L / 2 : lay.L;
   return run <= 1e-6 ? 90 : Math.atan2(rise, run) * 180 / Math.PI;
 }
 function pieceSpans(s0, s1, list, maxLen){
@@ -163,7 +163,7 @@ function stiffenerTs(d){
 function railingTs(d, ex){ if (d.railing_width_m !== null && d.railing_width_m !== undefined && d.railing_width_m > 0) return [d.railing_width_m / 2, -d.railing_width_m / 2]; return [ex.tl - d.railing_inset_m, ex.tr + d.railing_inset_m]; }
 function deckExtent(d){ var half = F.post_size / 2, pl = planes(d), ext = (d.deck_end_m === null || d.deck_end_m === undefined) ? half : d.deck_end_m; var left = Math.min(F.tL - half, pl[0]), right = Math.max(F.tR + half, pl[1]); return {d0:-ext, d1:F.span + ext, tr:right + d.deck_clearance_m, tl:left - d.deck_clearance_m}; }
 function members(d){
-  var lay = layout(d), pl = planes(d), tl = pl[0], tr = pl[1], zb = d.bottom_chord_offset_m, zt = heightOf(d), zd = d.deck_top_offset_m, zu = zd - d.floor_thickness_m;
+  var lay = layout(d), pl = planes(d), tl = pl[0], tr = pl[1], zb = chordLevel(d), zt = heightOf(d), zd = d.deck_top_offset_m, zu = zd - d.floor_thickness_m;
   var zc = zb - Math.max(0, d.bottom_chord_depth_m || 0) / 2;   // the bottom chords' centre: the plan braces centre on it
   var pts = lay.points, n = lay.n, out = [], warren = d.truss === "warren" || d.truss === "warren_verticals";
   function add(role, side, i, p1, p2, sub){ out.push({key:role + ":" + side + ":" + i + ":" + (sub || 0), role:role, side:side, i:i, p1:p1, p2:p2}); }
@@ -182,7 +182,7 @@ function members(d){
   });
   var st = lay.stations;
   var halfP = F.post_size / 2;
-  st.forEach(function(s, j){ var endB = j === 0 || j === st.length - 1, ta = endB ? Math.min(tl, F.tL - halfP) : tl, tb = endB ? Math.max(tr, F.tR + halfP) : tr; add("crossbeam", "C", j, [s,ta,zu], [s,tb,zu]); });
+  st.forEach(function(s, j){ var inPost = Math.abs(s) <= halfP + 1e-6 || Math.abs(s - F.span) <= halfP + 1e-6, ta = inPost ? Math.min(tl, F.tL - halfP) : tl, tb = inPost ? Math.max(tr, F.tR + halfP) : tr; add("crossbeam", "C", j, [s,ta,zu], [s,tb,zu]); });
   if (d.bracing === "x") for (var j2 = 0; j2 < st.length - 1; j2++){
     var sa = st[j2], sb = st[j2+1];
     if (d.split_x){ var sm = (sa+sb)/2, tm = (tl+tr)/2; add("bracing","C",j2,[sa,tl,zc],[sm,tm,zc],0); add("bracing","C",j2,[sm,tm,zc],[sb,tr,zc],1); add("bracing","C",j2,[sa,tr,zc],[sm,tm,zc],2); add("bracing","C",j2,[sm,tm,zc],[sb,tl,zc],3); }
@@ -217,8 +217,14 @@ function typeList(role){ if (role === "deck") return DATA.floor_types || []; if 
 function typeKey(role){ return role === "deck" ? "floor" : role; }
 function typeName(role){ var id = design.types[typeKey(role)]; if (!id || id === "none") return role === "stiffener" || role === "railing" ? "(none)" : "(first type)"; var t = typeList(role).filter(function(x){ return String(x.id) === String(id); })[0]; return t ? t.name : "(type " + id + ")"; }
 function floorThickness(){ var t = (DATA.floor_types || []).filter(function(x){ return String(x.id) === String(design.types.floor); })[0]; return t && t.thickness_m ? t.thickness_m : DEFAULTS.floor_thickness_m; }
-function chordDepth(){ var t = (DATA.framing_types || []).filter(function(x){ return String(x.id) === String(design.types.bottom_chord); })[0]; return t && t.depth_m ? t.depth_m : 0; }
-function setDesign(k, v){ design[k] = v; if (k === "types"){ design.floor_thickness_m = floorThickness(); design.bottom_chord_depth_m = chordDepth(); } render(); }
+function typeDepth(role){ var t = (DATA.framing_types || []).filter(function(x){ return String(x.id) === String(design.types[role]); })[0]; return t && t.depth_m ? t.depth_m : 0; }
+function chordDepth(){ return typeDepth("bottom_chord"); }
+function chordLevel(d){
+  // the bottom chords' top of steel: typed, or derived so their centre is at the cross beams' centre
+  if (d.bottom_chord_offset_m !== null && d.bottom_chord_offset_m !== undefined) return d.bottom_chord_offset_m;
+  return d.deck_top_offset_m - d.floor_thickness_m - Math.max(0, d.crossbeam_depth_m || 0) / 2 + Math.max(0, d.bottom_chord_depth_m || 0) / 2;
+}
+function setDesign(k, v){ design[k] = v; if (k === "types"){ design.floor_thickness_m = floorThickness(); design.bottom_chord_depth_m = chordDepth(); design.crossbeam_depth_m = typeDepth("crossbeam"); } render(); }
 function fmt(v, dp){ return (Math.round(v * Math.pow(10, dp)) / Math.pow(10, dp)).toFixed(dp); }
 // ---- chord pieces: typed lengths from the start, one variable piece takes the rest ----
 function chordPieces(role){ return (design[role + "_pieces"] || []).slice(); }
@@ -501,7 +507,9 @@ function render(){
   var xe = X(lay.s1) + 14;
   dimV(sv, xe + 44, Y(baseZ(lay.s1) + Math.max(res.zd, 0)), Y(baseZ(lay.s1) + Math.min(res.zd, 0)), (res.zd >= 0 ? "+" : "") + mm(res.zd), {value:res.zd, unit:"mm", set:function(v){ setDesign("deck_top_offset_m", v); }}, "deck top above the post base - click to change");
   var tb = el(sv, "text", {x:X(lay.s0) + 6, y:Y(baseZ(lay.s0) + Math.min(zb, res.zu)) + 16, "font-size":12, "class":"dim"}, "bottom chord " + (zb >= 0 ? "+" : "") + mm(zb));
-  tb.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(tb, {value:zb, unit:"mm", set:function(v){ setDesign("bottom_chord_offset_m", v); }}); });
+  tb.textContent = "bottom chord " + (zb >= 0 ? "+" : "") + mm(zb) + (design.bottom_chord_offset_m === null ? " (centred on the cross beams)" : "");
+  el(tb, "title", {}, "the bottom chords' top of steel against the post base - blank sets it so the chords' centre is at the cross beams' centre (the side beams move to suit the cross beams); type a value to fix it");
+  tb.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(tb, {value:zb, unit:"mm", allowBlank:true, blankLabel:"cross beams", set:function(v){ setDesign("bottom_chord_offset_m", v); }}); });
   if (design.truss !== "vierendeel") dimH(sv, X(lay.s0), X(lay.s0 + design.brace_end_offset_m), Y(baseZ(lay.s0) + zb) - 14, mm(design.brace_end_offset_m), {value:design.brace_end_offset_m, unit:"mm", set:function(v){ setDesign("brace_end_offset_m", Math.max(0, v)); }}, "end clearance - the run of diagonals starts this far in from each chord end, clear of the posts, every diagonal shortening evenly - click to change");
   var tde = el(sv, "text", {x:X(ex.d0), y:Y(baseZ(ex.d0) + Math.min(zb, res.zu)) + 30, "font-size":12, "class":"dim"}, "deck end " + (ex.d0 <= 0 ? "+" : "") + mm(-ex.d0) + (design.deck_end_m === null ? " (post face)" : ""));
   el(tde, "title", {}, "where the deck ends, past the post centrelines (mm; negative = inside) - blank is the outer face of the posts");
@@ -736,7 +744,7 @@ $("load").addEventListener("click", function(){ $("file").click(); });
 $("file").addEventListener("change", function(){
   var f = this.files[0]; if (!f) return; var rd = new FileReader();
   rd.onload = function(){ try { var d = JSON.parse(rd.result); if (d.kind !== "pymep-bridge") throw new Error("not a bridge design");
-    design = JSON.parse(JSON.stringify(DEFAULTS)); Object.keys(d.design || {}).forEach(function(k){ design[k] = d.design[k]; }); design.floor_thickness_m = floorThickness(); design.bottom_chord_depth_m = chordDepth();
+    design = JSON.parse(JSON.stringify(DEFAULTS)); Object.keys(d.design || {}).forEach(function(k){ design[k] = d.design[k]; }); design.floor_thickness_m = floorThickness(); design.bottom_chord_depth_m = chordDepth(); design.crossbeam_depth_m = typeDepth("crossbeam");
     if (d.name) DATA.name = d.name; write(); fit3d(); $("status").textContent = "Loaded " + f.name + "."; } catch (e) { $("status").textContent = "Could not load: " + e; } };
   rd.readAsText(f);
 });
@@ -755,6 +763,7 @@ function applyModelDefaults(){
   if (!design.types.railing) design.types.railing = "none";
   design.floor_thickness_m = floorThickness();
   design.bottom_chord_depth_m = chordDepth();
+  design.crossbeam_depth_m = typeDepth("crossbeam");
 }
 (function init(){
   if (!DATA){ $("status").textContent = "No data - open this page from Revit (Bridges > Bridge Builder)."; DATA = {}; }

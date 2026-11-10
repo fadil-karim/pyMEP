@@ -62,7 +62,8 @@ DEFAULTS = {
     "level_start_m": None,           # deck datum at the start as a SHARED elevation; None = post base
     "level_end_m": None,             # same at the end
     "truss_plane": "centre",         # the side frames on the posts' centre points        # where the truss planes sit against the posts
-    "bottom_chord_offset_m": 0.0,    # bottom chord centreline relative to the post base
+    "bottom_chord_offset_m": None,   # bottom chord top of steel above the post base; None = the chord centre at the cross beams' centre
+    "crossbeam_depth_m": 0.0,        # replaced by the cross beam type's section depth
     "top_chord_split_m": 0.0,        # longest top chord piece; 0 = one piece
     "bottom_chord_split_m": 0.0,     # longest bottom chord piece; 0 = one piece
     "top_chord_pieces": [],          # typed piece lengths from the start, None = the variable
@@ -106,7 +107,7 @@ def normalize_design(d):
     out["truss_plane"] = "centre"      # the side frames are always on the post centres
     if out["stiffener_mode"] not in ("spacing", "count"):
         raise ValueError(u"stiffener_mode must be 'spacing' or 'count'")
-    for k in ("panel_length_m", "bottom_chord_offset_m", "top_chord_split_m",
+    for k in ("panel_length_m", "crossbeam_depth_m", "top_chord_split_m",
               "bottom_chord_split_m", "deck_top_offset_m", "deck_clearance_m",
               "floor_thickness_m", "stiffener_gap_m", "stiffener_spacing_m", "railing_inset_m",
               "brace_end_offset_m", "bottom_chord_depth_m"):
@@ -115,7 +116,7 @@ def normalize_design(d):
         except (TypeError, ValueError):
             raise ValueError(u"'{0}' must be a number".format(k))
     for k in ("height_m", "chord_extension_m", "level_start_m", "level_end_m", "deck_end_m",
-              "railing_width_m"):
+              "railing_width_m", "bottom_chord_offset_m"):
         if out[k] is not None:
             try:
                 out[k] = float(out[k])
@@ -257,6 +258,17 @@ def effective_frame(design, frame, shared_elev_m=0.0):
     return f
 
 
+def bottom_chord_level(design):
+    """zb: the bottom chords' top of steel above the post base. Typed, or
+    derived so the chords' centre sits at the cross beams' centre - the
+    cross beams hang from the floor underside, so the side beams move
+    to suit them: zb = underside - cross beam depth / 2 + chord depth / 2."""
+    if design["bottom_chord_offset_m"] is not None:
+        return design["bottom_chord_offset_m"]
+    zu = design["deck_top_offset_m"] - design["floor_thickness_m"]
+    return zu - max(0.0, design["crossbeam_depth_m"]) / 2.0 + max(0.0, design["bottom_chord_depth_m"]) / 2.0
+
+
 def planes(design, frame):
     """(t of the left truss plane, t of the right truss plane): always the
     posts' centre points, so the side frames line up with the original
@@ -314,7 +326,7 @@ def layout(design, frame):
     elif design["panel_mode"] == "angle":
         # the panel length that gives the diagonals the typed angle: a Warren
         # diagonal runs half a panel, the shared-node layouts a whole one
-        rise = height(design, frame) - design["bottom_chord_offset_m"]
+        rise = height(design, frame) - bottom_chord_level(design)
         horiz = rise / math.tan(math.radians(design["brace_angle_deg"]))
         target = 2.0 * horiz if design["truss"] in ("warren", "warren_verticals") else horiz
         n = max(1, int(round(run / target))) if target > TOL else 1
@@ -323,7 +335,10 @@ def layout(design, frame):
     L = run / n
     # the plan bays run from post centreline to post centreline, so the end
     # cross beams sit on the posts' centre points
-    d0, d1 = 0.0, span
+    # the plan bays run between the side frames' end nodes, so the cross beams
+    # land on the brace connection points (with the end clearance) - every
+    # node when the bays follow the panels
+    d0, d1 = r0, r1
     if d1 - d0 <= TOL:
         raise ValueError(u"the posts are too close together for a deck")
     bays = design["plan_bays"] or n
@@ -340,7 +355,7 @@ def brace_angle(design, frame):
     if design["truss"] == "vierendeel":
         return 0.0
     lay = layout(design, frame)
-    rise = height(design, frame) - design["bottom_chord_offset_m"]
+    rise = height(design, frame) - bottom_chord_level(design)
     run = lay["L"] / 2.0 if design["truss"] in ("warren", "warren_verticals") else lay["L"]
     if run <= TOL:
         return 90.0
@@ -483,7 +498,7 @@ def members(design, frame):
     under the floor)."""
     lay = layout(design, frame)
     tl, tr = planes(design, frame)
-    zb = design["bottom_chord_offset_m"]
+    zb = bottom_chord_level(design)
     zt = height(design, frame)
     zd = design["deck_top_offset_m"]
     zu = zd - design["floor_thickness_m"]        # floor underside
@@ -533,12 +548,12 @@ def members(design, frame):
                     add("diagonal", side, i, (a[1], t, za), (b[1], t, zb2), sub)
 
     # cross beams at every bay line, between the truss planes, tops on the
-    # floor underside; the end ones sit on the posts' centre points and run
-    # between the posts' inner faces so they do not pass through the posts
+    # floor underside; one that falls within a post's footprint runs between
+    # the posts' inner faces so it does not pass through the posts
     st = lay["stations"]
     half = frame["post_size"] / 2.0
     for j, s in enumerate(st):
-        if j == 0 or j == len(st) - 1:
+        if abs(s) <= half + TOL or abs(s - frame["span"]) <= half + TOL:
             ta, tb = min(tl, frame["tL"] - half), max(tr, frame["tR"] + half)
         else:
             ta, tb = tl, tr
@@ -842,7 +857,7 @@ def fill_page(template, data):
     return template.replace(PLACEHOLDER, text, 1)
 
 
-__all__ = ["piece_spans", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
+__all__ = ["piece_spans", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
            "BRACE_ROLES", "TOP_ALIGNED", "DEFAULTS", "normalize_design", "frame_from_posts",
            "frame_from_points", "effective_frame", "planes", "height", "base_z", "to_world",
            "layout", "pieces",

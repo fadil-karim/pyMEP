@@ -95,6 +95,7 @@ for role in BR.FRAMING_ROLES:
 floor_type = RV.first_of(floors, u"{0}".format(design["types"].get("floor") or u""), doc)
 design["floor_thickness_m"] = RV.floor_thickness_m(floor_type) or design["floor_thickness_m"]
 design["bottom_chord_depth_m"] = RV.section_depth_m(symbols.get("bottom_chord"))
+design["crossbeam_depth_m"] = RV.section_depth_m(symbols.get("crossbeam"))
 stiff_id = u"{0}".format(design["types"].get("stiffener") or u"none")
 stiffener_sym = RV.by_id(doc, stiff_id) if stiff_id not in (u"", u"none") else None
 rail_id = u"{0}".format(design["types"].get("railing") or u"none")

@@ -1014,8 +1014,9 @@ side beam over two bays, alternating, as the drawing - the bays per
 diagonal can be changed, and an X in every bay or none are the other
 choices; a diagonal is always cut at every cross beam it crosses, and
 "split each X at its centre" does the same for an X), the cross beams
-(the end ones on the posts' centre points, the rest spread equally
-between them - type how many) and the optional beams between the cross
+(on the side frames' bottom nodes, so they meet the brace connection
+points and move with the end clearance; with a typed count they are
+spread equally between the end nodes) and the optional beams between the cross
 beams (a count per bay, spread evenly between the truss planes, tops
 on the floor underside) sit under the deck. The deck runs to the outer faces of the posts along the span
 (click its "deck end" value to type another offset from the post
@@ -1047,7 +1048,10 @@ both trusses on the posts' centre points, so the side frames line up
 with the original four posts (there is no other setting; older design
 files that say otherwise are read as the centres), the chords butting
 against the posts' inner faces (chords in their pieces, verticals,
-diagonals as braces); the cross beams between the truss planes, the
+diagonals as braces; the bottom chords sit so their centre is at the
+cross beams' centre - the cross beams hang from the floor underside and
+the side beams move to suit them - unless a chord level is typed on
+the elevation); the cross beams between the truss planes, the
 end ones on the post centrelines and running between the posts' inner
 faces, and any beams between the cross beams, with z justification Top
 so their top sits on the floor underside; the plan bracing cut at
