@@ -495,9 +495,10 @@ class Members(unittest.TestCase):
         with self.assertRaises(ValueError):
             BR.normalize_design({"brace_end_offset_m": -0.1})
 
-    def test_side_beams_follow_the_cross_beams(self):
-        # with no chord level typed the bottom chords sit so their centre is at
-        # the cross beams' centre: underside - cross beam depth / 2 + chord depth / 2
+    def test_side_beams_can_follow_the_cross_beams(self):
+        # a blank chord level (an option, not the default) puts the bottom chords
+        # so their centre is at the cross beams' centre: underside - cross beam
+        # depth / 2 + chord depth / 2
         d = design(bottom_chord_offset_m=None, floor_thickness_m=0.006, crossbeam_depth_m=0.15,
                    bottom_chord_depth_m=0.1)
         self.assertAlmostEqual(BR.bottom_chord_level(d), -0.006 - 0.075 + 0.05)
@@ -509,7 +510,7 @@ class Members(unittest.TestCase):
         br = [m for m in mems if m["role"] == "bracing"][0]
         self.assertAlmostEqual(br["p1"][2], -0.081)                                # the braces too
         self.assertAlmostEqual(BR.bottom_chord_level(design(bottom_chord_offset_m=0.2)), 0.2)   # typed wins
-        self.assertIsNone(BR.normalize_design({})["bottom_chord_offset_m"])
+        self.assertEqual(BR.normalize_design({})["bottom_chord_offset_m"], 0.0)      # by default the chord top of steel is at the post base
 
     def test_cross_beams_on_the_frame_nodes(self):
         # the cross beams sit on the side frames' bottom nodes, so the end

@@ -62,7 +62,7 @@ DEFAULTS = {
     "level_start_m": None,           # deck datum at the start as a SHARED elevation; None = post base
     "level_end_m": None,             # same at the end
     "truss_plane": "centre",         # the side frames on the posts' centre points        # where the truss planes sit against the posts
-    "bottom_chord_offset_m": None,   # bottom chord top of steel above the post base; None = the chord centre at the cross beams' centre
+    "bottom_chord_offset_m": 0.0,    # bottom chord top of steel above the post base; None = the chord centre at the cross beams' centre
     "crossbeam_depth_m": 0.0,        # replaced by the cross beam type's section depth
     "top_chord_split_m": 0.0,        # longest top chord piece; 0 = one piece
     "bottom_chord_split_m": 0.0,     # longest bottom chord piece; 0 = one piece
@@ -100,6 +100,11 @@ def normalize_design(d):
     d = d or {}
     for k, v in DEFAULTS.items():
         out[k] = d[k] if (k in d and d[k] is not None) else v
+    # an explicit blank on an optional value means "blank", not "the default"
+    for k in ("height_m", "chord_extension_m", "level_start_m", "level_end_m", "deck_end_m",
+              "railing_width_m", "bottom_chord_offset_m"):
+        if k in d and d[k] is None:
+            out[k] = None
     if out["truss"] not in [k for k, _l in TRUSSES]:
         raise ValueError(u"unknown truss type '{0}'".format(out["truss"]))
     if out["bracing"] not in [k for k, _l in BRACINGS]:

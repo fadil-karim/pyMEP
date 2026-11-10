@@ -90,7 +90,7 @@ text.lbl{fill:#555}
 <script>
 var DATA = /*__BRIDGE_DATA__*/null;
 var DEFAULTS = {truss:"warren",panel_mode:"length",brace_angle_deg:55,panel_length_m:2.5,panels:9,height_m:null,level_start_m:null,level_end_m:null,
-  truss_plane:"centre",bottom_chord_offset_m:null,crossbeam_depth_m:0,top_chord_split_m:0,bottom_chord_split_m:0,top_chord_pieces:[],bottom_chord_pieces:[],chord_extension_m:null,brace_end_offset_m:0.15,end_posts:false,
+  truss_plane:"centre",bottom_chord_offset_m:0,crossbeam_depth_m:0,top_chord_split_m:0,bottom_chord_split_m:0,top_chord_pieces:[],bottom_chord_pieces:[],chord_extension_m:null,brace_end_offset_m:0.15,end_posts:false,
   deck_top_offset_m:0,deck_end_m:null,deck_clearance_m:0.01,floor_thickness_m:0.006,bottom_chord_depth_m:0,plan_bays:null,bracing:"zigzag",brace_bays:2,split_x:true,stringers_across:0,
   stiffener_mode:"spacing",stiffener_spacing_m:0.5,stiffeners_across:1,stiffener_gap_m:0.1,railing_inset_m:0.1,railing_width_m:null,types:{},level:null};
 var TRUSSES = [["warren","Warren - top nodes at mid-panel (as the drawing)"],["warren_verticals","Warren with verticals"],
@@ -508,7 +508,7 @@ function render(){
   dimV(sv, xe + 44, Y(baseZ(lay.s1) + Math.max(res.zd, 0)), Y(baseZ(lay.s1) + Math.min(res.zd, 0)), (res.zd >= 0 ? "+" : "") + mm(res.zd), {value:res.zd, unit:"mm", set:function(v){ setDesign("deck_top_offset_m", v); }}, "deck top above the post base - click to change");
   var tb = el(sv, "text", {x:X(lay.s0) + 6, y:Y(baseZ(lay.s0) + Math.min(zb, res.zu)) + 16, "font-size":12, "class":"dim"}, "bottom chord " + (zb >= 0 ? "+" : "") + mm(zb));
   tb.textContent = "bottom chord " + (zb >= 0 ? "+" : "") + mm(zb) + (design.bottom_chord_offset_m === null ? " (centred on the cross beams)" : "");
-  el(tb, "title", {}, "the bottom chords' top of steel against the post base - blank sets it so the chords' centre is at the cross beams' centre (the side beams move to suit the cross beams); type a value to fix it");
+  el(tb, "title", {}, "the bottom chords' top of steel against the post base (0 = at the post base, the deck top) - click to type another; blank sets it so the chords' centre is at the cross beams' centre");
   tb.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(tb, {value:zb, unit:"mm", allowBlank:true, blankLabel:"cross beams", set:function(v){ setDesign("bottom_chord_offset_m", v); }}); });
   if (design.truss !== "vierendeel") dimH(sv, X(lay.s0), X(lay.s0 + design.brace_end_offset_m), Y(baseZ(lay.s0) + zb) - 14, mm(design.brace_end_offset_m), {value:design.brace_end_offset_m, unit:"mm", set:function(v){ setDesign("brace_end_offset_m", Math.max(0, v)); }}, "end clearance - the run of diagonals starts this far in from each chord end, clear of the posts, every diagonal shortening evenly - click to change");
   var tde = el(sv, "text", {x:X(ex.d0), y:Y(baseZ(ex.d0) + Math.min(zb, res.zu)) + 30, "font-size":12, "class":"dim"}, "deck end " + (ex.d0 <= 0 ? "+" : "") + mm(-ex.d0) + (design.deck_end_m === null ? " (post face)" : ""));
