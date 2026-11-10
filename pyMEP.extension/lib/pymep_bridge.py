@@ -83,7 +83,8 @@ DEFAULTS = {
     "stiffeners_across": 1,          # stiffener lines per bay across the deck in count mode; 0 = none
     "stringers_across": 0,           # beams along the span between the cross beams, per bay; 0 = none
     "stiffener_gap_m": 0.1,          # stiffener end gap to the cross beams
-    "railing_inset_m": 0.1,          # railing path inside the deck edge; railing type "none" = none
+    "railing_inset_m": 0.1,          # railing path inside the deck edge when no width is typed; type "none" = none
+    "railing_width_m": None,         # railing to railing, centred on the bridge centreline; None = deck less the inset
     "types": {},                     # role -> type id (text); "floor", "stiffener", "railing" too
     "level": None,                   # level id the floor and beams reference
 }
@@ -113,7 +114,8 @@ def normalize_design(d):
             out[k] = float(out[k])
         except (TypeError, ValueError):
             raise ValueError(u"'{0}' must be a number".format(k))
-    for k in ("height_m", "chord_extension_m", "level_start_m", "level_end_m", "deck_end_m"):
+    for k in ("height_m", "chord_extension_m", "level_start_m", "level_end_m", "deck_end_m",
+              "railing_width_m"):
         if out[k] is not None:
             try:
                 out[k] = float(out[k])
@@ -149,6 +151,8 @@ def normalize_design(d):
         raise ValueError(u"the stiffener spacing cannot be negative")
     if out["brace_end_offset_m"] < 0:
         raise ValueError(u"the end diagonal clearance cannot be negative")
+    if out["railing_width_m"] is not None and out["railing_width_m"] <= 0:
+        raise ValueError(u"the railing width must be positive (or blank for the deck less the inset)")
     for k in ("top_chord_pieces", "bottom_chord_pieces"):
         out[k] = _norm_pieces(k, out[k])
     out["stiffeners_across"] = max(0, out["stiffeners_across"])
@@ -428,6 +432,18 @@ def stiffener_positions(design, frame):
     return left + sorted(right, reverse=True)
 
 
+def railing_positions(design, frame):
+    """(t of the left railing, t of the right railing): the typed railing
+    width centred on the bridge centreline, else the deck edges less the
+    inset."""
+    if design["railing_width_m"] is not None:
+        w = design["railing_width_m"] / 2.0
+        return w, -w
+    d0, d1, t_r, t_l = deck_extent(design, frame)
+    ins = design["railing_inset_m"]
+    return t_l - ins, t_r + ins
+
+
 def deck_extent(design, frame):
     """(d0, d1, t_right_edge, t_left_edge) of the deck. Along the span it
     runs to the outer faces of the posts (or deck_end_m past their
@@ -579,9 +595,9 @@ def members(design, frame):
                 add("stiffener", "C", j, (s_a, t, zu), (s_b, t, zu), m)
     # railings along the deck edges
     if (design["types"].get("railing") or u"") not in (u"", u"none"):
-        ins = design["railing_inset_m"]
-        add("railing", "L", 0, (d0, t_l - ins, zd), (d1, t_l - ins, zd))
-        add("railing", "R", 0, (d0, t_r + ins, zd), (d1, t_r + ins, zd))
+        r_l, r_r = railing_positions(design, frame)
+        add("railing", "L", 0, (d0, r_l, zd), (d1, r_l, zd))
+        add("railing", "R", 0, (d0, r_r, zd), (d1, r_r, zd))
     return out
 
 
@@ -821,7 +837,7 @@ def fill_page(template, data):
     return template.replace(PLACEHOLDER, text, 1)
 
 
-__all__ = ["piece_spans", "stiffener_positions", "latest_design", "brace_angle", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
+__all__ = ["piece_spans", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
            "BRACE_ROLES", "TOP_ALIGNED", "DEFAULTS", "normalize_design", "frame_from_posts",
            "frame_from_points", "effective_frame", "planes", "height", "base_z", "to_world",
            "layout", "pieces",

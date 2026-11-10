@@ -1052,8 +1052,12 @@ stiffeners hosted on the floor's underside, running along the span
 between the cross beams - after placing one, its geometry is checked
 against its line and a family that comes out above the underside is
 flipped to the other side of its face, or moved down, so it hangs
-below a thin plate deck rather than through it; and the railings hosted on the deck along both
-edges. Members carry the bridge name in Comments and every element id
+below a thin plate deck rather than through it; and the railings,
+chosen on the deck's ring, in Settings or by clicking the dashed
+railing in the section, hosted on the deck floor (the host is set and
+checked, and the report says how many took) at a typed
+railing-to-railing width centred on the bridge centreline, or along
+both edges less the inset when no width is typed. Members carry the bridge name in Comments and every element id
 is recorded against the bridge name in `bridges.json` in the model's
 pyMEP folder; building a name again replaces its elements, and opening
 Bridge Builder on posts that already carry a bridge loads its design.

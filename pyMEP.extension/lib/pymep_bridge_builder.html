@@ -91,7 +91,7 @@ var DATA = /*__BRIDGE_DATA__*/null;
 var DEFAULTS = {truss:"warren",panel_mode:"length",brace_angle_deg:55,panel_length_m:2.5,panels:9,height_m:null,level_start_m:null,level_end_m:null,
   truss_plane:"centre",bottom_chord_offset_m:0,top_chord_split_m:0,bottom_chord_split_m:0,top_chord_pieces:[],bottom_chord_pieces:[],chord_extension_m:null,brace_end_offset_m:0.15,end_posts:false,
   deck_top_offset_m:0,deck_end_m:null,deck_clearance_m:0.01,floor_thickness_m:0.006,plan_bays:null,bracing:"zigzag",brace_bays:2,split_x:true,stringers_across:0,
-  stiffener_mode:"spacing",stiffener_spacing_m:0.5,stiffeners_across:1,stiffener_gap_m:0.1,railing_inset_m:0.1,types:{},level:null};
+  stiffener_mode:"spacing",stiffener_spacing_m:0.5,stiffeners_across:1,stiffener_gap_m:0.1,railing_inset_m:0.1,railing_width_m:null,types:{},level:null};
 var TRUSSES = [["warren","Warren - top nodes at mid-panel (as the drawing)"],["warren_verticals","Warren with verticals"],
   ["pratt","Pratt"],["howe","Howe"],["x","X braced"],["vierendeel","Vierendeel"]];
 var PLANES = [["outside","outside faces"],["centre","centrelines"],["inside","inside faces"]];
@@ -149,6 +149,7 @@ function stiffenerTs(d){
   for (var r = 1; r <= b; r++) right.push(tr + sp * r);
   right.sort(function(x, y){ return y - x; }); return out.concat(right);
 }
+function railingTs(d, ex){ if (d.railing_width_m !== null && d.railing_width_m !== undefined && d.railing_width_m > 0) return [d.railing_width_m / 2, -d.railing_width_m / 2]; return [ex.tl - d.railing_inset_m, ex.tr + d.railing_inset_m]; }
 function deckExtent(d){ var half = F.post_size / 2, pl = planes(d), ext = (d.deck_end_m === null || d.deck_end_m === undefined) ? half : d.deck_end_m; var left = Math.min(F.tL - half, pl[0]), right = Math.max(F.tR + half, pl[1]); return {d0:-ext, d1:F.span + ext, tr:right + d.deck_clearance_m, tl:left - d.deck_clearance_m}; }
 function members(d){
   var lay = layout(d), pl = planes(d), tl = pl[0], tr = pl[1], zb = d.bottom_chord_offset_m, zt = heightOf(d), zd = d.deck_top_offset_m, zu = zd - d.floor_thickness_m;
@@ -192,7 +193,7 @@ function members(d){
     var a = st[j3] + d.stiffener_gap_m, b = st[j3+1] - d.stiffener_gap_m; if (b - a <= 1e-6) continue;
     lines.forEach(function(t2, m){ add("stiffener", "C", j3, [a,t2,zu], [b,t2,zu], m); });
   }
-  if (d.types.railing && d.types.railing !== "none"){ var ins = d.railing_inset_m; add("railing","L",0,[ex.d0,ex.tl-ins,zd],[ex.d1,ex.tl-ins,zd]); add("railing","R",0,[ex.d0,ex.tr+ins,zd],[ex.d1,ex.tr+ins,zd]); }
+  if (d.types.railing && d.types.railing !== "none"){ var rp = railingTs(d, ex); add("railing","L",0,[ex.d0,rp[0],zd],[ex.d1,rp[0],zd]); add("railing","R",0,[ex.d0,rp[1],zd],[ex.d1,rp[1],zd]); }
   return {members:out, layout:lay, planes:pl, deck:ex, zt:zt, zb:zb, zd:zd, zu:zu};
 }
 function len3(m){ var dx=m.p1[0]-m.p2[0], dy=m.p1[1]-m.p2[1], dz=m.p1[2]-m.p2[2]; return Math.sqrt(dx*dx+dy*dy+dz*dz); }
@@ -350,7 +351,9 @@ function settingsPop(x, y){
     '<label>Stiffener spacing <span style="color:#666">mm, side beam centre to centre</span> <input type="number" min="0" step="50" id="sp_ssp" value="' + mm(design.stiffener_spacing_m) + '"></label>' +
     '<label>Stiffeners across (count mode) <input type="number" min="0" step="1" id="sp_stiff" value="' + design.stiffeners_across + '"></label>' +
     '<label>Stiffener end gap <span style="color:#666">mm</span> <input type="number" step="10" id="sp_gap" value="' + mm(design.stiffener_gap_m) + '"></label>' +
-    '<label>Railing inset <span style="color:#666">mm</span> <input type="number" step="10" id="sp_ins" value="' + mm(design.railing_inset_m) + '"></label>', function(p){
+    '<label>Railing <select id="sp_rail"><option value="none"' + (!design.types.railing || design.types.railing === "none" ? " selected" : "") + '>(none)</option>' + (DATA.railing_types || []).map(function(t){ return '<option value="' + esc(t.id) + '"' + (String(t.id) === String(design.types.railing) ? " selected" : "") + '>' + esc(t.name) + '</option>'; }).join("") + '</select></label>' +
+    '<label>Railing width <span style="color:#666">mm, centred on the centreline; blank = deck less the inset</span> <input type="number" min="0" step="50" id="sp_rw" value="' + (design.railing_width_m ? mm(design.railing_width_m) : "") + '" placeholder="deck"></label>' +
+    '<label>Railing inset <span style="color:#666">mm, when no width</span> <input type="number" step="10" id="sp_ins" value="' + mm(design.railing_inset_m) + '"></label>', function(p){
     p.querySelector("#sp_mode").onchange = function(ev){ setDesign("panel_mode", ev.target.value); };
     p.querySelector("#sp_angle").oninput = function(ev){ var v = parseFloat(ev.target.value); if (!isNaN(v) && v >= 5 && v <= 85){ design.panel_mode = "angle"; p.querySelector("#sp_mode").value = "angle"; setDesign("brace_angle_deg", v); } };
     p.querySelector("#sp_bays").oninput = function(ev){ var v = ev.target.value.trim(); setDesign("plan_bays", v === "" ? null : Math.max(0, Math.round(parseFloat(v)) || 0) + 1); };
@@ -364,6 +367,8 @@ function settingsPop(x, y){
     p.querySelector("#sp_ssp").oninput = function(ev){ var v = parseFloat(ev.target.value); if (!isNaN(v) && v >= 0){ design.stiffener_mode = "spacing"; p.querySelector("#sp_smode").value = "spacing"; setDesign("stiffener_spacing_m", v / 1000); } };
     p.querySelector("#sp_stiff").oninput = function(ev){ var v = parseInt(ev.target.value, 10); if (!isNaN(v)){ design.stiffener_mode = "count"; p.querySelector("#sp_smode").value = "count"; setDesign("stiffeners_across", Math.max(0, v)); } };
     p.querySelector("#sp_gap").oninput = function(ev){ var v = parseFloat(ev.target.value); if (!isNaN(v)) setDesign("stiffener_gap_m", v / 1000); };
+    p.querySelector("#sp_rail").onchange = function(ev){ var t = JSON.parse(JSON.stringify(design.types)); t.railing = ev.target.value || "none"; setDesign("types", t); };
+    p.querySelector("#sp_rw").oninput = function(ev){ var v = ev.target.value.trim(); setDesign("railing_width_m", v === "" ? null : Math.max(0.1, parseFloat(v) / 1000)); };
     p.querySelector("#sp_ins").oninput = function(ev){ var v = parseFloat(ev.target.value); if (!isNaN(v)) setDesign("railing_inset_m", v / 1000); };
   });
 }
@@ -407,7 +412,11 @@ function memberRing(role, x, y){
     items.push({label:"End gap... (" + mm(design.stiffener_gap_m) + ")", run:function(){ inlineEditAt(x, y, {value:design.stiffener_gap_m, unit:"mm", set:function(v){ setDesign("stiffener_gap_m", Math.max(0, v)); }}); }});
     items.push({label:"No stiffeners", run:function(){ design.stiffener_mode = "count"; setDesign("stiffeners_across", 0); }});
   }
-  if (role === "railing") items.push({label:"No railing", run:function(){ var t = JSON.parse(JSON.stringify(design.types)); t.railing = "none"; setDesign("types", t); }});
+  if (role === "railing"){
+    items.push({label:"Width... (" + (design.railing_width_m ? mm(design.railing_width_m) : "deck") + ")", run:function(){ inlineEditAt(x, y, {value:design.railing_width_m, unit:"mm", allowBlank:true, blankLabel:"deck", set:function(v){ setDesign("railing_width_m", v === null ? null : Math.max(0.1, v)); }}); }});
+    items.push({label:"No railing", run:function(){ var t = JSON.parse(JSON.stringify(design.types)); t.railing = "none"; setDesign("types", t); }});
+  }
+  if (role === "deck") items.push({label:"Railing... (" + typeName("railing") + ")", run:function(){ familyPop("railing", x, y); }});
   if (role === "deck") items.push({label:"Revit level...", run:function(){ familyPop("deck", x, y); }}, {label:"Deck ends...", run:function(){ var ex = deckExtent(design); inlineEditAt(x, y, {value:-ex.d0, unit:"mm", allowBlank:true, blankLabel:"face", set:function(v){ setDesign("deck_end_m", v); }}); }});
   openRadial(x, y, ROLES[role] + " - " + typeName(role), items);
 }
@@ -562,6 +571,16 @@ function render(){
   dimH(se, SX(ex.tl), SX(ex.tr), SY(res.zd) + 48 + Math.max(2, design.floor_thickness_m * ss), mm(ex.tl - ex.tr) + "  deck", null, "deck width");
   var sls2 = stiffenerTs(design);
   if (sls2.length){ var ySd = SY(res.zu) + 0.1 * ss + 14; dimH(se, SX(res.planes[0]), SX(sls2[0]), ySd, mm(res.planes[0] - sls2[0]), {value:res.planes[0] - sls2[0], unit:"mm", set:function(v){ design.stiffener_mode = "spacing"; setDesign("stiffener_spacing_m", Math.max(0, v)); }}, "stiffener spacing from the side beam centre - click to type"); if (sls2.length > 1) dimH(se, SX(sls2[0]), SX(sls2[1]), ySd, mm(sls2[0] - sls2[1]), null, "stiffener spacing"); }
+  var rails = mems.filter(function(m){ return m.role === "railing"; });
+  if (rails.length === 2){
+    var rw = Math.abs(rails[0].p1[1] - rails[1].p1[1]);
+    dimH(se, SX(Math.max(rails[0].p1[1], rails[1].p1[1])), SX(Math.min(rails[0].p1[1], rails[1].p1[1])), SY(res.zd + 1.1) - 10, mm(rw) + " railing to railing" + (design.railing_width_m ? "" : " (deck less inset)"), {value:rw, unit:"mm", allowBlank:true, blankLabel:"deck", set:function(v){ setDesign("railing_width_m", v === null ? null : Math.max(0.1, v)); }}, "railing width, centred on the bridge centreline - click to type it; blank follows the deck edges less the inset");
+  } else {
+    var rp0 = railingTs(design, ex);
+    [rp0[0], rp0[1]].forEach(function(tg){ var gl = line(se, SX(tg), SY(res.zd), SX(tg), SY(res.zd + 1.1), "#9aa", 2, {"stroke-dasharray":"5 4", "class":"hit"}); el(gl, "title", {}, "no railing - click to choose a railing type (hosted on the deck)"); gl.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); familyPop("railing", p[0], p[1]); }); });
+    var gt = el(se, "text", {x:SX(0), y:SY(res.zd + 1.1) - 8, "text-anchor":"middle", "font-size":11, "class":"dim"}, "no railing - click to choose");
+    gt.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); familyPop("railing", p[0], p[1]); });
+  }
   var rt = el(se, "text", {x:SW - 8, y:SH - 8, "text-anchor":"end", "font-size":11, "class":"dim"}, "railing inset " + mm(design.railing_inset_m));
   rt.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(rt, {value:design.railing_inset_m, unit:"mm", set:function(v){ setDesign("railing_inset_m", Math.max(0, v)); }}); });
   el(se, "text", {x:8, y:SH - 8, "font-size":11, "class":"lbl"}, "floor " + mm(design.floor_thickness_m) + " mm - cross beam top at " + (res.zu >= 0 ? "+" : "") + mm(res.zu));

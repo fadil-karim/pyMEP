@@ -451,22 +451,44 @@ def settle_under(doc, el, m):
     return u"stiffener family sits above its line - model it below its reference plane or use a face based family"
 
 
+def is_hosted_on(el, host):
+    """True when the railing (or other hosted element) reports host as
+    its host."""
+    try:
+        return host is not None and id_value(el.HostId) == id_value(host.Id)
+    except Exception:
+        return False
+
+
 def create_railing(doc, m, railing_type, floor, level):
-    """A railing along the member's line, hosted on the deck floor when
-    Revit lets it (else left on the level with its base at the deck)."""
+    """A railing along the member's line hosted on the deck floor: made at
+    the level, then given the floor as host and checked; if Revit will
+    not take it, once more with the path the other way round, and failing
+    that left on the level with its base at the deck top."""
     lz = level.Elevation
     a = XYZ(m_to_ft(m["p1"][0]), m_to_ft(m["p1"][1]), lz)
     b = XYZ(m_to_ft(m["p2"][0]), m_to_ft(m["p2"][1]), lz)
-    loop = CurveLoop()
-    loop.Append(Line.CreateBound(a, b))
-    rail = Railing.Create(doc, loop, railing_type.Id, level.Id)
+    rail = None
     hosted = False
-    if floor is not None:
+    for p, q in ((a, b), (b, a)):
+        loop = CurveLoop()
+        loop.Append(Line.CreateBound(p, q))
+        if rail is not None:
+            try:
+                doc.Delete(rail.Id)
+            except Exception:
+                pass
+        rail = Railing.Create(doc, loop, railing_type.Id, level.Id)
+        if floor is None:
+            break
         try:
             rail.HostId = floor.Id
-            hosted = True
+            doc.Regenerate()
         except Exception:
-            hosted = False
+            pass
+        hosted = is_hosted_on(rail, floor)
+        if hosted:
+            break
     if not hosted:
         try:
             p = rail.get_Parameter(BuiltInParameter.STAIRS_RAILING_BASE_LEVEL_PARAM)

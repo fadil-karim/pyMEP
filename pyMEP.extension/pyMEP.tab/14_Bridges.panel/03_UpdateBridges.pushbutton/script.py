@@ -142,6 +142,8 @@ for name in chosen:
                         el = RV.create_stiffener(doc, m, stiffener_sym, floor, level)
                     elif m["role"] == "railing" and railing_type is not None:
                         el = RV.create_railing(doc, m, railing_type, floor, level)
+                        if not RV.is_hosted_on(el, floor):
+                            deck_note += u"; a railing could not be hosted on the deck"
                     else:
                         continue
                     RV.set_mark_comments(el, name)

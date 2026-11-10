@@ -451,6 +451,19 @@ class Members(unittest.TestCase):
             with self.assertRaises(ValueError):
                 BR.normalize_design({"brace_angle_deg": bad})
 
+    def test_railing_width(self):
+        d = design(types={"railing": "77"}, railing_inset_m=0.1)
+        self.assertEqual(BR.railing_positions(d, FRAME), (1.39 - 0.1, -1.39 + 0.1))   # deck edges less the inset
+        w = design(types={"railing": "77"}, railing_width_m=2.0)
+        self.assertEqual(BR.railing_positions(w, FRAME), (1.0, -1.0))                 # centred on the centreline
+        rails = [m for m in BR.members(w, FRAME) if m["role"] == "railing"]
+        self.assertEqual(sorted(r["p1"][1] for r in rails), [-1.0, 1.0])
+        self.assertAlmostEqual(rails[0]["p1"][0], -0.1)                                # the deck ends
+        self.assertAlmostEqual(rails[0]["p2"][0], 20.1)
+        self.assertIsNone(BR.normalize_design({})["railing_width_m"])
+        with self.assertRaises(ValueError):
+            BR.normalize_design({"railing_width_m": 0})
+
     def test_end_diagonal_clearance(self):
         # the end diagonals start in from the chord ends at the bottom, clear
         # of the posts; the top nodes and the inner diagonals do not move

@@ -114,6 +114,7 @@ mems = BR.world_members(design, frame, shared_elev)
 deck = BR.world_deck(design, frame, shared_elev)
 member_ids = {}
 failed = []
+rails_made = rails_hosted = 0
 floor_id = None
 t = Transaction(doc, u"pyMEP: Build bridge '{0}'".format(name))
 quiet(t)
@@ -144,6 +145,9 @@ try:
                 if railing_type is None:
                     continue
                 el = RV.create_railing(doc, m, railing_type, floor, level)
+                rails_made += 1
+                if RV.is_hosted_on(el, floor):
+                    rails_hosted += 1
             else:
                 sym = symbols.get(m["role"])
                 if sym is None:
@@ -203,6 +207,10 @@ summ = BR.summary(design, frame, mems)
 eff = BR.effective_frame(design, frame, shared_elev)
 output.print_md("### Build Bridge - {0}".format(name))
 output.print_md(u"**Posts:** {0}".format(posts_note))
+if rails_made:
+    output.print_md(u"**Railings:** {0} placed, {1} hosted on the deck{2}".format(
+        rails_made, rails_hosted,
+        u"" if rails_hosted == rails_made else u" - Revit would not host the rest; check the railing path lies inside the deck"))
 output.print_md("**Span:** {0:.3f} m  |  **Rise:** {1:+.0f} mm  |  **Height:** {2:.3f} m  |  "
                 "**Panels:** {3} x {4:.3f} m  |  **Plan bays:** {5}  |  **Placed:** {6}  |  "
                 "**Failed:** {7}  |  **Deck:** {8}  |  **Level:** {9}".format(
