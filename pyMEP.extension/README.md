@@ -1052,10 +1052,13 @@ both trusses on the posts' centre points, so the side frames line up
 with the original four posts (there is no other setting; older design
 files that say otherwise are read as the centres), the chords butting
 against the posts' inner faces (chords in their pieces, verticals,
-diagonals as braces; the bottom chords' top of steel is at the post
-base, the deck top, unless the "bottom chord" value on the elevation
-is changed - cleared, it puts the chords so their centre is at the
-cross beams' centre, which hang from the floor underside); the cross beams between the truss planes, the
+diagonals as braces; the floor and the cross beams stay where they
+are - the cross beams hang from the floor underside - and the bottom
+chords sit so their centre is at the cross beams' centre, the rest of
+the frame building up from there: the truss height is the bottom chord
+line to the top chord line, so typing it moves the top chord and the
+post tops with the chords; a typed "bottom chord" value on the
+elevation fixes the chord level instead); the cross beams between the truss planes, the
 end ones on the post centrelines and running between the posts' inner
 faces, and any beams between the cross beams, with z justification Top
 so their top sits on the floor underside; the plan bracing cut at

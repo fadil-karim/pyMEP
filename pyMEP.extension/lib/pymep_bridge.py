@@ -58,11 +58,11 @@ DEFAULTS = {
     "brace_angle_deg": 55.0,         # the side diagonals' angle to the horizontal, in angle mode
     "panel_length_m": 2.5,
     "panels": 9,
-    "height_m": None,                # top chord centreline above the post base; None = post height
+    "height_m": None,                # truss height, bottom chord line to top chord line; None = top chord at the post top
     "level_start_m": None,           # deck datum at the start as a SHARED elevation; None = post base
     "level_end_m": None,             # same at the end
     "truss_plane": "centre",         # the side frames on the posts' centre points        # where the truss planes sit against the posts
-    "bottom_chord_offset_m": 0.0,    # bottom chord top of steel above the post base; None = the chord centre at the cross beams' centre
+    "bottom_chord_offset_m": None,   # bottom chord top of steel above the post base; None = the chords' centre at the cross beams' centre
     "crossbeam_depth_m": 0.0,        # replaced by the cross beam type's section depth
     "top_chord_split_m": 0.0,        # longest top chord piece; 0 = one piece
     "bottom_chord_split_m": 0.0,     # longest bottom chord piece; 0 = one piece
@@ -282,7 +282,18 @@ def planes(design, frame):
 
 
 def height(design, frame):
-    return design["height_m"] if design["height_m"] is not None else frame["post_height"]
+    """zt: the top chord line (its top of steel) above the post base. A
+    typed height is the truss height from the bottom chord line, so the
+    whole frame builds up from wherever the bottom chords sit; blank puts
+    the top chord at the post top."""
+    if design["height_m"] is None:
+        return frame["post_height"]
+    return bottom_chord_level(design) + design["height_m"]
+
+
+def truss_height(design, frame):
+    """Bottom chord line to top chord line."""
+    return height(design, frame) - bottom_chord_level(design)
 
 
 def base_z(frame, s):
@@ -694,7 +705,8 @@ def summary(design, frame, mems=None):
             "truss_length_m": lay["total"], "bays": lay["bays"], "bay_length_m": lay["B"],
             "members": len(mems), "steel_length_m": steel, "by_role": by_role,
             "deck_length_m": d1 - d0, "deck_width_m": t_l - t_r,
-            "deck_area_m2": (d1 - d0) * (t_l - t_r), "height_m": height(design, frame)}
+            "deck_area_m2": (d1 - d0) * (t_l - t_r), "height_m": height(design, frame),
+            "truss_height_m": truss_height(design, frame)}
 
 
 def world_members(design, frame, shared_elev_m=0.0):
@@ -904,7 +916,7 @@ def fill_page(template, data):
     return template.replace(PLACEHOLDER, text, 1)
 
 
-__all__ = ["piece_spans", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
+__all__ = ["piece_spans", "truss_height", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
            "BRACE_ROLES", "TOP_ALIGNED", "DEFAULTS", "normalize_design", "frame_from_posts",
            "frame_from_points", "effective_frame", "planes", "height", "base_z", "to_world",
            "layout", "pieces",

@@ -90,7 +90,7 @@ text.lbl{fill:#555}
 <script>
 var DATA = /*__BRIDGE_DATA__*/null;
 var DEFAULTS = {truss:"warren",panel_mode:"length",brace_angle_deg:55,panel_length_m:2.5,panels:9,height_m:null,level_start_m:null,level_end_m:null,
-  truss_plane:"centre",bottom_chord_offset_m:0,crossbeam_depth_m:0,top_chord_split_m:0,bottom_chord_split_m:0,top_chord_pieces:[],bottom_chord_pieces:[],chord_extension_m:null,brace_end_offset_m:0.15,end_posts:false,
+  truss_plane:"centre",bottom_chord_offset_m:null,crossbeam_depth_m:0,top_chord_split_m:0,bottom_chord_split_m:0,top_chord_pieces:[],bottom_chord_pieces:[],chord_extension_m:null,brace_end_offset_m:0.15,end_posts:false,
   deck_top_offset_m:0,deck_end_m:null,deck_clearance_m:0.01,floor_thickness_m:0.006,bottom_chord_depth_m:0,plan_bays:null,bracing:"zigzag",brace_bays:2,split_x:true,stringers_across:0,
   stiffener_mode:"spacing",stiffener_spacing_m:0.5,stiffeners_across:1,stiffener_gap_m:0.1,railing_inset_m:0.1,railing_width_m:null,types:{},level:null};
 var TRUSSES = [["warren","Warren - top nodes at mid-panel (as the drawing)"],["warren_verticals","Warren with verticals"],
@@ -115,7 +115,8 @@ function effFrame(d){
   f.gradient = F.span ? (f.z1 - f.z0) / F.span : 0; return f;
 }
 function planes(d){ return [F.tL, F.tR]; }   // the side frames are always on the posts' centre points
-function heightOf(d){ return (d.height_m !== null && d.height_m !== undefined) ? d.height_m : F.post_height; }
+function heightOf(d){ return (d.height_m !== null && d.height_m !== undefined) ? chordLevel(d) + d.height_m : F.post_height; }   // zt: a typed height is the truss height from the bottom chord
+function trussHeight(d){ return heightOf(d) - chordLevel(d); }
 function layout(d){
   var half = F.post_size / 2, ext = (d.chord_extension_m === null) ? -half : d.chord_extension_m;
   var s0 = -ext, s1 = F.span + ext, total = s1 - s0;
@@ -480,7 +481,7 @@ function render(){
   var steel = 0; mems.forEach(function(m){ if (FRAMING.indexOf(m.role) >= 0) steel += len3(m); });
   var fall = ef.z1 - ef.z0, grad = Math.abs(fall) > 1e-6 ? "1:" + Math.round(Math.abs(F.span / fall)) : "level";
   $("tiles").innerHTML = ["<div><b>" + fmt(F.span, 3) + " m</b>between post pairs</div>", "<div><b>" + lay.n + "</b>panels of " + fmt(lay.L, 3) + " m" + (design.truss === "vierendeel" ? "" : ", diagonals at " + fmt(braceAngle(design), 1) + "&deg;") + "</div>",
-    "<div><b>" + fmt(heightOf(design), 2) + " m</b>high, top of steel" + (design.height_m === null ? " (as the posts)" : " (posts set to it)") + "</div>", "<div><b>" + (lay.bays - 1) + "</b>cross beams between the posts</div>",
+    "<div><b>" + fmt(trussHeight(design), 2) + " m</b>truss height, chord line to chord line" + (design.height_m === null ? " (top chord at the post top)" : " (posts set to the top chord)") + "</div>", "<div><b>" + (lay.bays - 1) + "</b>cross beams between the posts</div>",
     "<div><b>" + Math.round(fall * 1000) + " mm</b>rise (" + grad + ")</div>", "<div><b>" + fmt(ex.d1 - ex.d0, 2) + " x " + fmt(ex.tl - ex.tr, 2) + " m</b>deck</div>",
     "<div><b>" + mems.length + "</b>members, " + fmt(steel, 1) + " m steel</div>"].join("") + (warn.length ? '<div class="warn">' + warn.join("; ") + '</div>' : "");
 
@@ -526,7 +527,7 @@ function render(){
     var tang = el(sv, "text", {x:X((dg0.p1[0] + dg0.p2[0]) / 2) + 10, y:Y(baseZ((dg0.p1[0] + dg0.p2[0]) / 2) + (zb + zt) / 2) + 4, "font-size":12, "class":"lbl"}, fmt(braceAngle(design), 1) + "\u00b0");
     el(tang, "title", {}, "the side diagonals' angle to the horizontal, as laid out - it follows the panel length, the truss height and the end clearance");
   }
-  dimV(sv, padL - 36, Y(baseZ(lay.s0) + zt), Y(baseZ(lay.s0) + zb), mm(zt - zb), {value:zt - zb, unit:"mm", set:function(v){ setDesign("height_m", v + zb); }}, "truss height, chord centres - click to change");
+  dimV(sv, padL - 36, Y(baseZ(lay.s0) + zt), Y(baseZ(lay.s0) + zb), mm(zt - zb), {value:zt - zb, unit:"mm", set:function(v){ setDesign("height_m", v); }}, "truss height, bottom chord line to top chord line - click to change; the frame builds up from the bottom chords");
   var xe = X(lay.s1) + 14;
   dimV(sv, xe + 44, Y(baseZ(lay.s1) + Math.max(res.zd, 0)), Y(baseZ(lay.s1) + Math.min(res.zd, 0)), (res.zd >= 0 ? "+" : "") + mm(res.zd), {value:res.zd, unit:"mm", set:function(v){ setDesign("deck_top_offset_m", v); }}, "deck top above the post base - click to change");
   var tb = el(sv, "text", {x:X(lay.s0) + 6, y:Y(baseZ(lay.s0) + Math.min(zb, res.zu)) + 16, "font-size":12, "class":"dim"}, "bottom chord " + (zb >= 0 ? "+" : "") + mm(zb));
@@ -609,7 +610,7 @@ function render(){
     if (bc){ var r2 = el(se, "rect", {x:SX(t) - 8, y:SY(zb) - 8, width:16, height:16, fill:"var(--steel)", "class":"hit", stroke:selected === bc.key ? "var(--sel)" : "none", "stroke-width":2}); el(r2, "title", {}, "Bottom chord - " + typeName("bottom_chord")); r2.addEventListener("click", function(ev){ ev.stopPropagation(); selected = bc.key; var p = pagePoint(ev); memberRing("bottom_chord", p[0], p[1]); render(); }); }
   });
   mems.filter(function(m){ return m.role === "railing"; }).forEach(function(m){ var rl = line(se, SX(m.p1[1]), SY(res.zd), SX(m.p1[1]), SY(res.zd + 1.1), "var(--rail)", 3, {"class":"hit"}); el(rl, "title", {}, "Railing - " + typeName("railing")); rl.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("railing", p[0], p[1]); }); });
-  dimV(se, SX(res.planes[0]) + 26, SY(zt), SY(zb), mm(zt - zb), {value:zt - zb, unit:"mm", set:function(v){ setDesign("height_m", v + zb); }}, "truss height - click to change", true);
+  dimV(se, SX(res.planes[0]) + 26, SY(zt), SY(zb), mm(zt - zb), {value:zt - zb, unit:"mm", set:function(v){ setDesign("height_m", v); }}, "truss height - click to change", true);
   dimH(se, SX(res.planes[0]), SX(res.planes[1]), SY(zt) - 18, mm(res.planes[0] - res.planes[1]) + " (post centres)", null, "side frames on the post centres");
   dimH(se, SX(ex.tl), SX(ex.tr), SY(res.zd) + 48 + Math.max(2, design.floor_thickness_m * ss), mm(ex.tl - ex.tr) + "  deck", null, "deck width");
   var sls2 = stiffenerTs(design);
@@ -633,7 +634,7 @@ function levelRing(key, which, x, y){
   openRadial(x, y, which + " level", [
     {label:"Type level...", run:function(){ var ef = effFrame(design), ex = deckExtent(design), s = key === "level_start_m" ? ex.d0 : ex.d1; inlineEditAt(x, y, {value:ef.z0 + ef.gradient * s + design.deck_top_offset_m + SHARED, unit:"level", allowBlank:true, blankLabel:"posts", set:function(v){ setDesign(key, v); }}); }},
     {label:"Use post base", run:function(){ setDesign(key, null); }},
-    {label:"Truss height...", run:function(){ inlineEditAt(x, y, {value:heightOf(design), unit:"mm", set:function(v){ setDesign("height_m", v); }}); }}
+    {label:"Truss height...", run:function(){ inlineEditAt(x, y, {value:trussHeight(design), unit:"mm", set:function(v){ setDesign("height_m", v); }}); }}
   ]);
 }
 function inlineEditAt(x, y, spec){ var fake = {getBoundingClientRect:function(){ return {left:x - window.scrollX, top:y - window.scrollY, width:80}; }}; inlineEdit(fake, spec); }

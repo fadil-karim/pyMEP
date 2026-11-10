@@ -128,6 +128,12 @@ class Frame(unittest.TestCase):
         self.assertEqual(BR.normalize_design({"truss_plane": "outside"})["truss_plane"], "centre")
         self.assertAlmostEqual(BR.height(d, FRAME), 2.3)
         self.assertAlmostEqual(BR.height(design(height_m=1.8), FRAME), 1.8)
+        # a typed height is the truss height from the bottom chord line, so the
+        # frame moves with the chords; blank keeps the top chord at the post top
+        self.assertAlmostEqual(BR.height(design(height_m=1.8, bottom_chord_offset_m=-0.1), FRAME), 1.7)
+        self.assertAlmostEqual(BR.truss_height(design(height_m=1.8, bottom_chord_offset_m=-0.1), FRAME), 1.8)
+        self.assertAlmostEqual(BR.height(design(bottom_chord_offset_m=-0.1), FRAME), 2.3)
+        self.assertAlmostEqual(BR.truss_height(design(bottom_chord_offset_m=-0.1), FRAME), 2.4)
 
     def test_from_points_helper(self):
         f = BR.frame_from_points((0.0, 0.0, 5.0), (0.0, 10.0, 6.0), width=4.0)
@@ -519,10 +525,10 @@ class Members(unittest.TestCase):
         with self.assertRaises(ValueError):
             BR.normalize_design({"brace_end_offset_m": -0.1})
 
-    def test_side_beams_can_follow_the_cross_beams(self):
-        # a blank chord level (an option, not the default) puts the bottom chords
-        # so their centre is at the cross beams' centre: underside - cross beam
-        # depth / 2 + chord depth / 2
+    def test_side_beams_follow_the_cross_beams(self):
+        # the default: the bottom chords sit so their centre is at the cross
+        # beams' centre (underside - cross beam depth / 2 + chord depth / 2); the
+        # floor and the cross beams stay where they are
         d = design(bottom_chord_offset_m=None, floor_thickness_m=0.006, crossbeam_depth_m=0.15,
                    bottom_chord_depth_m=0.1)
         self.assertAlmostEqual(BR.bottom_chord_level(d), -0.006 - 0.075 + 0.05)
@@ -534,7 +540,15 @@ class Members(unittest.TestCase):
         br = [m for m in mems if m["role"] == "bracing"][0]
         self.assertAlmostEqual(br["p1"][2], -0.081)                                # the braces too
         self.assertAlmostEqual(BR.bottom_chord_level(design(bottom_chord_offset_m=0.2)), 0.2)   # typed wins
-        self.assertEqual(BR.normalize_design({})["bottom_chord_offset_m"], 0.0)      # by default the chord top of steel is at the post base
+        self.assertIsNone(BR.normalize_design({})["bottom_chord_offset_m"])         # the default: centred on the cross beams
+        # the whole frame builds up from the chords: a typed truss height keeps
+        # its value and the top chord moves with the bottom chord
+        full = design(bottom_chord_offset_m=None, floor_thickness_m=0.006, crossbeam_depth_m=0.15,
+                      bottom_chord_depth_m=0.1, height_m=1.8)
+        fm = BR.members(full, FRAME)
+        self.assertAlmostEqual(by_key(fm, u"top_chord:L:0:0")["p1"][2], -0.031 + 1.8)
+        self.assertAlmostEqual(by_key(fm, u"crossbeam:C:1:0")["p1"][2], -0.006)       # the cross beams do not move
+        self.assertAlmostEqual(BR.summary(full, FRAME)["truss_height_m"], 1.8)
 
     def test_cross_beams_on_the_frame_nodes(self):
         # the cross beams sit on the side frames' bottom nodes, so the end
