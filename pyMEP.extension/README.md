@@ -1047,9 +1047,11 @@ files that say otherwise are read as the centres), the chords butting
 against the posts' inner faces (chords in their pieces, verticals,
 diagonals as braces); the cross beams between the truss planes, the
 end ones on the post centrelines and running between the posts' inner
-faces, the plan bracing cut at every cross beam it crosses and any beams
-between the cross beams, all with z justification Top so their top
-sits on the floor underside - and the cross beams, which run across
+faces, and any beams between the cross beams, with z justification Top
+so their top sits on the floor underside; the plan bracing cut at
+every cross beam it crosses with its centreline at the bottom chords'
+centre (the chord line is its top of steel, and the chord type's
+section depth is read for the half-depth) - and the cross beams, which run across
 the fall, get a cross-section rotation equal to the slope so their top
 face lies on the sloping underside (the sign is checked against the
 placed instance and flipped if Revit turned it the other way); the deck

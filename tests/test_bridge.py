@@ -291,8 +291,8 @@ class Members(unittest.TestCase):
         br2 = by_key(mems, u"bracing:C:1:0")
         self.assertAlmostEqual(br2["p1"][1], -1.5)                # alternates
         self.assertAlmostEqual(by_key(mems, u"bracing:C:1:1")["p2"][1], 1.5)
-        self.assertAlmostEqual(br["p1"][2], -0.15)
-        self.assertEqual((br["zjust"], br["stype"]), ("top", "brace"))
+        self.assertAlmostEqual(br["p1"][2], 0.0)                 # at the bottom chords' centre (no depth known here)
+        self.assertEqual((br["zjust"], br["stype"]), ("centre", "brace"))
         self.assertEqual(count(BR.members(design(split_x=False), FRAME), "bracing"), 4)   # the flag is for the X only
         # an odd number of bays: the last diagonal takes the bay that is left
         odd = BR.members(design(plan_bays=5), FRAME)
@@ -494,6 +494,27 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(BR.normalize_design({})["brace_end_offset_m"], 0.15)
         with self.assertRaises(ValueError):
             BR.normalize_design({"brace_end_offset_m": -0.1})
+
+    def test_plan_braces_centre_on_the_bottom_chords(self):
+        # the plan braces' centreline sits at the bottom chords' centre: the
+        # chord line (its top of steel) less half the chord depth; the cross
+        # beams stay top justified under the floor
+        d = design(bottom_chord_depth_m=0.2, floor_thickness_m=0.15)
+        mems = BR.members(d, FRAME)
+        br = [m for m in mems if m["role"] == "bracing"]
+        self.assertTrue(br)
+        for m in br:
+            self.assertAlmostEqual(m["p1"][2], -0.1)
+            self.assertAlmostEqual(m["p2"][2], -0.1)
+            self.assertEqual(m["zjust"], "centre")
+        cb = by_key(mems, u"crossbeam:C:1:0")
+        self.assertAlmostEqual(cb["p1"][2], -0.15)
+        self.assertEqual(cb["zjust"], "top")
+        self.assertEqual(by_key(mems, u"bottom_chord:L:0:0")["zjust"], "top")
+        unknown = BR.members(design(bottom_chord_depth_m=0.0), FRAME)
+        self.assertAlmostEqual([m for m in unknown if m["role"] == "bracing"][0]["p1"][2], 0.0)
+        x = [m for m in BR.members(design(bracing="x", bottom_chord_depth_m=0.15), FRAME) if m["role"] == "bracing"]
+        self.assertTrue(all(abs(m["p1"][2] + 0.075) < 1e-9 for m in x))
 
     def test_beams_between_cross_beams(self):
         self.assertEqual(count(BR.members(design(), FRAME), "stringer"), 0)

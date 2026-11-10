@@ -71,6 +71,7 @@ for name in chosen:
     level = RV.first_of(levels, u"{0}".format(design.get("level") or u""), doc)
     floor_type = RV.first_of(floors, u"{0}".format(design["types"].get("floor") or u""), doc)
     design["floor_thickness_m"] = RV.floor_thickness_m(floor_type) or design["floor_thickness_m"]
+    design["bottom_chord_depth_m"] = RV.section_depth_m(RV.first_of(framing, u"{0}".format(design["types"].get("bottom_chord") or u""), doc))
     stiff_id = u"{0}".format(design["types"].get("stiffener") or u"none")
     stiffener_sym = RV.by_id(doc, stiff_id) if stiff_id not in (u"", u"none") else None
     rail_id = u"{0}".format(design["types"].get("railing") or u"none")

@@ -72,6 +72,26 @@ def element_label(el):
 _SIZE_PARAMS = ("b", "B", "d", "D", "h", "H", "Width", "Depth", "Height", "Size", "bf")
 
 
+_DEPTH_PARAMS = ("d", "D", "h", "H", "Depth", "Height", "Section Depth", "Nominal Depth", "ht")
+
+
+def section_depth_m(symbol):
+    """A framing type's section depth in metres from its type parameters
+    (d, D, h, Height, Depth ...), 0 when none is found."""
+    if symbol is None:
+        return 0.0
+    for name in _DEPTH_PARAMS:
+        try:
+            prm = symbol.LookupParameter(name)
+            if prm is not None and prm.HasValue and u"{0}".format(prm.StorageType).endswith("Double"):
+                v = ft_to_m(prm.AsDouble())
+                if 0.02 < v < 2.0:
+                    return v
+        except Exception:
+            continue
+    return 0.0
+
+
 def post_size_m(el):
     """The post's plan size in metres: the largest of its type's section
     parameters (b, d, h, Width, Depth ...), else its bounding box's
@@ -153,7 +173,8 @@ def framing_types(doc):
                 .OfClass(FamilySymbol)):
         try:
             out.append({"id": u"{0}".format(id_value(sym.Id)),
-                        "name": u"{0} : {1}".format(sym.FamilyName, type_name(sym))})
+                        "name": u"{0} : {1}".format(sym.FamilyName, type_name(sym)),
+                        "depth_m": section_depth_m(sym)})
         except Exception:
             continue
     out.sort(key=lambda t: t["name"].lower())

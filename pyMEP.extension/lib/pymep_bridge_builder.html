@@ -91,7 +91,7 @@ text.lbl{fill:#555}
 var DATA = /*__BRIDGE_DATA__*/null;
 var DEFAULTS = {truss:"warren",panel_mode:"length",brace_angle_deg:55,panel_length_m:2.5,panels:9,height_m:null,level_start_m:null,level_end_m:null,
   truss_plane:"centre",bottom_chord_offset_m:0,top_chord_split_m:0,bottom_chord_split_m:0,top_chord_pieces:[],bottom_chord_pieces:[],chord_extension_m:null,brace_end_offset_m:0.15,end_posts:false,
-  deck_top_offset_m:0,deck_end_m:null,deck_clearance_m:0.01,floor_thickness_m:0.006,plan_bays:null,bracing:"zigzag",brace_bays:2,split_x:true,stringers_across:0,
+  deck_top_offset_m:0,deck_end_m:null,deck_clearance_m:0.01,floor_thickness_m:0.006,bottom_chord_depth_m:0,plan_bays:null,bracing:"zigzag",brace_bays:2,split_x:true,stringers_across:0,
   stiffener_mode:"spacing",stiffener_spacing_m:0.5,stiffeners_across:1,stiffener_gap_m:0.1,railing_inset_m:0.1,railing_width_m:null,types:{},level:null};
 var TRUSSES = [["warren","Warren - top nodes at mid-panel (as the drawing)"],["warren_verticals","Warren with verticals"],
   ["pratt","Pratt"],["howe","Howe"],["x","X braced"],["vierendeel","Vierendeel"]];
@@ -154,6 +154,7 @@ function railingTs(d, ex){ if (d.railing_width_m !== null && d.railing_width_m !
 function deckExtent(d){ var half = F.post_size / 2, pl = planes(d), ext = (d.deck_end_m === null || d.deck_end_m === undefined) ? half : d.deck_end_m; var left = Math.min(F.tL - half, pl[0]), right = Math.max(F.tR + half, pl[1]); return {d0:-ext, d1:F.span + ext, tr:right + d.deck_clearance_m, tl:left - d.deck_clearance_m}; }
 function members(d){
   var lay = layout(d), pl = planes(d), tl = pl[0], tr = pl[1], zb = d.bottom_chord_offset_m, zt = heightOf(d), zd = d.deck_top_offset_m, zu = zd - d.floor_thickness_m;
+  var zc = zb - Math.max(0, d.bottom_chord_depth_m || 0) / 2;   // the bottom chords' centre: the plan braces centre on it
   var pts = lay.points, n = lay.n, out = [], warren = d.truss === "warren" || d.truss === "warren_verticals";
   function add(role, side, i, p1, p2, sub){ out.push({key:role + ":" + side + ":" + i + ":" + (sub || 0), role:role, side:side, i:i, p1:p1, p2:p2}); }
   [["L", tl], ["R", tr]].forEach(function(st){
@@ -174,15 +175,15 @@ function members(d){
   st.forEach(function(s, j){ var endB = j === 0 || j === st.length - 1, ta = endB ? Math.min(tl, F.tL - halfP) : tl, tb = endB ? Math.max(tr, F.tR + halfP) : tr; add("crossbeam", "C", j, [s,ta,zu], [s,tb,zu]); });
   if (d.bracing === "x") for (var j2 = 0; j2 < st.length - 1; j2++){
     var sa = st[j2], sb = st[j2+1];
-    if (d.split_x){ var sm = (sa+sb)/2, tm = (tl+tr)/2; add("bracing","C",j2,[sa,tl,zu],[sm,tm,zu],0); add("bracing","C",j2,[sm,tm,zu],[sb,tr,zu],1); add("bracing","C",j2,[sa,tr,zu],[sm,tm,zu],2); add("bracing","C",j2,[sm,tm,zu],[sb,tl,zu],3); }
-    else { add("bracing","C",j2,[sa,tl,zu],[sb,tr,zu],0); add("bracing","C",j2,[sa,tr,zu],[sb,tl,zu],1); }
+    if (d.split_x){ var sm = (sa+sb)/2, tm = (tl+tr)/2; add("bracing","C",j2,[sa,tl,zc],[sm,tm,zc],0); add("bracing","C",j2,[sm,tm,zc],[sb,tr,zc],1); add("bracing","C",j2,[sa,tr,zc],[sm,tm,zc],2); add("bracing","C",j2,[sm,tm,zc],[sb,tl,zc],3); }
+    else { add("bracing","C",j2,[sa,tl,zc],[sb,tr,zc],0); add("bracing","C",j2,[sa,tr,zc],[sb,tl,zc],1); }
   }
   else if (d.bracing === "zigzag"){
     var bb = Math.max(1, d.brace_bays || 1), jz = 0, kz = 0;
     while (jz < st.length - 1){
       var jb = Math.min(jz + bb, st.length - 1), ta = kz % 2 === 0 ? tl : tr, tb = kz % 2 === 0 ? tr : tl;
-      if (jb - jz > 1){ for (var q = jz; q < jb; q++){ var f0 = (st[q] - st[jz]) / (st[jb] - st[jz]), f1 = (st[q+1] - st[jz]) / (st[jb] - st[jz]); add("bracing","C",kz,[st[q], ta + (tb - ta) * f0, zu],[st[q+1], ta + (tb - ta) * f1, zu], q - jz); } }
-      else add("bracing","C",kz,[st[jz],ta,zu],[st[jb],tb,zu],0);
+      if (jb - jz > 1){ for (var q = jz; q < jb; q++){ var f0 = (st[q] - st[jz]) / (st[jb] - st[jz]), f1 = (st[q+1] - st[jz]) / (st[jb] - st[jz]); add("bracing","C",kz,[st[q], ta + (tb - ta) * f0, zc],[st[q+1], ta + (tb - ta) * f1, zc], q - jz); } }
+      else add("bracing","C",kz,[st[jz],ta,zc],[st[jb],tb,zc],0);
       jz = jb; kz++;
     }
   }
@@ -206,7 +207,8 @@ function typeList(role){ if (role === "deck") return DATA.floor_types || []; if 
 function typeKey(role){ return role === "deck" ? "floor" : role; }
 function typeName(role){ var id = design.types[typeKey(role)]; if (!id || id === "none") return role === "stiffener" || role === "railing" ? "(none)" : "(first type)"; var t = typeList(role).filter(function(x){ return String(x.id) === String(id); })[0]; return t ? t.name : "(type " + id + ")"; }
 function floorThickness(){ var t = (DATA.floor_types || []).filter(function(x){ return String(x.id) === String(design.types.floor); })[0]; return t && t.thickness_m ? t.thickness_m : DEFAULTS.floor_thickness_m; }
-function setDesign(k, v){ design[k] = v; if (k === "types") design.floor_thickness_m = floorThickness(); render(); }
+function chordDepth(){ var t = (DATA.framing_types || []).filter(function(x){ return String(x.id) === String(design.types.bottom_chord); })[0]; return t && t.depth_m ? t.depth_m : 0; }
+function setDesign(k, v){ design[k] = v; if (k === "types"){ design.floor_thickness_m = floorThickness(); design.bottom_chord_depth_m = chordDepth(); } render(); }
 function fmt(v, dp){ return (Math.round(v * Math.pow(10, dp)) / Math.pow(10, dp)).toFixed(dp); }
 // ---- chord pieces: typed lengths from the start, one variable piece takes the rest ----
 function chordPieces(role){ return (design[role + "_pieces"] || []).slice(); }
@@ -548,6 +550,8 @@ function render(){
   [F.tL, F.tR].forEach(function(t){ var g = el(se, "rect", {x:SX(t + half), y:SY(zt), width:Math.max(3, 2 * half * ss), height:zt * ss, fill:"var(--post)"}); el(g, "title", {}, "post - the side frames sit on the post centre points"); });
   var dks = el(se, "rect", {x:SX(ex.tl), y:SY(res.zd), width:(ex.tl - ex.tr) * ss, height:Math.max(2, design.floor_thickness_m * ss), fill:"var(--deck)", stroke:"#a08a60", "class":"hit"});
   el(dks, "title", {}, "Deck - " + typeName("deck") + " - " + mm(design.floor_thickness_m) + " mm"); dks.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("deck", p[0], p[1]); });
+  var brc = mems.filter(function(m){ return m.role === "bracing"; })[0];
+  if (brc){ var zbr = brc.p1[2], bl = line(se, SX(res.planes[0]), SY(zbr), SX(res.planes[1]), SY(zbr), "var(--brace)", 2, {"stroke-dasharray":"6 4", "class":"hit"}); el(bl, "title", {}, "Plan bracing - its centreline at the bottom chords' centre (" + (design.bottom_chord_depth_m ? mm(design.bottom_chord_depth_m) + " deep) " : "section depth unknown, so at the chord line) ") + "- " + typeName("bracing")); bl.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("bracing", p[0], p[1]); }); }
   var cbm = mems.filter(function(m){ return m.role === "crossbeam"; })[0];
   if (cbm){ var cbr = el(se, "rect", {x:SX(res.planes[0]), y:SY(res.zu), width:(res.planes[0] - res.planes[1]) * ss, height:0.18 * ss, fill:"var(--steel)", "class":"hit"}); el(cbr, "title", {}, "Cross beam - " + typeName("crossbeam") + " - top on the floor underside"); cbr.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("crossbeam", p[0], p[1]); }); }
   mems.filter(function(m){ return m.role === "stringer" && m.i === 0; }).forEach(function(m){ var r = el(se, "rect", {x:SX(m.p1[1]) - 7, y:SY(res.zu), width:14, height:0.18 * ss, fill:"var(--steel)", "class":"hit"}); el(r, "title", {}, "Beam between cross beams - " + typeName("stringer")); r.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("stringer", p[0], p[1]); }); });
@@ -721,7 +725,7 @@ $("load").addEventListener("click", function(){ $("file").click(); });
 $("file").addEventListener("change", function(){
   var f = this.files[0]; if (!f) return; var rd = new FileReader();
   rd.onload = function(){ try { var d = JSON.parse(rd.result); if (d.kind !== "pymep-bridge") throw new Error("not a bridge design");
-    design = JSON.parse(JSON.stringify(DEFAULTS)); Object.keys(d.design || {}).forEach(function(k){ design[k] = d.design[k]; }); design.floor_thickness_m = floorThickness();
+    design = JSON.parse(JSON.stringify(DEFAULTS)); Object.keys(d.design || {}).forEach(function(k){ design[k] = d.design[k]; }); design.floor_thickness_m = floorThickness(); design.bottom_chord_depth_m = chordDepth();
     if (d.name) DATA.name = d.name; write(); fit3d(); $("status").textContent = "Loaded " + f.name + "."; } catch (e) { $("status").textContent = "Could not load: " + e; } };
   rd.readAsText(f);
 });
@@ -739,6 +743,7 @@ function applyModelDefaults(){
   if (!design.types.stiffener) design.types.stiffener = (DATA.stiffener_types && DATA.stiffener_types.length) ? String(DATA.stiffener_types[0].id) : "none";
   if (!design.types.railing) design.types.railing = "none";
   design.floor_thickness_m = floorThickness();
+  design.bottom_chord_depth_m = chordDepth();
 }
 (function init(){
   if (!DATA){ $("status").textContent = "No data - open this page from Revit (Bridges > Bridge Builder)."; DATA = {}; }

@@ -50,7 +50,7 @@ ROLE_LABELS = {"top_chord": u"Top chord", "bottom_chord": u"Bottom chord",
                "diagonal": u"Diagonal", "crossbeam": u"Cross beam", "bracing": u"Plan bracing",
                "stringer": u"Beam between cross beams", "stiffener": u"Deck stiffener", "railing": u"Railing"}
 BRACE_ROLES = ("diagonal", "bracing")       # placed as braces, the rest as beams
-TOP_ALIGNED = ("crossbeam", "bracing", "stringer", "top_chord")  # the member's top sits on the line: the floor underside, or the truss height as top of steel
+TOP_ALIGNED = ("crossbeam", "stringer", "top_chord", "bottom_chord")  # the member's top sits on the line: the floor underside, or the chord levels as top of steel
 
 DEFAULTS = {
     "truss": "warren",
@@ -73,7 +73,8 @@ DEFAULTS = {
     "deck_top_offset_m": 0.0,        # deck top relative to the post base
     "deck_end_m": None,              # deck end past the post centrelines; None = the outer face
     "deck_clearance_m": 0.01,        # gap between the deck edges and the posts / truss planes
-    "floor_thickness_m": 0.006,      # replaced by the chosen floor type's thickness       # of the chosen floor type (the Revit side fills it in)
+    "floor_thickness_m": 0.006,      # replaced by the chosen floor type's thickness
+    "bottom_chord_depth_m": 0.0,     # replaced by the bottom chord type's section depth; the plan braces centre on the chord centre       # of the chosen floor type (the Revit side fills it in)
     "plan_bays": None,               # cross beam bays along the deck; None = one per truss panel
     "bracing": "zigzag",
     "brace_bays": 2,                 # bays each zigzag diagonal spans (2: side beam to side beam over two bays)
@@ -108,7 +109,7 @@ def normalize_design(d):
     for k in ("panel_length_m", "bottom_chord_offset_m", "top_chord_split_m",
               "bottom_chord_split_m", "deck_top_offset_m", "deck_clearance_m",
               "floor_thickness_m", "stiffener_gap_m", "stiffener_spacing_m", "railing_inset_m",
-              "brace_end_offset_m"):
+              "brace_end_offset_m", "bottom_chord_depth_m"):
         try:
             out[k] = float(out[k])
         except (TypeError, ValueError):
@@ -470,6 +471,7 @@ def members(design, frame):
     zt = height(design, frame)
     zd = design["deck_top_offset_m"]
     zu = zd - design["floor_thickness_m"]        # floor underside
+    zc = zb - max(0.0, design["bottom_chord_depth_m"]) / 2.0   # the bottom chords' centre: the plan braces centre on it
     pts = lay["points"]
     n = lay["n"]
     out = []
@@ -533,13 +535,13 @@ def members(design, frame):
             s_a, s_b = st[j], st[j + 1]
             if design["split_x"]:
                 sm, tm = (s_a + s_b) / 2.0, (tl + tr) / 2.0
-                add("bracing", "C", j, (s_a, tl, zu), (sm, tm, zu), 0)
-                add("bracing", "C", j, (sm, tm, zu), (s_b, tr, zu), 1)
-                add("bracing", "C", j, (s_a, tr, zu), (sm, tm, zu), 2)
-                add("bracing", "C", j, (sm, tm, zu), (s_b, tl, zu), 3)
+                add("bracing", "C", j, (s_a, tl, zc), (sm, tm, zc), 0)
+                add("bracing", "C", j, (sm, tm, zc), (s_b, tr, zc), 1)
+                add("bracing", "C", j, (s_a, tr, zc), (sm, tm, zc), 2)
+                add("bracing", "C", j, (sm, tm, zc), (s_b, tl, zc), 3)
             else:
-                add("bracing", "C", j, (s_a, tl, zu), (s_b, tr, zu), 0)
-                add("bracing", "C", j, (s_a, tr, zu), (s_b, tl, zu), 1)
+                add("bracing", "C", j, (s_a, tl, zc), (s_b, tr, zc), 0)
+                add("bracing", "C", j, (s_a, tr, zc), (s_b, tl, zc), 1)
     elif design["bracing"] == "zigzag":
         bb = max(1, design["brace_bays"])
         j = 0
@@ -553,10 +555,10 @@ def members(design, frame):
                 for q in range(j, j2):
                     f0 = (st[q] - st[j]) / (st[j2] - st[j])
                     f1 = (st[q + 1] - st[j]) / (st[j2] - st[j])
-                    add("bracing", "C", k, (st[q], t_a + (t_b - t_a) * f0, zu),
-                        (st[q + 1], t_a + (t_b - t_a) * f1, zu), q - j)
+                    add("bracing", "C", k, (st[q], t_a + (t_b - t_a) * f0, zc),
+                        (st[q + 1], t_a + (t_b - t_a) * f1, zc), q - j)
             else:
-                add("bracing", "C", k, (st[j], t_a, zu), (st[j2], t_b, zu), 0)
+                add("bracing", "C", k, (st[j], t_a, zc), (st[j2], t_b, zc), 0)
             j = j2
             k += 1
     # beams along the span between consecutive cross beams, spread evenly
