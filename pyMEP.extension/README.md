@@ -1029,8 +1029,13 @@ offers "Add split after", "Remove piece", "Equal pieces" (fills the
 strip with equal typed pieces) and "One piece". Pieces that add up to
 more than the chord are refused with a note. Each chord has its own
 framing type, as does every other role. Chord splices show as red
-ticks. **Save design** writes
-`bridge_<name>.json` to Downloads; **Load...** reads one back.
+ticks. **Save design** writes `bridge_<name>.json`: in Chrome and Edge
+the first save asks where (Downloads is offered) and every later save
+overwrites that same file in place, **Save as...** picks another file;
+in a browser without the save-file API the design is downloaded, as a
+numbered copy when the name is taken, and Build Bridge takes the
+newest. **Load...** reads one back. Build Bridge lists the designs in
+Downloads and can browse for one saved elsewhere.
 
 **Build Bridge** - reads that file, reads the four posts again and
 places everything in one undo step: the deck as a floor from post

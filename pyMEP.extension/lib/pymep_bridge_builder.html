@@ -68,7 +68,8 @@ text.lbl{fill:#555}
   <input type="text" id="name" title="bridge name">
   <select id="truss" title="truss type"></select>
   <button id="settings">Settings</button>
-  <button class="primary" id="save">Save design</button>
+  <button class="primary" id="save" title="writes the design file; once you have chosen the file it is overwritten in place on every save">Save design</button>
+  <button id="saveas" title="choose where to save (a new file or another one to overwrite)">Save as...</button>
   <button id="load">Load...</button>
   <input type="file" id="file" accept=".json" style="display:none">
   <button id="reset">Defaults</button>
@@ -691,14 +692,37 @@ function write(){ $("name").value = DATA.name || "Bridge 1"; fillSelect($("truss
 $("truss").addEventListener("change", function(){ setDesign("truss", $("truss").value); });
 $("settings").addEventListener("click", function(ev){ ev.stopPropagation(); var r = ev.target.getBoundingClientRect(); settingsPop(r.left, r.bottom); });
 function safeName(s){ return (s || "bridge").replace(/[^A-Za-z0-9_\-]+/g, "_"); }
-$("save").addEventListener("click", function(){
+// ---- saving: the browser's save-file API writes the same file again on every save (Chrome, Edge);
+// where it is missing (Firefox) the design is downloaded, which makes a numbered copy
+var saveHandle = null;
+function designText(){
   var name = $("name").value.trim() || "Bridge 1";
   var out = {kind:"pymep-bridge", name:name, design:design, source:DATA.source, saved:new Date().toISOString(), model:DATA.model, span_m:F.span};
-  var blob = new Blob([JSON.stringify(out, null, 2)], {type:"application/json"});
-  var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "bridge_" + safeName(name) + ".json";
+  return {name:"bridge_" + safeName(name) + ".json", text:JSON.stringify(out, null, 2)};
+}
+function downloadDesign(d){
+  var blob = new Blob([d.text], {type:"application/json"});
+  var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = d.name;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  $("status").textContent = "Saved " + a.download + " to Downloads - now run Bridges > Build Bridge in Revit.";
-});
+  $("status").textContent = "Saved " + d.name + " to Downloads (a numbered copy if it was there already; Build Bridge takes the newest) - now run Bridges > Build Bridge in Revit.";
+}
+function saveDesign(pickAgain){
+  var d = designText();
+  if (!window.showSaveFilePicker){ downloadDesign(d); return; }
+  var getHandle = (saveHandle && !pickAgain) ? Promise.resolve(saveHandle)
+    : window.showSaveFilePicker({suggestedName:d.name, startIn:"downloads", types:[{description:"pyMEP bridge design", accept:{"application/json":[".json"]}}]});
+  getHandle.then(function(h){
+    saveHandle = h;
+    return h.createWritable().then(function(w){ return w.write(d.text).then(function(){ return w.close(); }); }).then(function(){
+      $("status").textContent = "Saved " + h.name + (pickAgain ? "" : " (overwritten in place)") + " - now run Bridges > Build Bridge in Revit. Save again overwrites it; Save as... picks another file.";
+    });
+  }).catch(function(e){
+    if (e && e.name === "AbortError"){ $("status").textContent = "Save cancelled."; return; }
+    saveHandle = null; downloadDesign(d);
+  });
+}
+$("save").addEventListener("click", function(){ saveDesign(false); });
+$("saveas").addEventListener("click", function(){ saveDesign(true); });
 $("load").addEventListener("click", function(){ $("file").click(); });
 $("file").addEventListener("change", function(){
   var f = this.files[0]; if (!f) return; var rd = new FileReader();

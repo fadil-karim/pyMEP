@@ -46,20 +46,23 @@ def design_files():
     return files
 
 
+BROWSE = u"Browse for a design file saved elsewhere..."
 files = design_files()
-if not files:
-    forms.alert("No bridge_*.json in Downloads. Open Bridge Builder, design the bridge and "
-                "press Save design first.", exitscript=True)
-path = files[0]
-if len(files) > 1:
+path = files[0] if files else None
+if len(files) != 1:
     recent = files[:12]
     labels = [u"{0}   ({1})".format(os.path.basename(p), datetime.datetime.fromtimestamp(
-        os.path.getmtime(p)).strftime("%Y-%m-%d %H:%M")) for p in recent]
+        os.path.getmtime(p)).strftime("%Y-%m-%d %H:%M")) for p in recent] + [BROWSE]
     pick = forms.SelectFromList.show(labels, title="Which design?", button_name="Build",
                                      multiselect=False)
     if not pick:
         script.exit()
-    path = recent[labels.index(pick)]
+    if pick == BROWSE:
+        path = forms.pick_file(file_ext="json", title="Bridge design file (bridge_<name>.json)")
+        if not path:
+            script.exit()
+    else:
+        path = recent[labels.index(pick)]
 with io.open(path, "r", encoding="utf-8") as f:
     text = f.read()
 try:
