@@ -108,9 +108,17 @@ if level is None:
 registry_file = RV.registry_path(doc)
 registry = BR.load_registry(registry_file)
 old = registry["bridges"].get(name)
+renamed_from = None
+if old is None:
+    # the same posts under another name: that bridge is the one being rebuilt (renamed)
+    other = BR.bridge_with_source(registry, source)
+    if other:
+        old = registry["bridges"][other]
+        renamed_from = other
 if old:
-    if forms.alert(u"'{0}' was built before ({1}). Replace its elements with this design?".format(
-            name, old.get("updated", "?")), title="Build Bridge",
+    if forms.alert(u"'{0}' was built before ({1}){2}. Replace its elements with this design?".format(
+            renamed_from or name, old.get("updated", "?"),
+            u" - it becomes '{0}'".format(name) if renamed_from else u""), title="Build Bridge",
             options=["Replace", "Cancel"]) != "Replace":
         script.exit()
 
@@ -191,6 +199,8 @@ except Exception:
     pass
 
 stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+if renamed_from and renamed_from != name:
+    registry["bridges"].pop(renamed_from, None)
 registry["bridges"][name] = BR.record(name, design, source, frame, member_ids, floor_id, stamp)
 try:
     BR.save_registry(registry_file, registry)

@@ -944,9 +944,16 @@ Steel truss footbridges between two pairs of posts, designed in the
 browser and modelled as a sloped deck floor, structural framing, deck
 stiffeners and railings.
 
-**Bridge Builder** - pick the two posts at the start and the two at the
-end: vertical structural framing or columns already in the model (four
-posts selected beforehand are taken as the two pairs). The midpoint of
+**Bridge Builder** - once a bridge has been built in the model it is
+kept as a bridge, so the button first asks whether to edit one of the
+bridges built here or build a new one. Editing opens the page on that
+bridge's own posts with its saved design, and building it again
+replaces it (under a new name too, if the name was changed on the
+page). For a new bridge, pick the two posts at the start and the two
+at the end: vertical structural framing or columns already in the
+model (four posts selected beforehand are taken as the two pairs); a
+post that already belongs to a bridge is refused with the bridge's
+name - edit that bridge instead. The midpoint of
 each pair is the deck centreline at that end and the line between the
 midpoints is the bridge direction; the post spacing gives the width,
 the post bases the deck level at each end (so the deck slopes between
@@ -1079,8 +1086,8 @@ checked, and the report says how many took) at a typed
 railing-to-railing width centred on the bridge centreline, or along
 both edges less the inset when no width is typed. Members carry the bridge name in Comments and every element id
 is recorded against the bridge name in `bridges.json` in the model's
-pyMEP folder; building a name again replaces its elements, and opening
-Bridge Builder on posts that already carry a bridge loads its design.
+pyMEP folder; building a name again replaces its elements, as does
+building the same posts under a new name.
 
 **Update Bridges** - after the posts move or change: reads them again
 and puts each framing member onto its new line, keeping the element

@@ -34,7 +34,7 @@ import pymep_bridge as BR
 import pymep_bridge_revit as RV
 from pymep_config import get_export_folder
 from pymep_dashboard_launch import launch_html
-from pymep_revit import id_value
+from pymep_revit import id_value, make_id
 
 output = script.get_output()
 doc = revit.doc
@@ -73,34 +73,64 @@ def pick_pair(which, preselected):
         forms.alert("Pick exactly two posts for the {0} - you picked {1}.".format(which, len(els)))
 
 
-# a selection of four posts made before the click is taken as start pair then end pair,
-# the two nearest each other first
-pre_start = pre_end = None
-try:
-    sel = [doc.GetElement(i) for i in uidoc.Selection.GetElementIds()]
-    sel = [e for e in sel if e is not None and PostFilter().AllowElement(e)]
-    if len(sel) == 4:
-        infos = [RV.post_info(e) for e in sel]
-        best = None
-        for i in range(4):
-            for j in range(i + 1, 4):
-                d = (infos[i]["x"] - infos[j]["x"]) ** 2 + (infos[i]["y"] - infos[j]["y"]) ** 2
-                if best is None or d < best[0]:
-                    best = (d, i, j)
-        a = [sel[best[1]], sel[best[2]]]
-        b = [sel[k] for k in range(4) if k not in (best[1], best[2])]
-        pre_start, pre_end = a, b
-except Exception:
-    pre_start = pre_end = None
+# edit a bridge already built here, or build a new one on four posts
+registry = BR.load_registry(RV.registry_path(doc))
+names = sorted(registry["bridges"].keys())
+editing = None
+if names:
+    NEW = u"Build a new bridge (pick its four posts)"
+    opts = [NEW] + [u"Edit {0}   ({1} members, {2})".format(
+        n, len(registry["bridges"][n].get("members", {})), registry["bridges"][n].get("updated", u"")) for n in names]
+    pick = forms.SelectFromList.show(opts, title="Bridge Builder - edit an existing bridge or build a new one?",
+                                     button_name="Open", multiselect=False)
+    if not pick:
+        script.exit()
+    if pick != NEW:
+        editing = names[opts.index(pick) - 1]
 
-start_els = pick_pair("START", pre_start)
-if start_els is None:
-    script.exit()
-end_els = pick_pair("END", pre_end)
-if end_els is None:
-    script.exit()
-if set(id_value(e.Id) for e in start_els) & set(id_value(e.Id) for e in end_els):
-    forms.alert("A post was picked at both ends.", exitscript=True)
+if editing:
+    rec = registry["bridges"][editing]
+    src = rec.get("source", {})
+    start_els = [doc.GetElement(make_id(int(i))) for i in src.get("start_ids", [])]
+    end_els = [doc.GetElement(make_id(int(i))) for i in src.get("end_ids", [])]
+    if len(start_els) != 2 or len(end_els) != 2 or any(e is None for e in start_els + end_els):
+        forms.alert(u"The posts of {0} are no longer all in the model, so it cannot be edited. "
+                    u"Run Update Bridges to see what is left of it.".format(editing), exitscript=True)
+else:
+    # a selection of four posts made before the click is taken as start pair then end pair,
+    # the two nearest each other first
+    pre_start = pre_end = None
+    try:
+        sel = [doc.GetElement(i) for i in uidoc.Selection.GetElementIds()]
+        sel = [e for e in sel if e is not None and PostFilter().AllowElement(e)]
+        if len(sel) == 4:
+            infos = [RV.post_info(e) for e in sel]
+            best = None
+            for i in range(4):
+                for j in range(i + 1, 4):
+                    d = (infos[i]["x"] - infos[j]["x"]) ** 2 + (infos[i]["y"] - infos[j]["y"]) ** 2
+                    if best is None or d < best[0]:
+                        best = (d, i, j)
+            a = [sel[best[1]], sel[best[2]]]
+            b = [sel[k] for k in range(4) if k not in (best[1], best[2])]
+            pre_start, pre_end = a, b
+    except Exception:
+        pre_start = pre_end = None
+
+    start_els = pick_pair("START", pre_start)
+    if start_els is None:
+        script.exit()
+    end_els = pick_pair("END", pre_end)
+    if end_els is None:
+        script.exit()
+    if set(id_value(e.Id) for e in start_els) & set(id_value(e.Id) for e in end_els):
+        forms.alert("A post was picked at both ends.", exitscript=True)
+    # a bridge's posts cannot take another bridge
+    taken = BR.bridge_on_posts(registry, [id_value(e.Id) for e in start_els + end_els])
+    if taken:
+        forms.alert(u"Post {0} already belongs to {1}. A bridge's posts cannot be used for another "
+                    u"bridge - open Bridge Builder again and choose 'Edit {1}'.".format(taken[1], taken[0]),
+                    exitscript=True)
 
 try:
     start_posts = [RV.post_info(e) for e in start_els]
@@ -109,17 +139,9 @@ try:
 except ValueError as ex:
     forms.alert(u"{0}".format(ex), exitscript=True)
 
-registry = BR.load_registry(RV.registry_path(doc))
 source = {"start_ids": [p["id"] for p in start_posts], "end_ids": [p["id"] for p in end_posts],
           "labels": [p["label"] for p in start_posts + end_posts]}
-# a bridge already built on these posts keeps its name and design
-existing_name = None
-for name, rec in registry["bridges"].items():
-    src = rec.get("source", {})
-    if sorted(src.get("start_ids", [])) == sorted(source["start_ids"]) and \
-            sorted(src.get("end_ids", [])) == sorted(source["end_ids"]):
-        existing_name = name
-        break
+existing_name = editing
 existing = registry["bridges"].get(existing_name) if existing_name else None
 frame_out = dict((k, frame[k]) for k in BR.FRAME_KEYS)
 frame_out["origin"] = list(frame["origin"])

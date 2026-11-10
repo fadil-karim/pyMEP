@@ -721,6 +721,18 @@ class Files(unittest.TestCase):
             BR.parse_design_file(json.dumps({"kind": "pymep-bridge", "name": "x", "design": {},
                                              "source": {"start_ids": [1]}}))
 
+    def test_bridges_on_posts(self):
+        reg = {"bridges": {
+            "Bridge 1": {"source": {"start_ids": [1, 2], "end_ids": [3, 4]}},
+            "Bridge 2": {"source": {"start_ids": [11, 12], "end_ids": [13, 14]}}}}
+        self.assertEqual(BR.bridge_on_posts(reg, [20, 13, 21, 22]), ("Bridge 2", 13))   # one shared post is enough
+        self.assertEqual(BR.bridge_on_posts(reg, ["2", 30]), ("Bridge 1", 2))
+        self.assertIsNone(BR.bridge_on_posts(reg, [20, 21, 22, 23]))
+        self.assertIsNone(BR.bridge_on_posts({"bridges": {}}, [1]))
+        self.assertEqual(BR.bridge_with_source(reg, {"start_ids": [4, 3], "end_ids": [2, 1]}), "Bridge 1")   # either way round
+        self.assertEqual(BR.bridge_with_source(reg, {"start_ids": [2, 1], "end_ids": [3, 4]}), "Bridge 1")
+        self.assertIsNone(BR.bridge_with_source(reg, {"start_ids": [1, 2], "end_ids": [3, 5]}))
+
     def test_latest_design(self):
         self.assertIsNone(BR.latest_design({"bridges": {}}))
         reg = {"bridges": {

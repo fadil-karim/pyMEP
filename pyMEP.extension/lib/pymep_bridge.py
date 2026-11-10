@@ -867,6 +867,32 @@ def latest_design(registry):
     return d
 
 
+def bridge_on_posts(registry, post_ids):
+    """(bridge name, post id) for the first of post_ids that already
+    belongs to a recorded bridge - a bridge's posts cannot take another
+    bridge - else None."""
+    want = set(int(i) for i in post_ids)
+    for name in sorted(registry.get("bridges", {})):
+        src = registry["bridges"][name].get("source", {})
+        for i in list(src.get("start_ids", [])) + list(src.get("end_ids", [])):
+            if int(i) in want:
+                return name, int(i)
+    return None
+
+
+def bridge_with_source(registry, source):
+    """The name of the recorded bridge on exactly these posts (either
+    pair order), else None."""
+    def key(src):
+        return sorted(int(i) for i in src.get("start_ids", [])), sorted(int(i) for i in src.get("end_ids", []))
+    a, b = key(source)
+    for name, rec in registry.get("bridges", {}).items():
+        c, d = key(rec.get("source", {}))
+        if (c, d) == (a, b) or (c, d) == (b, a):
+            return name
+    return None
+
+
 def next_name(registry, stem=u"Bridge"):
     names = set(registry.get("bridges", {}))
     i = 1
@@ -916,7 +942,7 @@ def fill_page(template, data):
     return template.replace(PLACEHOLDER, text, 1)
 
 
-__all__ = ["piece_spans", "truss_height", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
+__all__ = ["piece_spans", "bridge_on_posts", "bridge_with_source", "truss_height", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
            "BRACE_ROLES", "TOP_ALIGNED", "DEFAULTS", "normalize_design", "frame_from_posts",
            "frame_from_points", "effective_frame", "planes", "height", "base_z", "to_world",
            "layout", "pieces",
