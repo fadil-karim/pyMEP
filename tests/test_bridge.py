@@ -34,7 +34,9 @@ def posts(span=20.0, width=3.0, z0=10.0, z1=12.0, h=2.3, size=0.2, x0=0.0, y0=0.
 def design(**kw):
     # the geometry tests set the trusses on the posts' outside faces; the
     # built-in default (centre) has its own test
-    d = {"panel_mode": "count", "panels": 4, "truss": "warren_verticals", "truss_plane": "outside",
+    # the geometry tests run the chords to the posts' outer faces (as the
+    # drawing measures); the trusses are always on the post centres
+    d = {"panel_mode": "count", "panels": 4, "truss": "warren_verticals", "chord_extension_m": 0.1,
          "brace_end_offset_m": 0.0}
     d.update(kw)
     return BR.normalize_design(d)
@@ -69,7 +71,7 @@ class Design(unittest.TestCase):
                          (2.5, 6, True, 6.0))
 
     def test_refusals(self):
-        for bad in ({"truss": "bowstring"}, {"bracing": "k"}, {"truss_plane": "above"},
+        for bad in ({"truss": "bowstring"}, {"bracing": "k"}, {"brace_end_offset_m": -1},
                     {"panel_length_m": 0}, {"height_m": 0}, {"panels": "many"},
                     {"floor_thickness_m": -1}, {"bottom_chord_split_m": -2}):
             with self.assertRaises(ValueError):
@@ -120,9 +122,10 @@ class Frame(unittest.TestCase):
 
     def test_planes_and_height(self):
         d = design()
-        self.assertEqual(BR.planes(d, FRAME), (1.6, -1.6))
-        self.assertEqual(BR.planes(design(truss_plane="inside"), FRAME), (1.4, -1.4))
-        self.assertEqual(BR.planes(design(truss_plane="centre"), FRAME), (1.5, -1.5))
+        self.assertEqual(BR.planes(d, FRAME), (1.5, -1.5))                        # always the post centres
+        self.assertEqual(BR.planes(design(truss_plane="inside"), FRAME), (1.5, -1.5))
+        self.assertEqual(BR.planes(design(truss_plane="outside"), FRAME), (1.5, -1.5))
+        self.assertEqual(BR.normalize_design({"truss_plane": "outside"})["truss_plane"], "centre")
         self.assertAlmostEqual(BR.height(d, FRAME), 2.3)
         self.assertAlmostEqual(BR.height(design(height_m=1.8), FRAME), 1.8)
 
@@ -171,11 +174,11 @@ class Members(unittest.TestCase):
         self.assertEqual(count(mems, "vertical"), 6)
         self.assertEqual(count(mems, "diagonal"), 8)
         top = by_key(mems, u"top_chord:L:0:0")
-        self.assertAlmostEqual(top["p1"][1], 1.6)
+        self.assertAlmostEqual(top["p1"][1], 1.5)                # on the post centre
         self.assertAlmostEqual(top["p1"][2], 2.3)                # post height
         self.assertAlmostEqual(top["p1"][0], -0.1)
         bot = by_key(mems, u"bottom_chord:R:0:0")
-        self.assertAlmostEqual(bot["p1"][1], -1.6)
+        self.assertAlmostEqual(bot["p1"][1], -1.5)
         self.assertAlmostEqual(bot["p1"][2], 0.0)
         self.assertEqual(top["zjust"], "top")                    # the truss height is to the top of steel
         with_posts = BR.members(design(end_posts=True, truss="warren"), FRAME)
@@ -267,8 +270,8 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(cb["p1"][1], 1.4)                 # the end ones between the posts' inner faces
         self.assertAlmostEqual(cb["p2"][1], -1.4)
         cb1 = by_key(mems, u"crossbeam:C:1:0")
-        self.assertAlmostEqual(cb1["p1"][1], 1.6)                # the rest between the truss planes
-        self.assertAlmostEqual(cb1["p2"][1], -1.6)
+        self.assertAlmostEqual(cb1["p1"][1], 1.5)                # the rest between the truss planes (post centres)
+        self.assertAlmostEqual(cb1["p2"][1], -1.5)
         self.assertAlmostEqual(cb["p1"][2], -0.15)
         self.assertEqual(cb["zjust"], "top")
         self.assertEqual(cb["stype"], "beam")
@@ -279,15 +282,15 @@ class Members(unittest.TestCase):
         self.assertEqual(count(mems, "bracing"), 4)
         br = by_key(mems, u"bracing:C:0:0")
         self.assertAlmostEqual(br["p1"][0], 0.0)
-        self.assertAlmostEqual(br["p1"][1], 1.6)
+        self.assertAlmostEqual(br["p1"][1], 1.5)
         self.assertAlmostEqual(br["p2"][0], 5.0)                  # on the first cross beam
         self.assertAlmostEqual(br["p2"][1], 0.0)
         brb = by_key(mems, u"bracing:C:0:1")
         self.assertAlmostEqual(brb["p2"][0], 10.0)                # two bays on
-        self.assertAlmostEqual(brb["p2"][1], -1.6)
+        self.assertAlmostEqual(brb["p2"][1], -1.5)
         br2 = by_key(mems, u"bracing:C:1:0")
-        self.assertAlmostEqual(br2["p1"][1], -1.6)                # alternates
-        self.assertAlmostEqual(by_key(mems, u"bracing:C:1:1")["p2"][1], 1.6)
+        self.assertAlmostEqual(br2["p1"][1], -1.5)                # alternates
+        self.assertAlmostEqual(by_key(mems, u"bracing:C:1:1")["p2"][1], 1.5)
         self.assertAlmostEqual(br["p1"][2], -0.15)
         self.assertEqual((br["zjust"], br["stype"]), ("top", "brace"))
         self.assertEqual(count(BR.members(design(split_x=False), FRAME), "bracing"), 4)   # the flag is for the X only
@@ -297,7 +300,7 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(by_key(odd, u"bracing:C:2:0")["p2"][0], 20.0)
         one = BR.members(design(brace_bays=1), FRAME)
         self.assertEqual(count(one, "bracing"), 4)
-        self.assertAlmostEqual(by_key(one, u"bracing:C:1:0")["p1"][1], -1.6)
+        self.assertAlmostEqual(by_key(one, u"bracing:C:1:0")["p1"][1], -1.5)
         x = BR.members(design(bracing="x", split_x=False), FRAME)
         self.assertEqual(count(x, "bracing"), 8)                  # X in 4 bays
         split = BR.members(design(bracing="x", split_x=True), FRAME)
@@ -321,8 +324,7 @@ class Members(unittest.TestCase):
         d0, d1, t_r, t_l = BR.deck_extent(d, FRAME)
         self.assertAlmostEqual(t_l, 1.39)                          # inner face of the post less clearance
         self.assertAlmostEqual(t_r, -1.39)
-        tl, tr = BR.planes(d, FRAME)                               # set out between the side beam centres
-        self.assertAlmostEqual(st[0]["p1"][1], tl - (tl - tr) / 3.0)
+        self.assertAlmostEqual(st[0]["p1"][1], t_l - (t_l - t_r) / 3.0)   # count mode: spread across the deck
         self.assertEqual(st[0]["stype"], "stiffener")
         rails = [m for m in mems if m["role"] == "railing"]
         self.assertEqual(len(rails), 2)
@@ -332,30 +334,29 @@ class Members(unittest.TestCase):
         self.assertEqual(count(BR.members(design(), FRAME), "railing"), 0)      # no railing type
 
     def test_stiffener_spacing(self):
-        # 3.3 m between post centres, planes on the outside faces: 3.5 m side beam
-        # centre to centre -> at 500 exactly six lines 0.5 m apart, the first and
-        # last 0.5 m from the side beams (the drawing)
+        # 3.3 m between post centres: a 3.08 m deck inside them -> at 500 six
+        # lines exactly 0.5 m apart, centred on the floor, so 0.5 m in from the
+        # side beam centres when those are on the outside faces (the drawing)
         s, e = posts(width=3.3)
         fr = BR.frame_from_posts(s, e)
         lines = BR.stiffener_positions(design(stiffener_spacing_m=0.5), fr)
         self.assertEqual(len(lines), 6)
-        self.assertAlmostEqual(lines[0], 1.75 - 0.5)
-        self.assertAlmostEqual(lines[-1], -1.75 + 0.5)
+        self.assertAlmostEqual(lines[0], 1.25)
+        self.assertAlmostEqual(lines[-1], -1.25)
         for a, b in zip(lines, lines[1:]):
             self.assertAlmostEqual(a - b, 0.5)
-        # a width that is not a multiple: the spacing stays exact, counted in
-        # from both side beams, and the odd gap sits in the middle
-        lines = BR.stiffener_positions(design(stiffener_spacing_m=0.5), FRAME)   # 3.2 m
-        self.assertEqual(len(lines), 6)
-        self.assertAlmostEqual(lines[0], 1.1)
-        self.assertAlmostEqual(lines[2], 0.1)
-        self.assertAlmostEqual(lines[3], -0.1)                                    # the 0.2 gap in the middle
-        self.assertAlmostEqual(lines[-1], -1.1)
-        self.assertEqual(lines, sorted(lines, reverse=True))
-        seven = BR.stiffener_positions(design(stiffener_spacing_m=0.45), FRAME)  # 7 fit, 0.05 over
-        self.assertEqual(len(seven), 7)
-        self.assertAlmostEqual(seven[3], 1.6 - 4 * 0.45)
-        self.assertAlmostEqual(seven[4], -1.6 + 3 * 0.45)
+        self.assertAlmostEqual(sum(lines), 0.0)                                   # centred
+        # the 2.78 m deck of FRAME: five lines fit at 500 with at least half a
+        # spacing to each edge, centred
+        lines = BR.stiffener_positions(design(stiffener_spacing_m=0.5), FRAME)
+        self.assertEqual(len(lines), 5)
+        self.assertEqual([round(t, 6) for t in lines], [1.0, 0.5, 0.0, -0.5, -1.0])
+        six = BR.stiffener_positions(design(stiffener_spacing_m=0.45), FRAME)    # 6.17 -> six
+        self.assertEqual(len(six), 6)
+        self.assertAlmostEqual(six[0], 2.5 * 0.45)
+        self.assertAlmostEqual(six[0] - six[1], 0.45)
+        one = BR.stiffener_positions(design(stiffener_spacing_m=2.0), FRAME)     # one line, on the centreline
+        self.assertEqual([round(t, 6) for t in one], [0.0])
         self.assertEqual(BR.stiffener_positions(design(stiffener_spacing_m=5.0), FRAME), [])
         self.assertEqual(BR.stiffener_positions(design(stiffener_spacing_m=0.0), FRAME), [])
         mems = BR.members(design(stiffener_spacing_m=0.5), fr)
@@ -407,12 +408,12 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(cb0["p1"][1], 1.4)
         self.assertAlmostEqual(cb0["p2"][1], -1.4)
         self.assertAlmostEqual(by_key(mems, u"crossbeam:C:1:0")["p1"][1], 1.5)
-        lines = BR.stiffener_positions(d, FRAME)                 # 3.0 m at 0.5: five lines, exact
+        lines = BR.stiffener_positions(d, FRAME)                 # the 2.78 m deck at 0.5: five lines, centred
         self.assertEqual(len(lines), 5)
         self.assertAlmostEqual(lines[0], 1.0)
         # typed: alongside the posts the chord runs to the outer face
         out = BR.layout(BR.normalize_design({"truss_plane": "outside"}), FRAME)
-        self.assertAlmostEqual(out["s0"], -0.1)
+        self.assertAlmostEqual(out["s0"], 0.1)                    # an old "outside" design reads as the centres
         # the plane does not carry over from the last bridge; the default rules
         reg = {"bridges": {"B": {"design": {"truss_plane": "outside", "truss": "pratt"}, "updated": "x"}}}
         self.assertNotIn("truss_plane", BR.latest_design(reg))
@@ -427,8 +428,8 @@ class Members(unittest.TestCase):
             self.assertAlmostEqual(a["p2"][0], b["p1"][0])
             self.assertAlmostEqual(b["p2"][0], c["p1"][0])
             self.assertAlmostEqual(a["p2"][0], 20.0 / 6.0)        # on the first cross beam
-            self.assertAlmostEqual(a["p2"][1], 1.6 - 3.2 / 3.0)   # a third of the way across
-            self.assertAlmostEqual(c["p2"][1], -1.6)
+            self.assertAlmostEqual(a["p2"][1], 1.5 - 3.0 / 3.0)   # a third of the way across
+            self.assertAlmostEqual(c["p2"][1], -1.5)
         x = BR.members(design(bracing="x", split_x=False), FRAME)
         self.assertEqual(count(x, "bracing"), 8)                  # the X keeps its flag
 
@@ -465,17 +466,27 @@ class Members(unittest.TestCase):
             BR.normalize_design({"railing_width_m": 0})
 
     def test_end_diagonal_clearance(self):
-        # the end diagonals start in from the chord ends at the bottom, clear
-        # of the posts; the top nodes and the inner diagonals do not move
-        mems = BR.members(design(truss="warren", brace_end_offset_m=0.15), FRAME)
+        # the run of diagonals starts the clearance in from each chord end, so
+        # the whole run shortens evenly and every diagonal keeps the same angle;
+        # the chords still run the full length
+        d = design(truss="warren", brace_end_offset_m=0.15)
+        lay = BR.layout(d, FRAME)
+        self.assertAlmostEqual(lay["r0"], -0.1 + 0.15)
+        self.assertAlmostEqual(lay["r1"], 20.1 - 0.15)
+        self.assertAlmostEqual(lay["L"], (20.2 - 0.3) / 4.0)
+        mems = BR.members(d, FRAME)
         first = by_key(mems, u"diagonal:L:0:0")
-        self.assertAlmostEqual(first["p1"][0], -0.1 + 0.15)
+        self.assertAlmostEqual(first["p1"][0], 0.05)
         self.assertAlmostEqual(first["p1"][2], 0.0)
-        self.assertAlmostEqual(first["p2"][0], -0.1 + 20.2 / 8.0)   # mid-panel top node as before
+        self.assertAlmostEqual(first["p2"][0], 0.05 + lay["L"] / 2.0)
         last = by_key(mems, u"diagonal:L:3:1")
-        self.assertAlmostEqual(last["p2"][0], 20.1 - 0.15)
+        self.assertAlmostEqual(last["p2"][0], 19.95)
         inner = by_key(mems, u"diagonal:L:1:0")
-        self.assertAlmostEqual(inner["p1"][0], -0.1 + 20.2 / 4.0)
+        self.assertAlmostEqual(inner["p1"][0], 0.05 + lay["L"])
+        runs = [abs(m["p2"][0] - m["p1"][0]) for m in mems if m["role"] == "diagonal"]
+        self.assertTrue(all(abs(r - runs[0]) < 1e-9 for r in runs))            # all alike
+        self.assertAlmostEqual(by_key(mems, u"top_chord:L:0:0")["p1"][0], -0.1)   # chords unchanged
+        self.assertAlmostEqual(by_key(mems, u"top_chord:L:0:0")["p2"][0], 20.1)
         pratt = BR.members(design(truss="pratt", brace_end_offset_m=0.2), FRAME)
         feet = [m["p1"][0] for m in pratt if m["role"] == "diagonal" and m["side"] == "L" and abs(m["p1"][2]) < 1e-9]
         feet += [m["p2"][0] for m in pratt if m["role"] == "diagonal" and m["side"] == "L" and abs(m["p2"][2]) < 1e-9]
@@ -553,7 +564,7 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(s["height_m"], 2.3)
         self.assertAlmostEqual(s["deck_width_m"], 2.78)
         self.assertAlmostEqual(s["by_role"]["top_chord"]["length_m"], 40.4)
-        self.assertEqual(s["members"], 2 + 2 + 6 + 8 + 5 + 4 + 6 * 4)   # two long diagonals in two pieces each; six stiffener lines at 500 per bay
+        self.assertEqual(s["members"], 2 + 2 + 6 + 8 + 5 + 4 + 5 * 4)   # two long diagonals in two pieces each; five stiffener lines at 500 per bay
         w = BR.summary(design(truss="warren"), FRAME)
         self.assertEqual(w["by_role"]["diagonal"]["count"], 16)
         self.assertNotIn("vertical", w["by_role"])

@@ -973,10 +973,10 @@ what is under it, so the cross beams, bracing and stiffeners show from
 below. A right-click on any member there gives the same family menu. The browser's own right-click menu is switched off on the
 drawings, and the ring's label sits just under the clicked spot (a dot
 marks it) so the member stays visible. The rest lives under
-**Settings**: panels by target length, count or diagonal angle (the
-panel length then follows the typed angle and the truss height, in
-whole panels, and the laid-out angle shows by the first diagonal,
-where it can also be typed), the end diagonal clearance, the cross beams between
+**Settings**: panels by target length or count (the diagonals' angle is
+reported by the first diagonal and in the panel tile; it follows the
+panel length, the truss height and the end clearance), the end
+clearance, the cross beams between
 the posts (blank follows the truss panels), the Revit level, end posts,
 splitting braces where they cross, beams between the cross beams per
 bay, the deck stiffeners (set out by spacing or by count) and their end
@@ -987,13 +987,12 @@ family types and settings carry over (the survey levels do not); the
 Defaults button returns to the built-in ones. Types that are not in
 the model fall back to the first type of their kind.
 
-Deck stiffeners are set out across the deck between the side beam
-centrelines (the truss planes, where the bottom chords run), the first
-and last one spacing in from the side beams: at 500 mm on a 3.5 m
-centre-to-centre deck that is six lines exactly 500 apart, as the
-reference drawing. The spacing is exact, counted in from both side
-beams, and a width that is not a multiple leaves the odd gap in the
-middle. The spacing is the dimension on the plan's
+Deck stiffeners are set out across the deck at an exact spacing from
+each other, the set centred on the floor, with as many lines as fit
+in the deck width keeping at least half a spacing to each edge: at
+500 mm on the 3.28 m deck between 3.5 m side beam centres that is six
+lines 500 apart, 500 in from the side beams, as the reference drawing.
+The spacing is the dimension on the plan's
 right edge and under the section, clicked to retype; a stiffener's
 ring offers the spacing, one more or fewer (which switches to a count
 across), the end gap and none.
@@ -1001,9 +1000,10 @@ across), the end gap and none.
 The default truss is the Warren of the reference drawing: top nodes at
 mid-panel, no verticals, so a 22.5 m chord in 2.5 m panels puts the
 first top node 1.25 m in; Warren with verticals, Pratt, Howe, X and
-Vierendeel are the other choices. The end diagonals start a clearance
-(150 mm by default) in from the chord ends at the bottom so they clear
-the posts. The truss height is to the top of steel of the top chord
+Vierendeel are the other choices. The run of diagonals starts a
+clearance (150 mm by default) in from each chord end so the end
+diagonals clear the posts; the whole run shortens evenly, every
+diagonal keeping the same angle, while the chords run the full length. The truss height is to the top of steel of the top chord
 (top chords are top justified), and Build Bridge sets the tops of the
 four original posts to it - lengthening or shortening them - and
 Update Bridges keeps them there. There is no top-plan bracing; the
@@ -1041,11 +1041,11 @@ Downloads and can browse for one saved elsewhere.
 places everything in one undo step: the deck as a floor from post
 face to post face along the span and inside the posts across (less the
 clearance) with a slope arrow from start to end;
-both trusses on the chosen planes - the posts' centre points by
-default, so the side frames line up with the original four posts, with
-the outside or inside faces as options; on the centres the chords butt
-against the posts' inner faces, alongside the posts they run to the
-outer faces - (chords in their pieces, verticals, diagonals as braces); the cross beams between the truss planes, the
+both trusses on the posts' centre points, so the side frames line up
+with the original four posts (there is no other setting; older design
+files that say otherwise are read as the centres), the chords butting
+against the posts' inner faces (chords in their pieces, verticals,
+diagonals as braces); the cross beams between the truss planes, the
 end ones on the post centrelines and running between the posts' inner
 faces, the plan bracing cut at every cross beam it crosses and any beams
 between the cross beams, all with z justification Top so their top

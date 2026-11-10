@@ -102,8 +102,7 @@ def normalize_design(d):
         raise ValueError(u"unknown truss type '{0}'".format(out["truss"]))
     if out["bracing"] not in [k for k, _l in BRACINGS]:
         raise ValueError(u"unknown bracing '{0}'".format(out["bracing"]))
-    if out["truss_plane"] not in [k for k, _l in PLANES]:
-        raise ValueError(u"unknown truss plane '{0}'".format(out["truss_plane"]))
+    out["truss_plane"] = "centre"      # the side frames are always on the post centres
     if out["stiffener_mode"] not in ("spacing", "count"):
         raise ValueError(u"stiffener_mode must be 'spacing' or 'count'")
     for k in ("panel_length_m", "bottom_chord_offset_m", "top_chord_split_m",
@@ -242,12 +241,9 @@ def effective_frame(design, frame, shared_elev_m=0.0):
 
 
 def planes(design, frame):
-    """(t of the left truss plane, t of the right truss plane)."""
-    half = frame["post_size"] / 2.0
-    if design["truss_plane"] == "outside":
-        return frame["tL"] + half, frame["tR"] - half
-    if design["truss_plane"] == "inside":
-        return frame["tL"] - half, frame["tR"] + half
+    """(t of the left truss plane, t of the right truss plane): always the
+    posts' centre points, so the side frames line up with the original
+    four posts whatever an older design file says."""
     return frame["tL"], frame["tR"]
 
 
@@ -285,24 +281,29 @@ def layout(design, frame):
     if design["chord_extension_m"] is not None:
         ext = design["chord_extension_m"]
     else:
-        # to the post face: the inner face when the chord runs through the
-        # post centre (it butts against the post), the outer face when it
-        # runs alongside the post
-        ext = -half if design["truss_plane"] == "centre" else half
+        # the chords run on the post centrelines and butt against the posts'
+        # inner faces
+        ext = -half
     s0, s1 = -ext, span + ext
     total = s1 - s0
+    # the diagonals (and verticals) run between the end clearances, so the
+    # clearance shortens the whole run evenly and every diagonal keeps the
+    # same angle; the chords still run the full length
+    off = min(design["brace_end_offset_m"], max(0.0, total / 2.0 - TOL))
+    r0, r1 = s0 + off, s1 - off
+    run = r1 - r0
     if design["panel_mode"] == "count":
         n = max(1, int(design["panels"]))
     elif design["panel_mode"] == "angle":
         # the panel length that gives the diagonals the typed angle: a Warren
         # diagonal runs half a panel, the shared-node layouts a whole one
         rise = height(design, frame) - design["bottom_chord_offset_m"]
-        run = rise / math.tan(math.radians(design["brace_angle_deg"]))
-        target = 2.0 * run if design["truss"] in ("warren", "warren_verticals") else run
-        n = max(1, int(round(total / target))) if target > TOL else 1
+        horiz = rise / math.tan(math.radians(design["brace_angle_deg"]))
+        target = 2.0 * horiz if design["truss"] in ("warren", "warren_verticals") else horiz
+        n = max(1, int(round(run / target))) if target > TOL else 1
     else:
-        n = max(1, int(round(total / design["panel_length_m"])))
-    L = total / n
+        n = max(1, int(round(run / design["panel_length_m"])))
+    L = run / n
     # the plan bays run from post centreline to post centreline, so the end
     # cross beams sit on the posts' centre points
     d0, d1 = 0.0, span
@@ -311,7 +312,7 @@ def layout(design, frame):
     bays = design["plan_bays"] or n
     B = (d1 - d0) / bays
     return {"s0": s0, "s1": s1, "n": n, "L": L, "total": total,
-            "points": [s0 + L * i for i in range(n + 1)],
+            "points": [r0 + L * i for i in range(n + 1)], "r0": r0, "r1": r1, "run": run,
             "d0": d0, "d1": d1, "bays": bays, "B": B,
             "stations": [d0 + B * j for j in range(bays + 1)]}
 
@@ -407,29 +408,26 @@ def pieces(s0, s1, max_len):
 
 
 def stiffener_positions(design, frame):
-    """t of every deck stiffener line, set out between the side beam
-    centrelines (the truss planes, where the bottom chords run). By
-    spacing: exactly stiffener_spacing_m apart, counted in from both
-    side beams, so the first and last lines are one spacing from the
-    side beam centres (3.5 m at 0.5 m: six lines all 0.5 m apart); a
-    width that is not a multiple leaves the odd gap in the middle. By
-    count: stiffeners_across lines equally spaced."""
-    tl, tr = planes(design, frame)
-    width = tl - tr
+    """t of every deck stiffener line, centred on the floor. By spacing:
+    exactly stiffener_spacing_m from each other, as many as fit in the
+    deck width with at least half a spacing to each edge, the set
+    centred on the deck centreline (a 3.28 m deck between 3.5 m side
+    beam centres at 0.5 m: six lines 0.5 m apart, 0.5 m in from the
+    side beam centres). By count: stiffeners_across lines equally
+    spaced across the deck width."""
+    d0, d1, t_r, t_l = deck_extent(design, frame)
+    width = t_l - t_r
+    centre = (t_l + t_r) / 2.0
     if design["stiffener_mode"] == "count":
         k = design["stiffeners_across"]
-        return [tl - width * (m + 1) / float(k + 1) for m in range(k)]
+        return [t_l - width * (m + 1) / float(k + 1) for m in range(k)]
     sp = design["stiffener_spacing_m"]
-    if sp <= TOL or width <= sp + TOL:
+    if sp <= TOL:
         return []
-    k = int(math.floor(width / sp + 1e-9))        # full spacings that fit
-    rem = width - k * sp
-    n = k if rem > TOL else k - 1                 # lines: one fewer than the spacings when exact
-    a = int(math.ceil(n / 2.0))                   # from the left side beam
-    b = n - a                                     # from the right
-    left = [tl - sp * m for m in range(1, a + 1)]
-    right = [tr + sp * m for m in range(1, b + 1)]
-    return left + sorted(right, reverse=True)
+    n = int(math.floor(width / sp + 1e-9))
+    if n < 1:
+        return []
+    return [centre + sp * ((n - 1) / 2.0 - m) for m in range(n)]
 
 
 def railing_positions(design, frame):
@@ -483,15 +481,6 @@ def members(design, frame):
                     "stype": stype, "zjust": "top" if role in TOP_ALIGNED else "centre"})
 
     warren = design["truss"] in ("warren", "warren_verticals")
-    off = design["brace_end_offset_m"]
-
-    def foot(s):
-        # a diagonal's bottom end at a chord end moves in by the clearance, off the post
-        if abs(s - lay["s0"]) < TOL:
-            return s + off
-        if abs(s - lay["s1"]) < TOL:
-            return s - off
-        return s
     for side, t in (("L", tl), ("R", tr)):
         for k, (a, b) in enumerate(piece_spans(lay["s0"], lay["s1"], design["top_chord_pieces"],
                                                design["top_chord_split_m"], u"top chord")):
@@ -508,8 +497,8 @@ def members(design, frame):
             # one at every node
             for i in range(n):
                 mid = (pts[i] + pts[i + 1]) / 2.0
-                add("diagonal", side, i, (foot(pts[i]), t, zb), (mid, t, zt), 0)
-                add("diagonal", side, i, (mid, t, zt), (foot(pts[i + 1]), t, zb), 1)
+                add("diagonal", side, i, (pts[i], t, zb), (mid, t, zt), 0)
+                add("diagonal", side, i, (mid, t, zt), (pts[i + 1], t, zb), 1)
             if design["truss"] == "warren_verticals":
                 for i in range(1, n):
                     add("vertical", side, i, (pts[i], t, zb), (pts[i], t, zt), 0)
@@ -523,9 +512,7 @@ def members(design, frame):
                 for sub, (a, b) in enumerate(_diagonal(design["truss"], i, n, pts[i], pts[i + 1])):
                     za = zb if a[0] == "bottom" else zt
                     zb2 = zb if b[0] == "bottom" else zt
-                    sa = foot(a[1]) if a[0] == "bottom" else a[1]
-                    sb = foot(b[1]) if b[0] == "bottom" else b[1]
-                    add("diagonal", side, i, (sa, t, za), (sb, t, zb2), sub)
+                    add("diagonal", side, i, (a[1], t, za), (b[1], t, zb2), sub)
 
     # cross beams at every bay line, between the truss planes, tops on the
     # floor underside; the end ones sit on the posts' centre points and run
