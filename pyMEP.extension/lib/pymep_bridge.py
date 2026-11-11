@@ -603,6 +603,11 @@ def members(design, frame):
             ends.append(1)
         out[-1]["free_ends"] = ends
 
+    # the top nodes sit on the perpendicular to the sloping chords, not
+    # plumb above the bottom nodes: along the span they move by
+    # -(zt - zb) * sin * cos of the slope
+    g = float(frame.get("gradient", 0.0) or 0.0)
+    dtop = -(zt - zb) * g / (1.0 + g * g)
     for side, t in (("L", tl), ("R", tr)):
         tc0, tc1 = chord_extent(design, frame, "top_chord")
         tps = piece_spans(tc0, tc1, design["top_chord_pieces"], design["top_chord_split_m"], u"top chord")
@@ -620,25 +625,29 @@ def members(design, frame):
         if warren:
             # the drawing: bottom nodes at the panel points, top nodes at
             # mid-panel, diagonals zigzag between them - no verticals, or
-            # one at every node
+            # one at every node; every top node is where the perpendicular
+            # to the chords meets the top chord (dtop), so the triangles are
+            # true to the slope
             for i in range(n):
                 mid = (pts[i] + pts[i + 1]) / 2.0
-                add("diagonal", side, i, (pts[i], t, zb), (mid, t, zt), 0)
-                add("diagonal", side, i, (mid, t, zt), (pts[i + 1], t, zb), 1)
+                add("diagonal", side, i, (pts[i], t, zb), (mid + dtop, t, zt), 0)
+                add("diagonal", side, i, (mid + dtop, t, zt), (pts[i + 1], t, zb), 1)
             if design["truss"] == "warren_verticals":
                 for i in range(1, n):
-                    add("vertical", side, i, (pts[i], t, zb), (pts[i], t, zt), 0)
+                    add("vertical", side, i, (pts[i], t, zb), (pts[i] + dtop, t, zt), 0)
                 for i in range(n):
                     mid = (pts[i] + pts[i + 1]) / 2.0
-                    add("vertical", side, i, (mid, t, zb), (mid, t, zt), 1)
+                    add("vertical", side, i, (mid, t, zb), (mid + dtop, t, zt), 1)
         else:
             for i in range(1, n):
-                add("vertical", side, i, (pts[i], t, zb), (pts[i], t, zt))
+                add("vertical", side, i, (pts[i], t, zb), (pts[i] + dtop, t, zt))
             for i in range(n):
                 for sub, (a, b) in enumerate(_diagonal(design["truss"], i, n, pts[i], pts[i + 1])):
                     za = zb if a[0] == "bottom" else zt
                     zb2 = zb if b[0] == "bottom" else zt
-                    add("diagonal", side, i, (a[1], t, za), (b[1], t, zb2), sub)
+                    sa = a[1] if a[0] == "bottom" else a[1] + dtop
+                    sb = b[1] if b[0] == "bottom" else b[1] + dtop
+                    add("diagonal", side, i, (sa, t, za), (sb, t, zb2), sub)
 
     # cross beams at every bay line, between the truss planes, tops on the
     # floor underside; one that falls within a post's footprint runs between

@@ -176,6 +176,8 @@ function members(d){
   var lay = layout(d), pl = planes(d), tl = pl[0], tr = pl[1], zb = chordLevel(d), zt = heightOf(d), zd = d.deck_top_offset_m, zu = zd - d.floor_thickness_m;
   var zc = zb - Math.max(0, d.bottom_chord_depth_m || 0) / 2;   // the bottom chords' centre: the plan braces centre on it
   var pts = lay.points, n = lay.n, out = [], warren = d.truss === "warren" || d.truss === "warren_verticals";
+  // the top nodes sit on the perpendicular to the sloping chords, not plumb above the bottom nodes
+  var gm = effFrame(d).gradient, dtop = -(zt - zb) * gm / (1 + gm * gm);
   function add(role, side, i, p1, p2, sub){ out.push({key:role + ":" + side + ":" + i + ":" + (sub || 0), role:role, side:side, i:i, p1:p1, p2:p2}); }
   [["L", tl], ["R", tr]].forEach(function(st){
     var side = st[0], t = st[1];
@@ -185,11 +187,11 @@ function members(d){
     pieceSpans(bce[0], bce[1], d.bottom_chord_pieces, d.bottom_chord_split_m).forEach(function(ab, k){ add("bottom_chord", side, k, [ab[0],t,zb], [ab[1],t,zb]); });
     if (d.end_posts){ add("end_post", side, 0, [lay.s0,t,zb], [lay.s0,t,zt]); add("end_post", side, 1, [lay.s1,t,zb], [lay.s1,t,zt]); }
     if (warren){
-      for (var i = 0; i < n; i++){ var mid = (pts[i] + pts[i+1]) / 2; add("diagonal", side, i, [pts[i],t,zb], [mid,t,zt], 0); add("diagonal", side, i, [mid,t,zt], [pts[i+1],t,zb], 1); }
-      if (d.truss === "warren_verticals"){ for (var i1 = 1; i1 < n; i1++) add("vertical", side, i1, [pts[i1],t,zb], [pts[i1],t,zt], 0); for (var i2 = 0; i2 < n; i2++){ var m2 = (pts[i2] + pts[i2+1]) / 2; add("vertical", side, i2, [m2,t,zb], [m2,t,zt], 1); } }
+      for (var i = 0; i < n; i++){ var mid = (pts[i] + pts[i+1]) / 2; add("diagonal", side, i, [pts[i],t,zb], [mid + dtop,t,zt], 0); add("diagonal", side, i, [mid + dtop,t,zt], [pts[i+1],t,zb], 1); }
+      if (d.truss === "warren_verticals"){ for (var i1 = 1; i1 < n; i1++) add("vertical", side, i1, [pts[i1],t,zb], [pts[i1] + dtop,t,zt], 0); for (var i2 = 0; i2 < n; i2++){ var m2 = (pts[i2] + pts[i2+1]) / 2; add("vertical", side, i2, [m2,t,zb], [m2 + dtop,t,zt], 1); } }
     } else {
-      for (var i3 = 1; i3 < n; i3++) add("vertical", side, i3, [pts[i3],t,zb], [pts[i3],t,zt]);
-      for (var j = 0; j < n; j++) diagonal(d.truss, j, n, pts[j], pts[j+1]).forEach(function(ab, sub){ add("diagonal", side, j, [ab[0][1], t, ab[0][0]==="bottom"?zb:zt], [ab[1][1], t, ab[1][0]==="bottom"?zb:zt], sub); });
+      for (var i3 = 1; i3 < n; i3++) add("vertical", side, i3, [pts[i3],t,zb], [pts[i3] + dtop,t,zt]);
+      for (var j = 0; j < n; j++) diagonal(d.truss, j, n, pts[j], pts[j+1]).forEach(function(ab, sub){ add("diagonal", side, j, [ab[0][1] + (ab[0][0]==="bottom" ? 0 : dtop), t, ab[0][0]==="bottom"?zb:zt], [ab[1][1] + (ab[1][0]==="bottom" ? 0 : dtop), t, ab[1][0]==="bottom"?zb:zt], sub); });
     }
   });
   var st = lay.stations;

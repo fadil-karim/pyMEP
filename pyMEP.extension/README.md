@@ -1013,7 +1013,12 @@ across), the end gap and none.
 The default truss is the Warren of the reference drawing: top nodes at
 mid-panel, no verticals, so a 22.5 m chord in 2.5 m panels puts the
 first top node 1.25 m in; Warren with verticals, Pratt, Howe, X and
-Vierendeel are the other choices. The run of diagonals starts a
+Vierendeel are the other choices. On a sloping bridge the side frames
+are true to the slope: each top node is where the line perpendicular
+to the chords from its bottom node meets the top chord, not plumb
+above it, so the Warren triangles are isosceles to the chord (verticals
+lean with it); the chords themselves still end at the plumb posts.
+The run of diagonals starts a
 clearance (150 mm by default) in from each chord end so the end
 diagonals clear the posts; the whole run shortens evenly, every
 diagonal keeping the same angle, while the chords run the full length. The truss height is to the top of steel of the top chord

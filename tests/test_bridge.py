@@ -195,7 +195,7 @@ class Members(unittest.TestCase):
     def test_warren_as_drawn(self):
         """22500 span, 2500 panels, top nodes at 1250 + k * 2500, 1800 high,
         diagonals at 55 degrees - the drawing."""
-        f = BR.frame_from_posts(*posts(span=22.5, h=1.8, size=0.0))
+        f = BR.frame_from_posts(*posts(span=22.5, h=1.8, size=0.0, z0=10.0, z1=10.0))   # level, as drawn
         d = design(truss="warren", panel_mode="length", panel_length_m=2.5, chord_extension_m=0.0,
                    deck_clearance_m=0.0)
         mems = BR.members(d, f)
@@ -570,16 +570,53 @@ class Members(unittest.TestCase):
         with self.assertRaises(ValueError):
             BR.normalize_design({"railing_width_m": 0})
 
+    def test_top_nodes_perpendicular_to_the_slope(self):
+        # FRAME rises 2 m over 20 m: each top node is where the perpendicular to
+        # the chords from its bottom node meets the top chord, so it sits
+        # -(zt - zb) * g / (1 + g^2) along the span from plumb, and the Warren
+        # triangles are isosceles to the chord
+        g = 0.1
+        d = design(truss="warren")
+        mems = BR.members(d, FRAME)
+        lay = BR.layout(d, FRAME)
+        dtop = -2.3 * g / (1 + g * g)
+        a = by_key(mems, u"diagonal:L:0:0")
+        b = by_key(mems, u"diagonal:L:0:1")
+        mid = (lay["points"][0] + lay["points"][1]) / 2.0
+        self.assertAlmostEqual(a["p2"][0], mid + dtop)
+        self.assertAlmostEqual(b["p1"][0], mid + dtop)
+        # in the plane of the slope the two legs are equal
+        def leg(m):
+            ds, dz = m["p2"][0] - m["p1"][0], (m["p2"][2] + g * m["p2"][0]) - (m["p1"][2] + g * m["p1"][0])
+            return math.hypot(ds, dz)
+        self.assertAlmostEqual(leg(a), leg(b))
+        # the apex is on the perpendicular from the bottom chord's mid-panel point
+        bx, bz = mid, g * mid
+        ax, az = a["p2"][0], a["p2"][2] + g * a["p2"][0]
+        self.assertAlmostEqual((ax - bx) * 1.0 + (az - bz) * g, 0.0)              # at right angles to the chord direction (1, g)
+        # verticals lean with it; the chords and their ends at the posts do not move
+        p = BR.members(design(truss="pratt"), FRAME)
+        v = by_key(p, u"vertical:L:1:0")
+        self.assertAlmostEqual(v["p2"][0] - v["p1"][0], dtop)
+        self.assertAlmostEqual(by_key(p, u"top_chord:L:0:0")["p1"][0], -0.1)
+        # level: nothing moves
+        s, e = posts(z0=10.0, z1=10.0)
+        flat = BR.members(design(truss="warren"), BR.frame_from_posts(s, e))
+        fa = by_key(flat, u"diagonal:L:0:0")
+        self.assertAlmostEqual(fa["p2"][0], (BR.layout(design(truss="warren"), BR.frame_from_posts(s, e))["points"][0] +
+                                             BR.layout(design(truss="warren"), BR.frame_from_posts(s, e))["points"][1]) / 2.0)
+
     def test_end_diagonal_clearance(self):
         # the run of diagonals starts the clearance in from each chord end, so
         # the whole run shortens evenly and every diagonal keeps the same angle;
         # the chords still run the full length
         d = design(truss="warren", brace_end_offset_m=0.15)
-        lay = BR.layout(d, FRAME)
+        level = BR.frame_from_posts(*posts(z0=10.0, z1=10.0))      # level: the top nodes are plumb over mid-panel
+        lay = BR.layout(d, level)
         self.assertAlmostEqual(lay["r0"], -0.1 + 0.15)
         self.assertAlmostEqual(lay["r1"], 20.1 - 0.15)
         self.assertAlmostEqual(lay["L"], (20.2 - 0.3) / 4.0)
-        mems = BR.members(d, FRAME)
+        mems = BR.members(d, level)
         first = by_key(mems, u"diagonal:L:0:0")
         self.assertAlmostEqual(first["p1"][0], 0.05)
         self.assertAlmostEqual(first["p1"][2], 0.0)
