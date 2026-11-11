@@ -1024,7 +1024,10 @@ plan bracing (by default one diagonal at a time from side beam to
 side beam over two bays, alternating, as the drawing - the bays per
 diagonal can be changed, and an X in every bay or none are the other
 choices; a diagonal is always cut at every cross beam it crosses, and
-"split each X at its centre" does the same for an X), the cross beams
+"split each X at its centre" does the same for an X; the two buttons on
+the plan, "Mirror bracing along" and "Mirror bracing across", mirror
+the layout end for end and side for side - each is its own setting,
+also on a brace's ring and in Settings), the cross beams
 (on the side frames' bottom nodes, so they meet the brace connection
 points and move with the end clearance; with a typed count they are
 spread equally between the end nodes) and the optional beams between the cross

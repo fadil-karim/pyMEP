@@ -81,6 +81,8 @@ DEFAULTS = {
     "bracing": "zigzag",
     "brace_bays": 2,                 # bays each zigzag diagonal spans (2: side beam to side beam over two bays)
     "split_x": True,                 # an X split at its centre (long diagonals are always cut at the cross beams)
+    "brace_mirror_span": False,      # plan bracing mirrored end for end (about mid-span)
+    "brace_mirror_across": False,    # plan bracing mirrored side for side (about the centreline)
     "stiffener_mode": "spacing",     # "spacing": lines at stiffener_spacing_m; "count": stiffeners_across lines
     "stiffener_spacing_m": 0.5,      # between the side beam centres (the truss planes), first and last included
     "stiffeners_across": 1,          # stiffener lines per bay across the deck in count mode; 0 = none
@@ -169,6 +171,8 @@ def normalize_design(d):
     out["brace_bays"] = max(1, out["brace_bays"])
     out["end_posts"] = bool(out["end_posts"])
     out["split_x"] = bool(out["split_x"])
+    out["brace_mirror_span"] = bool(out["brace_mirror_span"])
+    out["brace_mirror_across"] = bool(out["brace_mirror_across"])
     out["types"] = dict(out["types"] or {})
     return out
 
@@ -665,6 +669,23 @@ def members(design, frame):
                 add("bracing", "C", k, (st[j], t_a, zc), (st[j2], t_b, zc), 0)
             j = j2
             k += 1
+    # mirror the plan bracing end for end and / or side for side: the
+    # stations are symmetric about mid-span and the planes swap, so every
+    # brace still runs cross beam to cross beam and side beam to side beam
+    if design["brace_mirror_span"] or design["brace_mirror_across"]:
+        s_sum, t_sum = st[0] + st[-1], tl + tr
+
+        def _mirror(p):
+            s, t, z = p
+            if design["brace_mirror_span"]:
+                s = s_sum - s
+            if design["brace_mirror_across"]:
+                t = t_sum - t
+            return (s, t, z)
+        for m in out:
+            if m["role"] == "bracing":
+                m["p1"] = _mirror(m["p1"])
+                m["p2"] = _mirror(m["p2"])
     # beams along the span between consecutive cross beams, spread evenly
     # between the truss planes, tops on the floor underside like the cross beams
     ks = design["stringers_across"]

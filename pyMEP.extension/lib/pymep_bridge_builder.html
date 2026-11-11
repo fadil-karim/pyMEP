@@ -24,6 +24,8 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(520px,3fr) mi
 .panel{position:relative;border:1px solid var(--line);border-radius:4px;background:#fff;display:flex;flex-direction:column;min-height:0}
 .panel h2{font-size:12.5px;margin:0;padding:6px 10px;border-bottom:1px solid #eee;color:#333;display:flex;gap:10px;align-items:center}
 .panel h2 .legend{color:var(--muted);font-weight:400;font-size:11px}
+.panel h2 button.tog{padding:2px 8px;font-size:11px}
+.panel h2 button.tog.on{background:var(--acc);border-color:#c98b00;font-weight:600}
 .panel h2 .legend span{display:inline-block;width:12px;height:3px;margin:0 4px 2px 8px;vertical-align:middle}
 .panel svg{flex:1;width:100%;height:100%;display:block;background:#fff;user-select:none;-webkit-user-select:none;touch-action:none}
 #p-elev{flex:1.6} #p-plan{flex:1} #p-sect{flex:1.1}
@@ -79,7 +81,7 @@ text.lbl{fill:#555}
   <div class="tiles" id="tiles"></div>
   <div class="views">
     <div class="panel" id="p-elev"><h2>Elevation - left truss <span class="legend">click a blue value to change it; click a member for its family; click an end edge for its level</span></h2><svg id="elev" viewBox="0 0 1000 390" preserveAspectRatio="xMidYMid meet"></svg></div>
-    <div class="panel" id="p-plan"><h2>Plan from below <span class="legend"><span style="background:var(--steel)"></span>cross beams and beams between <span style="background:var(--brace)"></span>bracing <span style="background:var(--stiff)"></span>stiffeners <span style="background:var(--rail)"></span>railings</span></h2><svg id="plan" viewBox="0 0 1000 250" preserveAspectRatio="xMidYMid meet"></svg></div>
+    <div class="panel" id="p-plan"><h2>Plan from below <span class="legend"><span style="background:var(--steel)"></span>cross beams and beams between <span style="background:var(--brace)"></span>bracing <span style="background:var(--stiff)"></span>stiffeners <span style="background:var(--rail)"></span>railings</span><button id="mirSpan" class="tog" style="margin-left:auto" title="mirror the plan bracing end for end (about mid-span)">Mirror bracing &#8596; along</button><button id="mirAcross" class="tog" title="mirror the plan bracing side for side (about the centreline)">Mirror bracing &#8597; across</button></h2><svg id="plan" viewBox="0 0 1000 250" preserveAspectRatio="xMidYMid meet"></svg></div>
     <div class="panel" id="p-sect"><h2>Section <span class="legend">deck, chords, cross beam, posts</span></h2><svg id="sect" viewBox="0 0 600 300" preserveAspectRatio="xMidYMid meet"></svg></div>
   </div>
   <div class="panel v3" id="p-3d"><h2>3D <span class="legend">drag orbits, right-drag pans, wheel zooms, right-click a member for its family</span><button id="fit3d" style="margin-left:auto;padding:2px 8px;font-size:11px">Fit</button><button id="iso3d" style="padding:2px 8px;font-size:11px">Iso</button><button id="under3d" style="padding:2px 8px;font-size:11px">Under</button></h2><svg id="v3"></svg><div class="hint" id="info3d">Hover a member to see what it is.</div></div>
@@ -91,7 +93,7 @@ text.lbl{fill:#555}
 var DATA = /*__BRIDGE_DATA__*/null;
 var DEFAULTS = {truss:"warren",panel_mode:"length",brace_angle_deg:55,panel_length_m:2.5,panels:9,height_m:null,level_start_m:null,level_end_m:null,
   truss_plane:"centre",bottom_chord_offset_m:null,bottom_chord_cutback_m:0.01,crossbeam_depth_m:0,top_chord_split_m:0,bottom_chord_split_m:0,top_chord_pieces:[],bottom_chord_pieces:[],chord_extension_m:null,brace_end_offset_m:0.15,end_posts:false,
-  deck_top_offset_m:0,deck_end_m:null,deck_clearance_m:0.01,floor_thickness_m:0.006,bottom_chord_depth_m:0,plan_bays:null,bracing:"zigzag",brace_bays:2,split_x:true,stringers_across:0,
+  deck_top_offset_m:0,deck_end_m:null,deck_clearance_m:0.01,floor_thickness_m:0.006,bottom_chord_depth_m:0,plan_bays:null,bracing:"zigzag",brace_bays:2,split_x:true,brace_mirror_span:false,brace_mirror_across:false,stringers_across:0,
   stiffener_mode:"spacing",stiffener_spacing_m:0.5,stiffeners_across:1,stiffener_gap_m:0.1,railing_inset_m:0.1,railing_width_m:null,types:{},level:null};
 var TRUSSES = [["warren","Warren - top nodes at mid-panel (as the drawing)"],["warren_verticals","Warren with verticals"],
   ["pratt","Pratt"],["howe","Howe"],["x","X braced"],["vierendeel","Vierendeel"]];
@@ -204,6 +206,12 @@ function members(d){
       else add("bracing","C",kz,[st[jz],ta,zc],[st[jb],tb,zc],0);
       jz = jb; kz++;
     }
+  }
+  if (d.brace_mirror_span || d.brace_mirror_across){
+    // mirror the plan bracing end for end and / or side for side
+    var sSum = st[0] + st[st.length - 1], tSum = tl + tr;
+    var mir = function(p){ return [d.brace_mirror_span ? sSum - p[0] : p[0], d.brace_mirror_across ? tSum - p[1] : p[1], p[2]]; };
+    out.forEach(function(m){ if (m.role === "bracing"){ m.p1 = mir(m.p1); m.p2 = mir(m.p2); } });
   }
   var ks = Math.max(0, d.stringers_across || 0);
   if (ks > 0) for (var j4 = 0; j4 < st.length - 1; j4++) for (var q = 0; q < ks; q++){ var tq = tr + (tl - tr) * (q + 1) / (ks + 1); add("stringer", "C", j4, [st[j4],tq,zu], [st[j4+1],tq,zu], q); }
@@ -394,6 +402,8 @@ function settingsPop(x, y){
     '<label>End diagonal clearance <span style="color:#666">mm, in from each chord end; the whole run of diagonals shortens evenly</span> <input type="number" min="0" step="10" id="sp_boff" value="' + mm(design.brace_end_offset_m) + '"></label>' +
     '<label class="check"><span>End posts (the picked posts usually are them)</span><input type="checkbox" id="sp_posts"' + (design.end_posts ? " checked" : "") + '></label>' +
     '<label>Bays per brace diagonal <span style="color:#666">single diagonals</span> <input type="number" min="1" step="1" id="sp_bb" value="' + (design.brace_bays || 1) + '"></label>' +
+    '<label class="check"><span>Mirror the plan bracing along the span (end for end)</span><input type="checkbox" id="sp_mspan"' + (design.brace_mirror_span ? " checked" : "") + '></label>' +
+    '<label class="check"><span>Mirror the plan bracing across (side for side)</span><input type="checkbox" id="sp_macross"' + (design.brace_mirror_across ? " checked" : "") + '></label>' +
     '<label class="check"><span>Split each X at its centre (diagonals are always cut at the cross beams)</span><input type="checkbox" id="sp_splitx"' + (design.split_x ? " checked" : "") + '></label>' +
     '<label>Beams between cross beams <span style="color:#666">per bay, 0 = none</span> <input type="number" min="0" step="1" id="sp_str" value="' + (design.stringers_across || 0) + '"></label>' +
     '<label>Stiffeners set out by <select id="sp_smode"><option value="spacing"' + (design.stiffener_mode === "spacing" ? " selected" : "") + '>spacing</option><option value="count"' + (design.stiffener_mode === "count" ? " selected" : "") + '>count</option></select></label>' +
@@ -410,6 +420,8 @@ function settingsPop(x, y){
     p.querySelector("#sp_boff").oninput = function(ev){ var v = parseFloat(ev.target.value); if (!isNaN(v) && v >= 0) setDesign("brace_end_offset_m", v / 1000); };
     p.querySelector("#sp_posts").onchange = function(ev){ setDesign("end_posts", ev.target.checked); };
     p.querySelector("#sp_bb").oninput = function(ev){ var v = parseInt(ev.target.value, 10); if (!isNaN(v)) setDesign("brace_bays", Math.max(1, v)); };
+    p.querySelector("#sp_mspan").onchange = function(ev){ setDesign("brace_mirror_span", ev.target.checked); };
+    p.querySelector("#sp_macross").onchange = function(ev){ setDesign("brace_mirror_across", ev.target.checked); };
     p.querySelector("#sp_splitx").onchange = function(ev){ setDesign("split_x", ev.target.checked); };
     p.querySelector("#sp_str").oninput = function(ev){ var v = parseInt(ev.target.value, 10); if (!isNaN(v)) setDesign("stringers_across", Math.max(0, v)); };
     p.querySelector("#sp_smode").onchange = function(ev){ setDesign("stiffener_mode", ev.target.value); };
@@ -449,6 +461,7 @@ function memberRing(role, x, y){
     if (role === "crossbeam") items.push({label:"Cross beams between... (" + (model.layout.bays - 1) + ")", run:function(){ inlineEditAt(x, y, {value:model.layout.bays - 1, unit:"n", min:0, set:function(v){ setDesign("plan_bays", Math.max(0, Math.round(v)) + 1); }}); }});
     [["zigzag","Single diagonals"],["x","X bracing"],["none","No bracing"]].forEach(function(b){ if (b[0] !== design.bracing) items.push({label:b[1], run:function(){ setDesign("bracing", b[0]); }}); });
     if (design.bracing === "zigzag") items.push({label:"Bays per diagonal... (" + (design.brace_bays || 1) + ")", run:function(){ inlineEditAt(x, y, {value:design.brace_bays || 1, unit:"n", min:1, set:function(v){ setDesign("brace_bays", Math.max(1, Math.round(v))); }}); }});
+    if (design.bracing !== "none") items.push({label:(design.brace_mirror_span ? "Unmirror" : "Mirror") + " along the span", run:function(){ setDesign("brace_mirror_span", !design.brace_mirror_span); }}, {label:(design.brace_mirror_across ? "Unmirror" : "Mirror") + " across", run:function(){ setDesign("brace_mirror_across", !design.brace_mirror_across); }});
     if (design.bracing === "x") items.push({label:design.split_x ? "Whole X pieces" : "Split X at centre", run:function(){ setDesign("split_x", !design.split_x); }});
     items.push({label:"Beams between... (" + (design.stringers_across || 0) + ")", run:function(){ inlineEditAt(x, y, {value:design.stringers_across || 0, unit:"n", min:0, set:function(v){ setDesign("stringers_across", Math.max(0, Math.round(v))); }}); }});
     if (role === "stringer") items.push({label:"One fewer", run:function(){ setDesign("stringers_across", Math.max(0, design.stringers_across - 1)); }}, {label:"One more", run:function(){ setDesign("stringers_across", (design.stringers_across || 0) + 1); }});
@@ -642,6 +655,8 @@ function render(){
   var rt = el(se, "text", {x:SW - 8, y:SH - 8, "text-anchor":"end", "font-size":11, "class":"dim"}, "railing inset " + mm(design.railing_inset_m));
   rt.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(rt, {value:design.railing_inset_m, unit:"mm", set:function(v){ setDesign("railing_inset_m", Math.max(0, v)); }}); });
   el(se, "text", {x:8, y:SH - 8, "font-size":11, "class":"lbl"}, "floor " + mm(design.floor_thickness_m) + " mm - cross beam top at " + (res.zu >= 0 ? "+" : "") + mm(res.zu));
+  $("mirSpan").classList.toggle("on", !!design.brace_mirror_span);
+  $("mirAcross").classList.toggle("on", !!design.brace_mirror_across);
   draw3d();
 }
 function levelRing(key, which, x, y){
@@ -740,6 +755,8 @@ V3.addEventListener("pointerup", function(e){
 });
 V3.addEventListener("contextmenu", function(e){ e.preventDefault(); });
 V3.addEventListener("wheel", function(e){ e.preventDefault(); var r = v3Rect(), sp = sp3(e), ns = Math.max(0.5, Math.min(400, cam.s * Math.exp(-e.deltaY * 0.0016))), g = ns / cam.s; cam.px = sp[0] - r.width / 2 - (sp[0] - r.width / 2 - cam.px) * g; cam.py = sp[1] - r.height / 2 - (sp[1] - r.height / 2 - cam.py) * g; cam.s = ns; draw3d(); }, {passive:false});
+$("mirSpan").onclick = function(){ setDesign("brace_mirror_span", !design.brace_mirror_span); };
+$("mirAcross").onclick = function(){ setDesign("brace_mirror_across", !design.brace_mirror_across); };
 $("fit3d").onclick = fit3d; $("iso3d").onclick = function(){ cam.az = -35; cam.el = 25; fit3d(); }; $("under3d").onclick = function(){ cam.az = -35; cam.el = -30; fit3d(); };
 new ResizeObserver(function(){ draw3d(); }).observe(V3);
 

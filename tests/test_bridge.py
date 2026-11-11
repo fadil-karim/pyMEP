@@ -238,6 +238,41 @@ class Members(unittest.TestCase):
         with self.assertRaises(ValueError):
             BR.normalize_design({"top_chord_pieces": [0, 3.0]})
 
+    def test_mirror_plan_bracing(self):
+        def braces(**kw):
+            # as undirected segments, so a mirrored piece compares equal to the original
+            return sorted(tuple(sorted([(round(m["p1"][0], 6), round(m["p1"][1], 6)), (round(m["p2"][0], 6), round(m["p2"][1], 6))]))
+                          for m in BR.members(design(**kw), FRAME) if m["role"] == "bracing")
+        base = BR.members(design(plan_bays=5), FRAME)            # odd: a single-bay diagonal at the end
+        st = BR.layout(design(plan_bays=5), FRAME)["stations"]
+        first = by_key(base, u"bracing:C:0:0")
+        self.assertAlmostEqual(first["p1"][0], st[0])
+        self.assertAlmostEqual(first["p1"][1], 1.5)              # starts on the left side beam
+        # across: the same stations, the sides swapped
+        across = by_key(BR.members(design(plan_bays=5, brace_mirror_across=True), FRAME), u"bracing:C:0:0")
+        self.assertAlmostEqual(across["p1"][0], st[0])
+        self.assertAlmostEqual(across["p1"][1], -1.5)
+        # along: end for end - the first diagonal now starts at the far end and
+        # the single-bay piece moves to the start
+        along = BR.members(design(plan_bays=5, brace_mirror_span=True), FRAME)
+        self.assertAlmostEqual(by_key(along, u"bracing:C:0:0")["p1"][0], st[-1])
+        single = by_key(along, u"bracing:C:2:0")
+        self.assertEqual(sorted([round(single["p1"][0], 6), round(single["p2"][0], 6)]), [round(st[0], 6), round(st[1], 6)])
+        # every brace still runs cross beam to cross beam
+        for m in along:
+            if m["role"] == "bracing":
+                self.assertTrue(any(abs(m["p1"][0] - s) < 1e-9 for s in st))
+                self.assertTrue(any(abs(m["p2"][0] - s) < 1e-9 for s in st))
+        # both = a half turn; twice the same mirror = the original
+        both = braces(plan_bays=5, brace_mirror_span=True, brace_mirror_across=True)
+        self.assertNotEqual(both, braces(plan_bays=5))
+        self.assertEqual(len(both), len(braces(plan_bays=5)))
+        d = BR.normalize_design({})
+        self.assertFalse(d["brace_mirror_span"])
+        self.assertFalse(d["brace_mirror_across"])
+        # the X is symmetric both ways: mirroring leaves it as it was
+        self.assertEqual(braces(bracing="x", brace_mirror_span=True, brace_mirror_across=True), braces(bracing="x"))
+
     def test_bottom_chord_cutback(self):
         # the bottom chords stop the cutback short of the post faces at each
         # end; the top chords, the diagonals and the cross beams do not move
