@@ -1098,19 +1098,31 @@ checked, and the report says how many took) at a typed
 railing-to-railing width centred on the bridge centreline, or along
 both edges less the inset when no width is typed. Members carry the bridge name in Comments and every element id
 is recorded against the bridge name in `bridges.json` in the model's
-pyMEP folder; building a name again replaces its elements, as does
-building the same posts under a new name.
+pyMEP folder, with the design file it came from. Building a bridge
+that is already built - by name or by its posts - offers **Update in
+place** (the default) or a rebuild with new elements.
 
-**Update Bridges** - after the posts move or change: opens the same
-Bridges dialog with a tick box per bridge and its status, then for the
-ticked ones reads the posts again
-and puts each framing member onto its new line, keeping the element
-ids (so tags and dimensions survive); a changed span that adds or drops
-panels creates or deletes just those members. When only the position
-changed (same span, width, height and fall) the deck moves with the
-bridge and its stiffeners and railings follow their host; otherwise
-the deck is rebuilt and the stiffeners and railings made again. One
-undo step per bridge, and a table says what happened to each.
+Updates are tracked: Build Bridge on a built bridge and Update Bridges
+take the same path, which keeps element ids so dimensions and tags on
+the bridge survive. Members still in the design are put on their new
+lines, re-typed and re-justified in place; members the design no
+longer has are removed and new ones added. The deck floor is kept
+(re-typed in place if its type changed) when its outline and fall are
+unchanged, moved with its stiffeners and railings when it has only
+slid or turned, and rebuilt only when its outline, fall or level
+changed - then its stiffeners and railings are made again on it, and
+tags on those are lost; otherwise stiffeners and railings are kept and
+moved onto their new lines.
+
+**Update Bridges** - after the posts move or the design changes: opens
+the same Bridges dialog with a tick box per bridge and its status
+(including "newer design saved" when Bridge Builder saved changes that
+are not built yet), then for the ticked ones reads the posts again and
+takes the newest design file saved for that bridge, then brings the
+model to it in place as described above - element ids kept, so tags
+and dimensions survive. A bridge whose posts have not moved and that
+has no newer design is left alone. One undo step per bridge, and a
+table says what happened to each.
 
 Railing infill panels are whatever the chosen railing type draws; the
 trusses are the structure above the deck.

@@ -32,6 +32,7 @@ from pyrevit import revit, forms, script
 
 import pymep_bridge as BR
 import pymep_bridge_revit as RV
+import pymep_bridge_sync as SYNC
 from pymep_config import get_downloads_folder
 from pymep_revit import id_value, make_id, quiet
 
@@ -81,117 +82,60 @@ try:
 except ValueError as ex:
     forms.alert(u"{0}\n\nRun Bridge Builder again.".format(ex), exitscript=True)
 
-# types and level
-framing = RV.framing_types(doc)
-floors = RV.floor_types(doc)
-levels = RV.levels(doc)
-if not framing:
-    forms.alert("No structural framing family is loaded.", exitscript=True)
-if not floors or not levels:
-    forms.alert("The model needs a floor type and a level for the deck.", exitscript=True)
-symbols = {}
-for role in BR.FRAMING_ROLES:
-    symbols[role] = RV.first_of(framing, u"{0}".format(design["types"].get(role) or u""), doc)
-floor_type = RV.first_of(floors, u"{0}".format(design["types"].get("floor") or u""), doc)
-design["floor_thickness_m"] = RV.floor_thickness_m(floor_type) or design["floor_thickness_m"]
-design["bottom_chord_depth_m"] = RV.section_depth_m(symbols.get("bottom_chord"))
-design["crossbeam_depth_m"] = RV.section_depth_m(symbols.get("crossbeam"))
-stiff_id = u"{0}".format(design["types"].get("stiffener") or u"none")
-stiffener_sym = RV.by_id(doc, stiff_id) if stiff_id not in (u"", u"none") else None
-rail_id = u"{0}".format(design["types"].get("railing") or u"none")
-railing_type = RV.by_id(doc, rail_id) if rail_id not in (u"", u"none") else None
-level = RV.first_of(levels, u"{0}".format(design.get("level") or u""), doc)
-if level is None:
-    below = [l for l in levels if l["elevation_m"] <= frame["z0"]]
-    level = RV.by_id(doc, (below[-1] if below else levels[0])["id"])
+# types and level (the values read from the types go into the design)
+try:
+    types = SYNC.resolve(doc, design, frame)
+except ValueError as ex:
+    forms.alert(u"{0}".format(ex), exitscript=True)
+symbols = types["symbols"]
+stiffener_sym = types["stiffener"]
+railing_type = types["railing"]
+level = types["level"]
 
 registry_file = RV.registry_path(doc)
 registry = BR.load_registry(registry_file)
 old = registry["bridges"].get(name)
 renamed_from = None
 if old is None:
-    # the same posts under another name: that bridge is the one being rebuilt (renamed)
+    # the same posts under another name: that bridge is the one being changed (renamed)
     other = BR.bridge_with_source(registry, source)
     if other:
         old = registry["bridges"][other]
         renamed_from = other
+rebuild = False
 if old:
-    if forms.alert(u"'{0}' was built before ({1}){2}. Replace its elements with this design?".format(
+    pick = forms.alert(
+        u"'{0}' is already built ({1}){2}.\n\nUpdate it in place: its elements keep their ids, so "
+        u"dimensions and tags on it stay - members the design no longer has are removed and new "
+        u"ones added. Or rebuild it with all-new elements.".format(
             renamed_from or name, old.get("updated", "?"),
-            u" - it becomes '{0}'".format(name) if renamed_from else u""), title="Build Bridge",
-            options=["Replace", "Cancel"]) != "Replace":
+            u" - it becomes '{0}'".format(name) if renamed_from else u""),
+        title="Build Bridge", options=["Update in place", "Rebuild with new elements", "Cancel"])
+    if pick == "Rebuild with new elements":
+        rebuild = True
+    elif pick != "Update in place":
         script.exit()
 
 shared_elev = RV.project_position(doc)["elev_m"]
-mems = BR.world_members(design, frame, shared_elev)
-deck = BR.world_deck(design, frame, shared_elev)
-member_ids = {}
-failed = []
-rails_made = rails_hosted = 0
-floor_id = None
-t = Transaction(doc, u"pyMEP: Build bridge '{0}'".format(name))
+t = Transaction(doc, u"pyMEP: {0} bridge '{1}'".format("Update" if old and not rebuild else "Build", name))
 quiet(t)
 t.Start()
 try:
-    if old:
+    base = old
+    if old and rebuild:
         RV.delete_quiet(doc, list(old.get("members", {}).values()) +
                         ([old["floor"]] if old.get("floor") else []))
-    for sym in set(s for s in symbols.values() if s is not None):
-        RV.activate(sym, doc)
-    if stiffener_sym is not None:
-        RV.activate(stiffener_sym, doc)
-    floor = None
-    try:
-        floor = RV.create_deck(doc, deck, floor_type, level)
-        RV.set_mark_comments(floor, name)
-        floor_id = id_value(floor.Id)
-        doc.Regenerate()
-    except Exception as ex:
-        failed.append(({"key": "deck", "role": "deck"}, u"{0}".format(ex)))
-    for m in mems:
-        try:
-            if m["role"] == "stiffener":
-                if stiffener_sym is None:
-                    continue
-                el = RV.create_stiffener(doc, m, stiffener_sym, floor, level)
-            elif m["role"] == "railing":
-                if railing_type is None:
-                    continue
-                el = RV.create_railing(doc, m, railing_type, floor, level)
-                rails_made += 1
-                if RV.is_hosted_on(el, floor):
-                    rails_hosted += 1
-            else:
-                sym = symbols.get(m["role"])
-                if sym is None:
-                    failed.append((m, u"no framing type"))
-                    continue
-                el = RV.create_member(doc, m, sym, level)
-            RV.set_mark_comments(el, name)
-            member_ids[m["key"]] = id_value(el.Id)
-        except Exception as ex:
-            failed.append((m, u"{0}".format(ex)))
-    # the posts reach the top of steel of the top chords
-    posts_note = u""
-    try:
-        eff = BR.effective_frame(design, frame, shared_elev)
-        zt = BR.height(design, frame)
-        rise = 0.0
-        for m in mems:
-            if m["role"] == "top_chord" and m["key"] in member_ids:
-                rise = RV.rise_above_line(doc, doc.GetElement(make_id(member_ids[m["key"]])), m)
-                break
-        z_start = BR.to_world(eff, 0.0, 0.0, zt)[2] + rise
-        z_end = BR.to_world(eff, frame["span"], 0.0, zt)[2] + rise
-        n_posts = RV.set_post_tops(doc, source["start_ids"], z_start) + RV.set_post_tops(doc, source["end_ids"], z_end)
-        posts_note = u"{0} post(s) set to the top of steel of the top chord ({1:.3f} / {2:.3f} m)".format(
-            n_posts, z_start + shared_elev, z_end + shared_elev)
-    except Exception as ex:
-        posts_note = u"posts not adjusted: {0}".format(ex)
+        base = None
+    res = SYNC.sync(doc, name, design, source, frame, base, types, shared_elev)
     t.Commit()
 except Exception as ex:
     t.RollBack()
-    forms.alert(u"Failed, nothing built:\n\n{0}".format(ex), exitscript=True)
+    forms.alert(u"Failed, nothing changed:\n\n{0}".format(ex), exitscript=True)
+member_ids = res["member_ids"]
+floor_id = res["floor_id"]
+failed = res["failed"]
+mems = res["members"]
+rails_made, rails_hosted, posts_note = res["rails_made"], res["rails_hosted"], res["posts"]
 # the posts as they are now, for the tracking record
 try:
     frame = BR.frame_from_posts(RV.posts_from_ids(doc, source["start_ids"]), RV.posts_from_ids(doc, source["end_ids"]))
@@ -201,7 +145,8 @@ except Exception:
 stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 if renamed_from and renamed_from != name:
     registry["bridges"].pop(renamed_from, None)
-registry["bridges"][name] = BR.record(name, design, source, frame, member_ids, floor_id, stamp)
+registry["bridges"][name] = BR.record(name, design, source, frame, member_ids, floor_id, stamp,
+                                      extra={"design_file": path, "design_mtime": os.path.getmtime(path)})
 try:
     BR.save_registry(registry_file, registry)
 except Exception as ex:
@@ -221,6 +166,8 @@ except Exception:
 summ = BR.summary(design, frame, mems)
 eff = BR.effective_frame(design, frame, shared_elev)
 output.print_md("### Build Bridge - {0}".format(name))
+if old and not rebuild:
+    output.print_md(u"**Updated in place** - element ids kept: {0}".format(SYNC.summary_line(res)))
 output.print_md(u"**Posts:** {0}".format(posts_note))
 if rails_made:
     output.print_md(u"**Railings:** {0} placed, {1} hosted on the deck{2}".format(
@@ -251,8 +198,10 @@ if failed:
     output.print_table(table_data=[[m.get("key"), why] for m, why in failed],
                        title="Failed ({0})".format(len(failed)), columns=["Member", "Why"])
 output.print_md("Tracked in `{0}` - move the posts and run **Update Bridges**.".format(registry_file))
-forms.alert(u"'{0}' built: {1} element(s){2} and the deck{3}.\n\nThe elements are selected; one "
-            u"undo step removes them.".format(
-                name, len(member_ids), u", {0} failed".format(len(failed)) if failed else u"",
-                u"" if floor_id else u" (deck FAILED - see the output window)"),
+forms.alert(u"'{0}' {1}: {2} element(s){3} and the deck{4}.{5}\n\nThe elements are selected; one "
+            u"undo step reverses it.".format(
+                name, u"updated in place" if old and not rebuild else u"built", len(member_ids),
+                u", {0} failed".format(len(failed)) if failed else u"",
+                u"" if floor_id else u" (deck FAILED - see the output window)",
+                u"\n\n" + SYNC.summary_line(res) if old and not rebuild else u""),
             title="Build Bridge")

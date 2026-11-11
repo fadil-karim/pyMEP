@@ -956,15 +956,77 @@ def next_name(registry, stem=u"Bridge"):
 FRAME_KEYS = ("z0", "z1", "span", "angle", "tL", "tR", "post_size", "post_height")
 
 
-def record(name, design, source, frame, member_ids, floor_id, stamp):
+def record(name, design, source, frame, member_ids, floor_id, stamp, extra=None):
     """A registry record for a built bridge. member_ids: {key: element
-    id}."""
+    id}. extra: more keys to keep (the design file it came from)."""
     fr = {"origin": list(frame["origin"])}
     for k in FRAME_KEYS:
         fr[k] = float(frame.get(k, 0.0))
-    return {"name": name, "design": design, "source": source, "frame": fr,
-            "members": dict((k, v) for k, v in member_ids.items()),
-            "floor": floor_id, "updated": stamp}
+    rec = {"name": name, "design": design, "source": source, "frame": fr,
+           "members": dict((k, v) for k, v in member_ids.items()),
+           "floor": floor_id, "updated": stamp}
+    if extra:
+        rec.update(extra)
+    return rec
+
+
+# the values Build / Update read from the model's types into a design
+INJECTED_KEYS = ("floor_thickness_m", "bottom_chord_depth_m", "crossbeam_depth_m")
+
+
+def design_differs(a, b):
+    """True when two designs differ in anything the user sets on the page
+    (the values read from the model's types are left out)."""
+    try:
+        na, nb = normalize_design(a), normalize_design(b)
+    except ValueError:
+        return True
+    for k in INJECTED_KEYS:
+        na.pop(k, None)
+        nb.pop(k, None)
+    return json.dumps(na, sort_keys=True) != json.dumps(nb, sort_keys=True)
+
+
+def pick_design_file(candidates, source, after_mtime=0.0):
+    """The newest of candidates [(path, mtime, parsed design file)] that is
+    for the bridge on these posts (either pair order) and was saved after
+    after_mtime, else None."""
+    best = None
+    for path, mtime, parsed in candidates:
+        if mtime <= after_mtime + 1e-6:
+            continue
+        if bridge_with_source({"bridges": {"x": {"source": parsed.get("source", {})}}}, source) is None:
+            continue
+        if best is None or mtime > best[1]:
+            best = (path, mtime, parsed)
+    return best
+
+
+def deck_motion(old, new, tol=0.001):
+    """How the deck floor gets from old to new (world_deck dicts): "same";
+    a rigid move (dx, dy, dz, dangle, about) when the outline and slope are
+    unchanged and it has only slid / turned / risen; None when it has to be
+    rebuilt. The thickness is left to the floor type."""
+    if not old or not new or len(old["corners"]) != len(new["corners"]):
+        return None
+    if abs(float(old["slope"]) - float(new["slope"])) > 1e-6:
+        return None
+    oc = [tuple(map(float, c)) for c in old["corners"]]
+    nc = [tuple(map(float, c)) for c in new["corners"]]
+    dz = float(new["tail_top_z"]) - float(old["tail_top_z"])
+    if all(math.hypot(a[0] - b[0], a[1] - b[1]) <= tol for a, b in zip(oc, nc)) and abs(dz) <= tol:
+        return "same"
+    da = (math.atan2(nc[1][1] - nc[0][1], nc[1][0] - nc[0][0]) -
+          math.atan2(oc[1][1] - oc[0][1], oc[1][0] - oc[0][0]))
+    ca, sa = math.cos(da), math.sin(da)
+    ax, ay = oc[0]
+    dx, dy = nc[0][0] - ax, nc[0][1] - ay
+    for a, b in zip(oc, nc):
+        rx = ax + (a[0] - ax) * ca - (a[1] - ay) * sa + dx
+        ry = ay + (a[0] - ax) * sa + (a[1] - ay) * ca + dy
+        if math.hypot(rx - b[0], ry - b[1]) > tol:
+            return None
+    return (dx, dy, dz, da, (ax, ay))
 
 
 def frame_from_record(rec):
@@ -994,7 +1056,7 @@ def fill_page(template, data):
     return template.replace(PLACEHOLDER, text, 1)
 
 
-__all__ = ["piece_spans", "chord_extent", "bridge_on_posts", "bridge_with_source", "truss_height", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
+__all__ = ["piece_spans", "design_differs", "pick_design_file", "deck_motion", "INJECTED_KEYS", "chord_extent", "bridge_on_posts", "bridge_with_source", "truss_height", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
            "BRACE_ROLES", "TOP_ALIGNED", "DEFAULTS", "normalize_design", "frame_from_posts",
            "frame_from_points", "effective_frame", "planes", "height", "base_z", "to_world",
            "layout", "pieces",

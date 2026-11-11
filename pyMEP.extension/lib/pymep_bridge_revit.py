@@ -332,6 +332,45 @@ def create_member(doc, m, symbol, level):
     return el
 
 
+def retype(el, typ):
+    """Change the element's type in place (its id stays); True when it
+    changed."""
+    try:
+        if typ is not None and id_value(el.GetTypeId()) != id_value(typ.Id):
+            el.ChangeTypeId(typ.Id)
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def update_hosted(doc, el, m, stiffener_sym, railing_type, level):
+    """Keep a deck stiffener or railing, putting it on its new line and
+    re-typing it in place; False when Revit will not (the caller then
+    makes it again)."""
+    try:
+        if m["role"] == "stiffener":
+            if stiffener_sym is None:
+                return False
+            el.Location.Curve = member_line(m)
+            retype(el, stiffener_sym)
+            settle_under(doc, el, m)
+            return True
+        if m["role"] == "railing":
+            if railing_type is None:
+                return False
+            lz = level.Elevation
+            loop = CurveLoop()
+            loop.Append(Line.CreateBound(XYZ(m_to_ft(m["p1"][0]), m_to_ft(m["p1"][1]), lz),
+                                         XYZ(m_to_ft(m["p2"][0]), m_to_ft(m["p2"][1]), lz)))
+            el.SetPath(loop)
+            retype(el, railing_type)
+            return True
+    except Exception:
+        return False
+    return False
+
+
 def free_ends(el, m):
     """Disallow Revit's automatic join at the member ends listed in
     m["free_ends"] (0 start, 1 end) - the chord ends at the posts - so

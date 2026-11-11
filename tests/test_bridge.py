@@ -808,6 +808,40 @@ class Files(unittest.TestCase):
         self.assertEqual(BR.bridge_with_source(reg, {"start_ids": [2, 1], "end_ids": [3, 4]}), "Bridge 1")
         self.assertIsNone(BR.bridge_with_source(reg, {"start_ids": [1, 2], "end_ids": [3, 5]}))
 
+    def test_design_differs(self):
+        a = {"truss": "warren", "types": {"top_chord": "1"}, "floor_thickness_m": 0.15}
+        self.assertFalse(BR.design_differs(a, dict(a, floor_thickness_m=0.006)))   # read from the type: ignored
+        self.assertFalse(BR.design_differs(a, dict(a, bottom_chord_depth_m=0.2)))
+        self.assertTrue(BR.design_differs(a, dict(a, truss="pratt")))
+        self.assertTrue(BR.design_differs(a, dict(a, types={"top_chord": "2"})))
+        self.assertFalse(BR.design_differs(a, BR.normalize_design(a)))           # defaults filled in: the same
+
+    def test_pick_design_file(self):
+        src = {"start_ids": [1, 2], "end_ids": [3, 4]}
+        cands = [("a.json", 100.0, {"source": {"start_ids": [2, 1], "end_ids": [4, 3]}}),
+                 ("b.json", 200.0, {"source": {"start_ids": [3, 4], "end_ids": [1, 2]}}),   # the pairs the other way
+                 ("c.json", 300.0, {"source": {"start_ids": [7, 8], "end_ids": [3, 4]}})]   # another bridge
+        self.assertEqual(BR.pick_design_file(cands, src)[0], "b.json")             # the newest for these posts
+        self.assertEqual(BR.pick_design_file(cands, src, after_mtime=150.0)[0], "b.json")
+        self.assertIsNone(BR.pick_design_file(cands, src, after_mtime=200.0))       # nothing saved since
+
+    def test_deck_motion(self):
+        d = design()
+        old = BR.world_deck(d, FRAME)
+        self.assertEqual(BR.deck_motion(old, BR.world_deck(d, FRAME)), "same")
+        s, e = posts(x0=5.0, y0=2.0, z0=10.5, z1=12.5)                             # slid and risen, same fall
+        mv = BR.deck_motion(old, BR.world_deck(d, BR.frame_from_posts(s, e)))
+        self.assertAlmostEqual(mv[0], 5.0)
+        self.assertAlmostEqual(mv[1], 2.0)
+        self.assertAlmostEqual(mv[2], 0.5)
+        self.assertAlmostEqual(mv[3], 0.0)
+        s, e = posts(z1=12.5)                                                       # the fall changed
+        self.assertIsNone(BR.deck_motion(old, BR.world_deck(d, BR.frame_from_posts(s, e))))
+        self.assertIsNone(BR.deck_motion(old, BR.world_deck(design(deck_end_m=0.0), FRAME)))   # the outline changed
+        self.assertEqual(BR.deck_motion(old, BR.world_deck(design(floor_thickness_m=0.3), FRAME)), "same")   # thickness: the type's job
+        rec = BR.record("B", d, {}, FRAME, {}, 9, "now", extra={"design_file": "x.json", "design_mtime": 5.0})
+        self.assertEqual((rec["design_file"], rec["design_mtime"]), ("x.json", 5.0))
+
     def test_latest_design(self):
         self.assertIsNone(BR.latest_design({"bridges": {}}))
         reg = {"bridges": {

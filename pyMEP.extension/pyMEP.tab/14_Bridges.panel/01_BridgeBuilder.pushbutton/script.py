@@ -33,6 +33,7 @@ from pyrevit import revit, forms, script
 import pymep_bridge as BR
 import pymep_bridge_dialog as DLG
 import pymep_bridge_revit as RV
+import pymep_bridge_sync as SYNC
 from pymep_config import get_export_folder
 from pymep_dashboard_launch import launch_html
 from pymep_revit import id_value, make_id
@@ -76,7 +77,8 @@ def pick_pair(which, preselected):
 
 # edit a bridge already built here, or build a new one on four posts
 registry = BR.load_registry(RV.registry_path(doc))
-rows = RV.bridge_rows(doc, registry)
+cands = SYNC.design_candidates(SYNC.design_folders(registry))
+rows = SYNC.bridge_rows(doc, registry, cands)
 editing = None
 if rows:
     choice = DLG.choose(
@@ -146,6 +148,8 @@ source = {"start_ids": [p["id"] for p in start_posts], "end_ids": [p["id"] for p
           "labels": [p["label"] for p in start_posts + end_posts]}
 existing_name = editing
 existing = registry["bridges"].get(existing_name) if existing_name else None
+# a design saved for this bridge since it was built opens instead of the built one
+newer = SYNC.newer_design(existing, cands) if existing else None
 frame_out = dict((k, frame[k]) for k in BR.FRAME_KEYS)
 frame_out["origin"] = list(frame["origin"])
 frame_out["gradient"] = frame["gradient"]
@@ -157,7 +161,7 @@ data = {"name": existing_name or BR.next_name(registry), "model": doc.Title,
         "framing_types": RV.framing_types(doc), "floor_types": RV.floor_types(doc),
         "stiffener_types": RV.stiffener_types(doc), "railing_types": RV.railing_types(doc),
         "levels": RV.levels(doc),
-        "design": existing["design"] if existing else BR.latest_design(registry)}
+        "design": (newer[2]["design"] if newer else existing["design"]) if existing else BR.latest_design(registry)}
 
 with io.open(HTML_PATH, "r", encoding="utf-8") as f:
     template = f.read()
