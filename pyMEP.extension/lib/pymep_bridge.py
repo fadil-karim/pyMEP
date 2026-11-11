@@ -64,6 +64,7 @@ DEFAULTS = {
     "truss_plane": "centre",         # the side frames on the posts' centre points        # where the truss planes sit against the posts
     "bottom_chord_offset_m": None,   # bottom chord top of steel above the post base; None = the chords' centre at the cross beams' centre
     "bottom_chord_cutback_m": 0.01,  # the bottom chords stop this short of each end (the post faces) - a fit-up gap
+    "top_chord_cutback_m": 0.01,     # the top chords likewise
     "crossbeam_depth_m": 0.0,        # replaced by the cross beam type's section depth
     "top_chord_split_m": 0.0,        # longest top chord piece; 0 = one piece
     "bottom_chord_split_m": 0.0,     # longest bottom chord piece; 0 = one piece
@@ -118,7 +119,8 @@ def normalize_design(d):
     for k in ("panel_length_m", "crossbeam_depth_m", "top_chord_split_m",
               "bottom_chord_split_m", "deck_top_offset_m", "deck_clearance_m",
               "floor_thickness_m", "stiffener_gap_m", "stiffener_spacing_m", "railing_inset_m",
-              "brace_end_offset_m", "bottom_chord_depth_m", "bottom_chord_cutback_m"):
+              "brace_end_offset_m", "bottom_chord_depth_m", "bottom_chord_cutback_m",
+              "top_chord_cutback_m"):
         try:
             out[k] = float(out[k])
         except (TypeError, ValueError):
@@ -160,8 +162,8 @@ def normalize_design(d):
         raise ValueError(u"the stiffener spacing cannot be negative")
     if out["brace_end_offset_m"] < 0:
         raise ValueError(u"the end diagonal clearance cannot be negative")
-    if out["bottom_chord_cutback_m"] < 0:
-        raise ValueError(u"the bottom chord cutback cannot be negative")
+    if out["bottom_chord_cutback_m"] < 0 or out["top_chord_cutback_m"] < 0:
+        raise ValueError(u"a chord cutback cannot be negative")
     if out["railing_width_m"] is not None and out["railing_width_m"] <= 0:
         raise ValueError(u"the railing width must be positive (or blank for the deck less the inset)")
     for k in ("top_chord_pieces", "bottom_chord_pieces"):
@@ -323,14 +325,14 @@ def to_world(frame, s, t, z_rel=0.0):
 
 
 def chord_extent(design, frame, role):
-    """(s_a, s_b) a chord runs between: the chord ends from the layout,
-    the bottom chords cut back from each end (the post faces) by the
-    cutback."""
+    """(s_a, s_b) a chord runs between: the chord ends from the layout
+    (the post faces), each chord cut back from them by its own cutback."""
     lay = layout(design, frame)
-    if role == "bottom_chord":
-        cb = min(design["bottom_chord_cutback_m"], max(0.0, lay["total"] / 2.0 - TOL))
-        return lay["s0"] + cb, lay["s1"] - cb
-    return lay["s0"], lay["s1"]
+    key = {"bottom_chord": "bottom_chord_cutback_m", "top_chord": "top_chord_cutback_m"}.get(role)
+    if key is None:
+        return lay["s0"], lay["s1"]
+    cb = min(design[key], max(0.0, lay["total"] / 2.0 - TOL))
+    return lay["s0"] + cb, lay["s1"] - cb
 
 
 def layout(design, frame):
@@ -590,14 +592,28 @@ def members(design, frame):
                     "stype": stype, "zjust": "top" if role in TOP_ALIGNED else "centre"})
 
     warren = design["truss"] in ("warren", "warren_verticals")
+    def _free_ends(k, count):
+        # the chord's outer ends meet the posts: Revit is told not to join
+        # them there, so it does not pull the chord back into the post and
+        # the cutback holds (0 = start, 1 = end; splices keep their joins)
+        ends = []
+        if k == 0:
+            ends.append(0)
+        if k == count - 1:
+            ends.append(1)
+        out[-1]["free_ends"] = ends
+
     for side, t in (("L", tl), ("R", tr)):
-        for k, (a, b) in enumerate(piece_spans(lay["s0"], lay["s1"], design["top_chord_pieces"],
-                                               design["top_chord_split_m"], u"top chord")):
+        tc0, tc1 = chord_extent(design, frame, "top_chord")
+        tps = piece_spans(tc0, tc1, design["top_chord_pieces"], design["top_chord_split_m"], u"top chord")
+        for k, (a, b) in enumerate(tps):
             add("top_chord", side, k, (a, t, zt), (b, t, zt))
+            _free_ends(k, len(tps))
         bc0, bc1 = chord_extent(design, frame, "bottom_chord")
-        for k, (a, b) in enumerate(piece_spans(bc0, bc1, design["bottom_chord_pieces"],
-                                               design["bottom_chord_split_m"], u"bottom chord")):
+        bps = piece_spans(bc0, bc1, design["bottom_chord_pieces"], design["bottom_chord_split_m"], u"bottom chord")
+        for k, (a, b) in enumerate(bps):
             add("bottom_chord", side, k, (a, t, zb), (b, t, zb))
+            _free_ends(k, len(bps))
         if design["end_posts"]:
             add("end_post", side, 0, (lay["s0"], t, zb), (lay["s0"], t, zt))
             add("end_post", side, 1, (lay["s1"], t, zb), (lay["s1"], t, zt))

@@ -37,7 +37,8 @@ def design(**kw):
     # the geometry tests run the chords to the posts' outer faces (as the
     # drawing measures); the trusses are always on the post centres
     d = {"panel_mode": "count", "panels": 4, "truss": "warren_verticals", "chord_extension_m": 0.1,
-         "brace_end_offset_m": 0.0, "bottom_chord_offset_m": 0.0, "bottom_chord_cutback_m": 0.0}
+         "brace_end_offset_m": 0.0, "bottom_chord_offset_m": 0.0, "bottom_chord_cutback_m": 0.0,
+         "top_chord_cutback_m": 0.0}
     d.update(kw)
     return BR.normalize_design(d)
 
@@ -293,6 +294,25 @@ class Members(unittest.TestCase):
         with self.assertRaises(ValueError):
             BR.normalize_design({"bottom_chord_cutback_m": -0.01})
 
+    def test_top_chord_cutback_and_free_ends(self):
+        d = design(top_chord_cutback_m=0.02, bottom_chord_cutback_m=0.01)
+        self.assertEqual(BR.chord_extent(d, FRAME, "top_chord"), (-0.1 + 0.02, 20.1 - 0.02))
+        mems = BR.members(d, FRAME)
+        tc = by_key(mems, u"top_chord:L:0:0")
+        self.assertAlmostEqual(tc["p1"][0], -0.08)
+        self.assertAlmostEqual(tc["p2"][0], 20.08)
+        self.assertAlmostEqual(by_key(mems, u"bottom_chord:L:0:0")["p1"][0], -0.09)
+        self.assertAlmostEqual(BR.normalize_design({})["top_chord_cutback_m"], 0.01)
+        # Revit is told not to join the chords' outer ends (at the posts); splices keep their joins
+        self.assertEqual(tc["free_ends"], [0, 1])                 # one piece: both ends at posts
+        split = BR.members(design(top_chord_pieces=[6.0, None, 6.0]), FRAME)
+        self.assertEqual(by_key(split, u"top_chord:L:0:0")["free_ends"], [0])
+        self.assertEqual(by_key(split, u"top_chord:L:1:0")["free_ends"], [])
+        self.assertEqual(by_key(split, u"top_chord:R:2:0")["free_ends"], [1])
+        self.assertNotIn("free_ends", by_key(split, u"crossbeam:C:1:0"))
+        with self.assertRaises(ValueError):
+            BR.normalize_design({"top_chord_cutback_m": -0.01})
+
     def test_resize_variable_piece(self):
         # the change is taken equally from the pieces either side
         self.assertEqual(BR.resize_variable([6.0, None, 4.0], 20.0, 11.0), [5.5, None, 3.5])
@@ -488,7 +508,7 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(lay["s1"], 19.9)
         mems = BR.members(d, FRAME)
         self.assertAlmostEqual(by_key(mems, u"top_chord:L:0:0")["p1"][1], 1.5)
-        self.assertAlmostEqual(by_key(mems, u"top_chord:L:0:0")["p1"][0], 0.1)
+        self.assertAlmostEqual(by_key(mems, u"top_chord:L:0:0")["p1"][0], 0.1 + 0.01)   # the inner face less the 10 mm cutback
         cb0 = by_key(mems, u"crossbeam:C:0:0")
         self.assertAlmostEqual(cb0["p1"][0], 0.1 + 0.15)         # the first node: inner face plus clearance
         self.assertAlmostEqual(cb0["p1"][1], 1.5)                # clear of the posts, so the full width

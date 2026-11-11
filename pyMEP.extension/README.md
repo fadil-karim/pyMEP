@@ -1072,10 +1072,12 @@ chords sit so their centre is at the cross beams' centre, the rest of
 the frame building up from there: the truss height is the bottom chord
 line to the top chord line, so typing it moves the top chord and the
 post tops with the chords; a typed "bottom chord" value on the
-elevation fixes the chord level instead; the bottom chords stop a
-cutback - 10 mm by default, the "cutback" value under the elevation,
-on a bottom chord's ring or in Settings - short of the post faces at
-each end as a fit-up gap); the cross beams between the truss planes, the
+elevation fixes the chord level instead; the top and bottom chords each stop a
+cutback - 10 mm by default, the "top chord cutback" and "bottom chord
+cutback" values on the elevation, "Cutback at posts..." on a chord's
+ring, or Settings - short of the post faces at each end as a fit-up
+gap, and Revit is told not to auto-join the chord ends at the posts so
+a join cannot pull a chord back into a post); the cross beams between the truss planes, the
 end ones on the post centrelines and running between the posts' inner
 faces, and any beams between the cross beams, with z justification Top
 so their top sits on the floor underside; the plan bracing cut at

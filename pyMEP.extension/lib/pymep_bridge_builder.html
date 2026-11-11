@@ -92,7 +92,7 @@ text.lbl{fill:#555}
 <script>
 var DATA = /*__BRIDGE_DATA__*/null;
 var DEFAULTS = {truss:"warren",panel_mode:"length",brace_angle_deg:55,panel_length_m:2.5,panels:9,height_m:null,level_start_m:null,level_end_m:null,
-  truss_plane:"centre",bottom_chord_offset_m:null,bottom_chord_cutback_m:0.01,crossbeam_depth_m:0,top_chord_split_m:0,bottom_chord_split_m:0,top_chord_pieces:[],bottom_chord_pieces:[],chord_extension_m:null,brace_end_offset_m:0.15,end_posts:false,
+  truss_plane:"centre",bottom_chord_offset_m:null,bottom_chord_cutback_m:0.01,top_chord_cutback_m:0.01,crossbeam_depth_m:0,top_chord_split_m:0,bottom_chord_split_m:0,top_chord_pieces:[],bottom_chord_pieces:[],chord_extension_m:null,brace_end_offset_m:0.15,end_posts:false,
   deck_top_offset_m:0,deck_end_m:null,deck_clearance_m:0.01,floor_thickness_m:0.006,bottom_chord_depth_m:0,plan_bays:null,bracing:"zigzag",brace_bays:2,split_x:true,brace_mirror_span:false,brace_mirror_across:false,stringers_across:0,
   stiffener_mode:"spacing",stiffener_spacing_m:0.5,stiffeners_across:1,stiffener_gap_m:0.1,railing_inset_m:0.1,railing_width_m:null,types:{},level:null};
 var TRUSSES = [["warren","Warren - top nodes at mid-panel (as the drawing)"],["warren_verticals","Warren with verticals"],
@@ -142,8 +142,9 @@ function braceAngle(d){
 function chordExtent(d, role){
   // a chord's ends: the bottom chords stop the cutback short of each end (the post faces)
   var lay = layout(d);
-  if (role === "bottom_chord"){ var cb = Math.min(d.bottom_chord_cutback_m || 0, Math.max(0, lay.total / 2 - 1e-6)); return [lay.s0 + cb, lay.s1 - cb]; }
-  return [lay.s0, lay.s1];
+  var key = role === "bottom_chord" ? "bottom_chord_cutback_m" : (role === "top_chord" ? "top_chord_cutback_m" : null);
+  if (!key) return [lay.s0, lay.s1];
+  var cb = Math.min(d[key] || 0, Math.max(0, lay.total / 2 - 1e-6)); return [lay.s0 + cb, lay.s1 - cb];
 }
 function pieceSpans(s0, s1, list, maxLen){
   // typed lengths from the start, the null piece takes the rest (it stretches and shrinks with the chord)
@@ -178,7 +179,8 @@ function members(d){
   function add(role, side, i, p1, p2, sub){ out.push({key:role + ":" + side + ":" + i + ":" + (sub || 0), role:role, side:side, i:i, p1:p1, p2:p2}); }
   [["L", tl], ["R", tr]].forEach(function(st){
     var side = st[0], t = st[1];
-    pieceSpans(lay.s0, lay.s1, d.top_chord_pieces, d.top_chord_split_m).forEach(function(ab, k){ add("top_chord", side, k, [ab[0],t,zt], [ab[1],t,zt]); });
+    var tce = chordExtent(d, "top_chord");
+    pieceSpans(tce[0], tce[1], d.top_chord_pieces, d.top_chord_split_m).forEach(function(ab, k){ add("top_chord", side, k, [ab[0],t,zt], [ab[1],t,zt]); });
     var bce = chordExtent(d, "bottom_chord");
     pieceSpans(bce[0], bce[1], d.bottom_chord_pieces, d.bottom_chord_split_m).forEach(function(ab, k){ add("bottom_chord", side, k, [ab[0],t,zb], [ab[1],t,zb]); });
     if (d.end_posts){ add("end_post", side, 0, [lay.s0,t,zb], [lay.s0,t,zt]); add("end_post", side, 1, [lay.s1,t,zb], [lay.s1,t,zt]); }
@@ -398,6 +400,7 @@ function settingsPop(x, y){
     '<label>Panels by <select id="sp_mode"><option value="length"' + (design.panel_mode === "length" ? " selected" : "") + '>target length</option><option value="count"' + (design.panel_mode === "count" ? " selected" : "") + '>count</option></select></label>' +
     '<label>Cross beams between the posts <span style="color:#666">spread equally; blank = follow the panels</span> <input type="number" min="0" step="1" id="sp_bays" value="' + (design.plan_bays === null ? "" : design.plan_bays - 1) + '" placeholder="panels"></label>' +
     '<label>Revit level <select id="sp_level">' + (DATA.levels || []).map(function(l){ return '<option value="' + esc(l.id) + '"' + (String(l.id) === String(design.level) ? " selected" : "") + '>' + esc(l.name) + ' (' + l.elevation_m.toFixed(3) + ' m)</option>'; }).join("") + '</select></label>' +
+    '<label>Top chord cutback <span style="color:#666">mm, short of the post face at each end</span> <input type="number" min="0" step="5" id="sp_tcut" value="' + mm(design.top_chord_cutback_m) + '"></label>' +
     '<label>Bottom chord cutback <span style="color:#666">mm, short of the post face at each end</span> <input type="number" min="0" step="5" id="sp_cut" value="' + mm(design.bottom_chord_cutback_m) + '"></label>' +
     '<label>End diagonal clearance <span style="color:#666">mm, in from each chord end; the whole run of diagonals shortens evenly</span> <input type="number" min="0" step="10" id="sp_boff" value="' + mm(design.brace_end_offset_m) + '"></label>' +
     '<label class="check"><span>End posts (the picked posts usually are them)</span><input type="checkbox" id="sp_posts"' + (design.end_posts ? " checked" : "") + '></label>' +
@@ -416,6 +419,7 @@ function settingsPop(x, y){
     p.querySelector("#sp_mode").onchange = function(ev){ setDesign("panel_mode", ev.target.value); };
     p.querySelector("#sp_bays").oninput = function(ev){ var v = ev.target.value.trim(); setDesign("plan_bays", v === "" ? null : Math.max(0, Math.round(parseFloat(v)) || 0) + 1); };
     p.querySelector("#sp_level").onchange = function(ev){ setDesign("level", ev.target.value || null); };
+    p.querySelector("#sp_tcut").oninput = function(ev){ var v = parseFloat(ev.target.value); if (!isNaN(v) && v >= 0) setDesign("top_chord_cutback_m", v / 1000); };
     p.querySelector("#sp_cut").oninput = function(ev){ var v = parseFloat(ev.target.value); if (!isNaN(v) && v >= 0) setDesign("bottom_chord_cutback_m", v / 1000); };
     p.querySelector("#sp_boff").oninput = function(ev){ var v = parseFloat(ev.target.value); if (!isNaN(v) && v >= 0) setDesign("brace_end_offset_m", v / 1000); };
     p.querySelector("#sp_posts").onchange = function(ev){ setDesign("end_posts", ev.target.checked); };
@@ -451,7 +455,7 @@ function closeRadial(){ RADIAL.style.display = "none"; RADIAL.innerHTML = ""; }
 function memberRing(role, x, y){
   closePop();
   var items = [{label:"Family...", run:function(){ familyPop(role, x, y); }}];
-  if (role === "bottom_chord") items.push({label:"Cutback at posts... (" + mm(design.bottom_chord_cutback_m) + ")", run:function(){ inlineEditAt(x, y, {value:design.bottom_chord_cutback_m, unit:"mm", set:function(v){ setDesign("bottom_chord_cutback_m", Math.max(0, v)); }}); }});
+  if (role === "bottom_chord" || role === "top_chord"){ var ck = role + "_cutback_m"; items.push({label:"Cutback at posts... (" + mm(design[ck]) + ")", run:function(){ inlineEditAt(x, y, {value:design[ck], unit:"mm", set:function(v){ setDesign(ck, Math.max(0, v)); }}); }}); }
   if (role === "top_chord" || role === "bottom_chord") items.push({label:"Add split...", run:function(){ inlineEditAt(x, y, {value:2.5, unit:"m", set:function(v){ addPiece(role, v); }}); }});
   if (role === "top_chord" || role === "bottom_chord" || role === "diagonal" || role === "vertical"){
   }
@@ -558,6 +562,9 @@ function render(){
   el(tb, "title", {}, "the bottom chords' top of steel against the post base (0 = at the post base, the deck top) - click to type another; blank sets it so the chords' centre is at the cross beams' centre");
   tb.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(tb, {value:zb, unit:"mm", allowBlank:true, blankLabel:"cross beams", set:function(v){ setDesign("bottom_chord_offset_m", v); }}); });
   if (design.truss !== "vierendeel") dimH(sv, X(lay.s0), X(lay.s0 + design.brace_end_offset_m), Y(baseZ(lay.s0) + zb) - 14, mm(design.brace_end_offset_m), {value:design.brace_end_offset_m, unit:"mm", set:function(v){ setDesign("brace_end_offset_m", Math.max(0, v)); }}, "end clearance - the run of diagonals starts this far in from each chord end, clear of the posts, every diagonal shortening evenly - click to change");
+  var ttc = el(sv, "text", {x:X(lay.s0) + 120, y:Y(baseZ(lay.s0) + zt) - 8, "font-size":12, "class":"dim"}, "top chord cutback " + mm(design.top_chord_cutback_m));
+  el(ttc, "title", {}, "the top chords stop this short of the post faces at each end - click to change");
+  ttc.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(ttc, {value:design.top_chord_cutback_m, unit:"mm", set:function(v){ setDesign("top_chord_cutback_m", Math.max(0, v)); }}); });
   var tcb = el(sv, "text", {x:X(ex.d0), y:Y(baseZ(ex.d0) + Math.min(zb, res.zu)) + 44, "font-size":12, "class":"dim"}, "bottom chord cutback " + mm(design.bottom_chord_cutback_m) + " at the posts");
   el(tcb, "title", {}, "the bottom chords stop this short of the post faces at each end (a fit-up gap) - click to change");
   tcb.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(tcb, {value:design.bottom_chord_cutback_m, unit:"mm", set:function(v){ setDesign("bottom_chord_cutback_m", Math.max(0, v)); }}); });

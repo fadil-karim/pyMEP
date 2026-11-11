@@ -328,7 +328,27 @@ def create_member(doc, m, symbol, level):
         set_top_justified(el)
     if m.get("roll"):
         set_roll(doc, el, m["roll"], m.get("up"))
+    free_ends(el, m)
     return el
+
+
+def free_ends(el, m):
+    """Disallow Revit's automatic join at the member ends listed in
+    m["free_ends"] (0 start, 1 end) - the chord ends at the posts - so
+    a join does not extend the member into the post past its cutback."""
+    ends = m.get("free_ends") or []
+    if not ends:
+        return
+    try:
+        from Autodesk.Revit.DB.Structure import StructuralFramingUtils
+    except Exception:
+        return
+    for e in ends:
+        try:
+            if StructuralFramingUtils.IsJoinAllowedAtEnd(el, int(e)):
+                StructuralFramingUtils.DisallowJoinAtEnd(el, int(e))
+        except Exception:
+            pass
 
 
 def set_roll(doc, el, angle, up=None):
@@ -567,6 +587,7 @@ def set_member_curve(el, m):
             set_roll(el.Document, el, m["roll"], m.get("up"))
         except Exception:
             pass
+    free_ends(el, m)
     return True
 
 
