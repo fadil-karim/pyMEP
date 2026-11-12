@@ -649,6 +649,20 @@ def members(design, frame):
                     sb = b[1] if b[0] == "bottom" else b[1] + dtop
                     add("diagonal", side, i, (sa, t, za), (sb, t, zb2), sub)
 
+    # the diagonal ends at the two end nodes - on the bottom chord, or on the
+    # top chord for a Pratt / X end panel (a top node sits within dtop of it)
+    # - are next to the posts: Revit is told not to join them there either,
+    # so it does not attach them to the post and they end on their node like
+    # every other diagonal
+    near = abs(dtop) + TOL
+    for m in out:
+        if m["role"] != "diagonal":
+            continue
+        ends = [k for k, p in ((0, m["p1"]), (1, m["p2"]))
+                if abs(p[0] - lay["r0"]) <= near or abs(p[0] - lay["r1"]) <= near]
+        if ends:
+            m["free_ends"] = ends
+
     # cross beams at every bay line, between the truss planes, tops on the
     # floor underside; one that falls within a post's footprint runs between
     # the posts' inner faces so it does not pass through the posts

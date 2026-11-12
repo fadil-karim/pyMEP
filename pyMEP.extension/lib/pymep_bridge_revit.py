@@ -328,8 +328,31 @@ def create_member(doc, m, symbol, level):
         set_top_justified(el)
     if m.get("roll"):
         set_roll(doc, el, m["roll"], m.get("up"))
-    free_ends(el, m)
+    if m.get("free_ends"):
+        # Revit may already have joined the end to a post on placing it:
+        # unjoin it, then put the line back on its node
+        free_ends(el, m)
+        try:
+            el.Location.Curve = member_line(m)
+        except Exception:
+            pass
     return el
+
+
+def line_matches(el, m, tol_m=0.001):
+    """True when the member's location line runs between m's two points
+    (either way round), within tol_m metres."""
+    try:
+        crv = el.Location.Curve
+        a, b = crv.GetEndPoint(0), crv.GetEndPoint(1)
+    except Exception:
+        return True
+    tol = m_to_ft(tol_m)
+    want = [_xyz(m["p1"]), _xyz(m["p2"])]
+
+    def near(p, q):
+        return abs(p.X - q.X) <= tol and abs(p.Y - q.Y) <= tol and abs(p.Z - q.Z) <= tol
+    return (near(a, want[0]) and near(b, want[1])) or (near(a, want[1]) and near(b, want[0]))
 
 
 def retype(el, typ):
@@ -616,6 +639,7 @@ def create_railing(doc, m, railing_type, floor, level):
 def set_member_curve(el, m):
     """Move an existing member onto the member's new line; False when
     the element has no location curve."""
+    free_ends(el, m)              # unjoined first, so the line lands on its node
     try:
         loc = el.Location
         loc.Curve = member_line(m)

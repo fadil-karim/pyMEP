@@ -313,6 +313,27 @@ class Members(unittest.TestCase):
         with self.assertRaises(ValueError):
             BR.normalize_design({"top_chord_cutback_m": -0.01})
 
+    def test_end_diagonals_end_on_their_nodes(self):
+        # the diagonal ends at the two end nodes (next to the posts) are marked
+        # so Revit does not join them to the posts; no other end is. On the
+        # sloping FRAME a top end node sits within dtop of the end of the run
+        dtop = abs(2.3 * 0.1 / 1.01)
+        for truss, n_ends in (("warren", 4), ("pratt", 4), ("howe", 4), ("x", 8)):
+            d = design(truss=truss, brace_end_offset_m=0.15)
+            lay = BR.layout(d, FRAME)
+            mems = BR.members(d, FRAME)
+            flagged = []
+            for m in mems:
+                for k in m.get("free_ends", []) if m["role"] == "diagonal" else []:
+                    p = m["p1"] if k == 0 else m["p2"]
+                    self.assertTrue(abs(p[0] - lay["r0"]) <= dtop + 1e-9 or abs(p[0] - lay["r1"]) <= dtop + 1e-9)
+                    flagged.append((m["key"], k))
+            self.assertEqual(len(flagged), n_ends, truss)               # both end nodes, both sides
+        warren = BR.members(design(truss="warren"), FRAME)
+        self.assertEqual(by_key(warren, u"diagonal:L:0:0")["free_ends"], [0])
+        self.assertEqual(by_key(warren, u"diagonal:L:3:1")["free_ends"], [1])
+        self.assertNotIn("free_ends", by_key(warren, u"diagonal:L:1:0"))
+
     def test_resize_variable_piece(self):
         # the change is taken equally from the pieces either side
         self.assertEqual(BR.resize_variable([6.0, None, 4.0], 20.0, 11.0), [5.5, None, 3.5])

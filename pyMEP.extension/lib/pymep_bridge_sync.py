@@ -65,7 +65,7 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev):
     keeping the ids of old_rec's elements (None: everything is new).
     Returns {"member_ids", "floor_id", counts, "deck", "posts", "failed",
     "rails_made", "rails_hosted"}."""
-    res = {"recurved": 0, "retyped": 0, "created": 0, "deleted": 0, "hosted_kept": 0,
+    res = {"recurved": 0, "retyped": 0, "created": 0, "deleted": 0, "hosted_kept": 0, "ends_moved": [],
            "hosted_made": 0, "rails_made": 0, "rails_hosted": 0, "failed": [], "deck": u"", "posts": u""}
     old_rec = old_rec or {}
     mems = BR.world_members(design, frame, shared_elev)
@@ -110,6 +110,25 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev):
             res["failed"].append((m, u"{0}".format(ex)))
     for key in diff["delete"]:
         res["deleted"] += RV.delete_quiet(doc, [member_ids.pop(key)])
+    # the members whose ends meet the posts must end on their own points: check
+    # them, put any Revit moved back once more, and report any it moves again
+    try:
+        doc.Regenerate()
+    except Exception:
+        pass
+    for m in framing_mems:
+        if not m.get("free_ends") or m["key"] not in member_ids:
+            continue
+        el = doc.GetElement(make_id(member_ids[m["key"]]))
+        if el is None or RV.line_matches(el, m):
+            continue
+        RV.set_member_curve(el, m)
+        try:
+            doc.Regenerate()
+        except Exception:
+            pass
+        if not RV.line_matches(el, m):
+            res["ends_moved"].append(m["key"])
 
     # the deck: keep, move or (only when its outline, fall or level changed) rebuild
     floor_id = old_rec.get("floor")
@@ -204,10 +223,14 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev):
 
 def summary_line(res):
     """One line for a report."""
-    return (u"{0} kept and re-aligned ({1} re-typed), {2} added, {3} removed; {4}; "
+    line = (u"{0} kept and re-aligned ({1} re-typed), {2} added, {3} removed; {4}; "
             u"{5} stiffener(s)/railing(s) kept, {6} made").format(
         res["recurved"], res["retyped"], res["created"], res["deleted"], res["deck"],
         res["hosted_kept"], res["hosted_made"])
+    if res.get("ends_moved"):
+        line += u"; Revit kept moving the end of {0} off its node: {1}".format(
+            len(res["ends_moved"]), u", ".join(res["ends_moved"]))
+    return line
 
 
 def design_candidates(folders):

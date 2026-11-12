@@ -1099,7 +1099,12 @@ cutback - 10 mm by default, the "top chord cutback" and "bottom chord
 cutback" values on the elevation, "Cutback at posts..." on a chord's
 ring, or Settings - short of the post faces at each end as a fit-up
 gap, and Revit is told not to auto-join the chord ends at the posts so
-a join cannot pull a chord back into a post); the cross beams between the truss planes, the
+a join cannot pull a chord back into a post; the end diagonals are
+treated the same way - Revit is not allowed to join their ends next to
+the posts, the line is put back on its node after placing, and each
+build or update checks it: an end diagonal ends on its chord
+intersection point like every other diagonal, and the result line
+names any end Revit still moved off its node); the cross beams between the truss planes, the
 end ones on the post centrelines and running between the posts' inner
 faces, and any beams between the cross beams, with z justification Top
 so their top sits on the floor underside; the plan bracing cut at
