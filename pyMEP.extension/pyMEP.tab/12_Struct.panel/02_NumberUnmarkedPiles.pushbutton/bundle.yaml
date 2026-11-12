@@ -1,0 +1,2 @@
+title: "Number\nUnmarked Piles"
+tooltip: "Give every pile with an empty Mark a number in the set you choose (P1001.. set 1, P2001.. set 2 ...), keeping the set's prefix and zero padding. By default the numbers go above the highest in the set; an option uses the gaps in the sequence first, then goes above. Order by placement, west to east or north to south; optionally only the selected piles. Preview in browser shows the table and a plan with the new numbers in blue; Apply writes the marks in one undo step and selects the piles."

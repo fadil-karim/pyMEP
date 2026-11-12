@@ -333,6 +333,149 @@ def plan_fill(entries, numbers, bounds=None, suffix_duplicates=False,
             "gaps_after": gaps_after}
 
 
+# ---------------------------------------------------------------------------
+# numbering piles that have no mark (the Number Unmarked Piles button)
+# ---------------------------------------------------------------------------
+ORDERS = (("placement", u"The order they were placed in (element id)"),
+          ("west_east", u"West to east"),
+          ("north_south", u"North to south"))
+
+MODES = (("above", u"Above the highest number in the set"),
+         ("gaps", u"Gaps in the sequence first, then above the highest"))
+
+
+def _id_order(i):
+    try:
+        return (0, int(i))
+    except Exception:
+        return (1, u"{0}".format(i))
+
+
+def order_unmarked(ids, points=None, order="placement"):
+    """The unmarked piles in the order they take their numbers: element
+    id order, or west to east / north to south across the plan from
+    points {id: (x, y) metres} (piles without a location last, in id
+    order)."""
+    ids = list(ids or [])
+    points = points or {}
+    placed = [i for i in ids if i in points]
+    rest = sorted([i for i in ids if i not in points], key=_id_order)
+    if order == "west_east":
+        placed.sort(key=lambda i: (round(points[i][0], 3), -round(points[i][1], 3), _id_order(i)))
+    elif order == "north_south":
+        placed.sort(key=lambda i: (-round(points[i][1], 3), round(points[i][0], 3), _id_order(i)))
+    else:
+        return sorted(ids, key=_id_order)
+    return placed + rest
+
+
+def numbers_in_use(entries, ignored=None, prefix_key=None, bounds=None):
+    """Every number taken in a set: the numbered piles' plus those of the
+    ignored marks of the same prefix carrying a suffix (P1608-1 holds
+    1608), within bounds when given."""
+    used = set(int(e["number"]) for e in (entries or []))
+    for g in ignored or []:
+        p = parse_mark(g.get("mark"))
+        if p is None or (prefix_key is not None and
+                         p["prefix"].strip().upper() != (prefix_key or u"").upper()):
+            continue
+        if bounds is None or bounds[0] <= p["number"] <= bounds[1]:
+            used.add(p["number"])
+    return used
+
+
+def numbers_free(used, bounds, count, mode="above"):
+    """The count numbers new piles take in the set bounds (low, high):
+    'above' - after the highest number in use, from the set's first
+    number (x001) when nothing is in use yet; 'gaps' - the unused numbers
+    in the sequence first (the gaps between the lowest and the highest
+    number in use), lowest first, then above the highest. ValueError when
+    the set has too few numbers left."""
+    low, high = int(bounds[0]), int(bounds[1])
+    first = low + 1 if high > low else low
+    used = set(int(n) for n in (used or []) if low <= int(n) <= high)
+    top = max(used) if used else None
+    count = int(count)
+    out = []
+    if mode == "gaps" and top is not None:
+        out = [n for n in range(min(used), top) if n not in used][:count]
+    n = (top + 1) if top is not None else first
+    while len(out) < count and n <= high:
+        if n not in used:
+            out.append(n)
+        n += 1
+    if len(out) < count:
+        raise ValueError(u"set {0}-{1} has only {2} free number(s){3} - {4} pile(s) "
+                         u"need one".format(low, high, len(out),
+                                            u"" if mode == "gaps" else
+                                            u" above {0}".format(top if top is not None else first - 1),
+                                            count))
+    return out
+
+
+def plan_numbering(entries, ids, bounds, mode="above", prefix=u"P", width=4,
+                   used=None):
+    """The marks for the piles ids (in the order they take numbers) in
+    the set bounds of one prefix: entries are the set's numbered piles,
+    used the numbers taken (default: theirs). Returns a plan for
+    preview_html: rows {id, old, new, number_old, number_new, changed,
+    kind ('kept' or 'numbered'), duplicate}, 'assigned' numbers,
+    'below_top' and 'above_top' (which of them fill unused numbers below
+    the previous highest and which go above it), 'top_before', and the
+    usual counts."""
+    used = set(used) if used is not None else set(int(e["number"]) for e in entries or [])
+    nums = numbers_free(used, bounds, len(ids or []), mode)
+    in_set = [n for n in used if bounds[0] <= n <= bounds[1]]
+    top = max(in_set) if in_set else None
+    before = sequence_summary(entries or [])
+    rows = []
+    for e in entries or []:
+        rows.append({"id": e["id"], "old": e["mark"], "new": e["mark"],
+                     "number_old": e["number"], "number_new": e["number"],
+                     "changed": False, "kind": "kept",
+                     "duplicate": e["number"] in before["duplicates"]})
+    for eid, n in zip(ids or [], nums):
+        rows.append({"id": eid, "old": u"", "new": format_mark(prefix, n, width),
+                     "number_old": None, "number_new": n, "changed": True,
+                     "kind": "numbered", "duplicate": False})
+    after = sorted(set(in_set) | set(nums))
+    gaps_after = ([n for n in range(after[0], after[-1] + 1) if n not in set(after)]
+                  if after else [])
+    return {"rows": rows, "assigned": nums, "top_before": top,
+            "below_top": [n for n in nums if top is not None and n < top],
+            "above_top": [n for n in nums if top is None or n > top],
+            "numbered": len(nums), "renamed": 0, "suffixed": 0, "filled": [],
+            "freed": [], "duplicates_before": before["duplicates"],
+            "duplicates_after": before["duplicates"], "gaps_after": gaps_after}
+
+
+def numbering_text(plan, prefix, width):
+    """One line saying which marks the unmarked piles get."""
+    def span(ns):
+        if not ns:
+            return u""
+        if len(ns) == 1:
+            return format_mark(prefix, ns[0], width)
+        runs, a, b = [], ns[0], ns[0]
+        for n in ns[1:]:
+            if n == b + 1:
+                b = n
+                continue
+            runs.append((a, b))
+            a = b = n
+        runs.append((a, b))
+        return u", ".join(format_mark(prefix, x, width) if x == y else u"{0} to {1}".format(
+            format_mark(prefix, x, width), format_mark(prefix, y, width)) for x, y in runs)
+    bits = []
+    if plan["below_top"]:
+        bits.append(u"{0} unused below the top ({1})".format(len(plan["below_top"]), span(plan["below_top"])))
+    if plan["above_top"]:
+        bits.append(u"{0} above {1} ({2})".format(
+            len(plan["above_top"]), format_mark(prefix, plan["top_before"], width)
+            if plan["top_before"] is not None else u"an empty set", span(plan["above_top"])))
+    return u"Numbers {0} pile(s): {1}.".format(plan["numbered"], u"; then ".join(bits) or u"nothing")
+
+
 def apply_order(rows):
     """The renames, LOWEST new number first: a pile moving down lands on
     a number its lower neighbour has just left, so no two piles share a
@@ -365,6 +508,7 @@ table{border-collapse:collapse;width:100%;margin-top:10px}
 th,td{border:1px solid #e3e3e3;padding:4px 8px;text-align:left;white-space:nowrap}
 th{background:#f7f7f7;position:sticky;top:0}
 tr.renamed td{background:#fff3b0}
+tr.numbered td{background:#dbeeff}
 tr.freed td{background:#d9f2d9;font-weight:600}
 tr.dup td{color:#b00020;font-weight:600}
 tr.dup td.mark{border-left:4px solid #b00020}
@@ -388,6 +532,7 @@ h2{font-size:14px;margin:22px 0 4px 0}
 .pl i{display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid #999}
 .plan-kept{fill:#cfd8e3;stroke:#8d99a8;stroke-width:1}
 .plan-renamed{fill:#f2a900;stroke:#8a6100;stroke-width:1}
+.plan-numbered{fill:#1f77d0;stroke:#0d3f75;stroke-width:1}
 .plan-suffixed{fill:#d9534f;stroke:#7a1f1c;stroke-width:1}
 .plan-dup{stroke:#b00020 !important;stroke-width:3 !important}
 svg .lbl{font-family:Segoe UI,Arial,sans-serif;fill:#333;pointer-events:none;display:none}
@@ -448,7 +593,7 @@ def plan_markup(rows, points):
     out = [u"<svg id='plan' xmlns='http://www.w3.org/2000/svg' "
            u"viewBox='0 0 {0:.3f} {1:.3f}' preserveAspectRatio='xMidYMid meet'>"
            .format(W, H)]
-    order = {"kept": 0, "renamed": 1, "suffixed": 2}
+    order = {"kept": 0, "renamed": 1, "suffixed": 2, "numbered": 3}
     for rw, x, y in sorted(pts, key=lambda p: order.get(p[0]["kind"], 0)):
         sx = x - minx + pad
         sy = (maxy - y) + pad
@@ -460,6 +605,8 @@ def plan_markup(rows, points):
         elif rw["kind"] == "suffixed":
             change = u"duplicate - given the suffix {0}".format(
                 rw["new"][rw["new"].rfind(u"-"):])
+        elif rw["kind"] == "numbered":
+            change = u"had no mark - numbered"
         else:
             change = u"unchanged"
         if rw["duplicate"] and rw["kind"] != "suffixed":
@@ -490,6 +637,7 @@ def preview_html(title, meta, plan, ignored=None, show_unchanged=True,
     renamed = plan["renamed"]
     suffixed = plan.get("suffixed", 0)
     kept = len([r for r in rows if r["kind"] == "kept"])
+    numbered = len([r for r in rows if r["kind"] == "numbered"])
     filled = plan.get("filled", [])
     freed = plan.get("freed", [])
     dups = plan["duplicates_after"]
@@ -501,7 +649,8 @@ def preview_html(title, meta, plan, ignored=None, show_unchanged=True,
                _esc(title),
                u" &nbsp;|&nbsp; ".join(u"{0}: {1}".format(_esc(k), _esc(v))
                                         for k, v in (meta or []))),
-           u"<div class='sum'>"
+           u"<div class='sum'>" + (u"<div><b>{0}</b>had no mark - numbered</div>".format(numbered)
+                                    if numbered else u"") +
            u"<div><b>{0}</b>renamed</div><div><b>{1}</b>unchanged</div>"
            u"<div><b>{2}</b>number(s) filled</div><div><b>{7}</b>freed at the "
            u"top</div><div><b>{3}</b>duplicate number(s) left</div><div><b>{6}"
@@ -509,7 +658,9 @@ def preview_html(title, meta, plan, ignored=None, show_unchanged=True,
            u"<div><b>{5}</b>ignored</div></div>".format(
                renamed, kept, len(filled), len(dups), len(gaps),
                len(ignored or []), suffixed, len(freed)),
-           u"<div class='legend'><span style='background:#fff3b0'>renamed</span>"
+           u"<div class='legend'>" + (u"<span style='background:#dbeeff'>had no mark - "
+                                       u"numbered</span>" if numbered else u"") +
+           u"<span style='background:#fff3b0'>renamed</span>"
            u"<span style='background:#d9f2d9'>freed at the top for new piles</span>"
            u"<span style='color:#b00020;border:1px solid #b00020'>duplicate "
            u"mark</span><span style='background:#fde2e4'>duplicate given a "
@@ -546,6 +697,8 @@ def preview_html(title, meta, plan, ignored=None, show_unchanged=True,
                 change = u"freed at the top - available for a new pile"
             elif r["kind"] == "renamed":
                 change = u"renamed ({0:+d})".format(r["number_new"] - r["number_old"])
+            elif r["kind"] == "numbered":
+                change = u"had no mark - given this number"
             elif r["kind"] == "suffixed":
                 change = u"duplicate - given the suffix {0}".format(
                     r["new"][r["new"].rfind(u"-"):])
@@ -587,6 +740,7 @@ def preview_html(title, meta, plan, ignored=None, show_unchanged=True,
                    u"<button id='plan-fit'>Fit</button></div>"
                    u"<div class='pl'><i style='background:#cfd8e3'></i>unchanged</div>"
                    u"<div class='pl'><i style='background:#f2a900'></i>renamed</div>"
+                   u"<div class='pl'><i style='background:#1f77d0'></i>had no mark - numbered</div>"
                    u"<div class='pl'><i style='background:#d9534f'></i>duplicate "
                    u"given a suffix</div>"
                    u"<div class='pl'><i style='border:3px solid #b00020'></i>"

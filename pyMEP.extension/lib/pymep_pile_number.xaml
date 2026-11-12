@@ -1,0 +1,137 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Number Unmarked Piles"
+        Width="620" Height="640" MinWidth="560" MinHeight="540"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False"
+        Background="White">
+    <Window.Resources>
+        <Style TargetType="GroupBox">
+            <Setter Property="Margin" Value="0,0,0,12"/>
+            <Setter Property="Padding" Value="10,8,10,10"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,3,0,0"/>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Margin" Value="0,3,0,0"/>
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,6,10,0"/>
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#888888"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style x:Key="DialogButton" TargetType="Button">
+            <Setter Property="MinWidth" Value="96"/>
+            <Setter Property="Margin" Value="8,0,0,0"/>
+            <Setter Property="Padding" Value="10,4"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#F4F4F4" Padding="14,10">
+            <StackPanel>
+                <TextBlock FontSize="15" FontWeight="SemiBold" Text="Number Unmarked Piles"/>
+                <TextBlock Style="{StaticResource Hint}"
+                           Text="Gives every pile with an empty Mark a number in the set you choose, with the set's prefix and zero padding. Piles that already have a mark are not touched."/>
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="14,12,14,0">
+            <StackPanel>
+                <GroupBox Header="Piles with no mark">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Category"/>
+                            <ComboBox x:Name="CmbCategory" Grid.Column="1" SelectionChanged="on_category_changed"/>
+                        </Grid>
+                        <CheckBox x:Name="ChkSelected" Margin="0,10,0,0"
+                                  Checked="on_changed" Unchecked="on_changed"
+                                  Content="only the piles selected in the model"/>
+                        <TextBlock x:Name="TxtUnmarked" Style="{StaticResource Hint}" Margin="0,8,0,0" Text=""/>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="Number them in">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Prefix"/>
+                            <ComboBox x:Name="CmbPrefix" Grid.Row="0" Grid.Column="1" SelectionChanged="on_prefix_changed"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Set"/>
+                            <ComboBox x:Name="CmbSet" Grid.Row="1" Grid.Column="1" SelectionChanged="on_changed"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Style="{StaticResource FieldLabel}" Text="or set of"/>
+                            <TextBox x:Name="TxtSet" Grid.Row="2" Grid.Column="1" TextChanged="on_changed"/>
+                        </Grid>
+                        <TextBlock Style="{StaticResource Hint}"
+                                   Text="A set is one leading digit: 1000-1999, 2000-2999, 6000-6999. To start a set no pile is numbered in yet, type any number in it below the list, such as 3001 or P3001; it starts at x001. Marks with a suffix such as P1608-1 hold their number."/>
+                        <TextBox x:Name="TxtPrefix" Margin="0,8,0,0" TextChanged="on_changed" Visibility="Collapsed"/>
+                        <TextBlock x:Name="TxtPrefixHint" Style="{StaticResource Hint}" Visibility="Collapsed"
+                                   Text="No pile in this category has a numbered mark yet: type the prefix for the new marks (P by default) and the set's first number above."/>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="Which numbers">
+                    <StackPanel>
+                        <RadioButton x:Name="RadAbove" GroupName="mode" IsChecked="True" Margin="0,2,0,0"
+                                     Checked="on_changed"
+                                     Content="Above the highest number in the set (default)"/>
+                        <RadioButton x:Name="RadGaps" GroupName="mode" Margin="0,8,0,0"
+                                     Checked="on_changed"
+                                     Content="Gaps in the sequence first, then above the highest"/>
+                        <TextBlock Style="{StaticResource Hint}" Margin="22,2,0,0"
+                                   Text="The unused numbers between the lowest and the highest pile of the set are used first, lowest first, before going over the top."/>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Style="{StaticResource FieldLabel}" Text="Order"/>
+                            <ComboBox x:Name="CmbOrder" Grid.Column="1" SelectionChanged="on_changed"/>
+                        </Grid>
+                        <TextBlock x:Name="TxtPlan" Style="{StaticResource Hint}" Margin="0,8,0,0" Text=""/>
+                    </StackPanel>
+                </GroupBox>
+
+                <TextBlock x:Name="StatusText" Foreground="#B00020" TextWrapping="Wrap" Margin="0,0,0,8" Text=""/>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="2" Background="#F4F4F4" Padding="14,10">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="BtnPreview" Content="Preview in browser"
+                        Style="{StaticResource DialogButton}" Click="on_preview"/>
+                <Button x:Name="BtnApply" Content="Apply"
+                        Style="{StaticResource DialogButton}" IsDefault="True" Click="on_apply"/>
+                <Button x:Name="BtnCancel" Content="Cancel"
+                        Style="{StaticResource DialogButton}" IsCancel="True" Click="on_cancel"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

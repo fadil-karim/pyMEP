@@ -328,5 +328,67 @@ class Preview(unittest.TestCase):
         self.assertIn(">P2<", html)          # the renamed P3
 
 
+class NumberUnmarked(unittest.TestCase):
+    """Number Unmarked Piles: new numbers for piles with an empty mark."""
+
+    def test_above_the_highest(self):
+        used = {1601, 1602, 1605, 1610}
+        self.assertEqual(PS.numbers_free(used, (1000, 1999), 3), [1611, 1612, 1613])
+        self.assertEqual(PS.numbers_free(set(), (3000, 3999), 2), [3001, 3002])      # an empty set starts at x001
+        self.assertEqual(PS.numbers_free({7, 9}, (0, 9), 0), [])
+
+    def test_gaps_first_then_above(self):
+        used = {1601, 1602, 1605, 1610}
+        self.assertEqual(PS.numbers_free(used, (1000, 1999), 3, "gaps"), [1603, 1604, 1606])
+        self.assertEqual(PS.numbers_free(used, (1000, 1999), 8, "gaps"),
+                         [1603, 1604, 1606, 1607, 1608, 1609, 1611, 1612])          # then over the top
+        self.assertEqual(PS.numbers_free({1001, 1002}, (1000, 1999), 2, "gaps"), [1003, 1004])   # no gaps: above
+        self.assertEqual(PS.numbers_free(set(), (2000, 2999), 1, "gaps"), [2001])
+
+    def test_the_set_is_never_overrun(self):
+        with self.assertRaises(ValueError):
+            PS.numbers_free({1998}, (1000, 1999), 2)                                # only 1999 is left above
+        self.assertEqual(PS.numbers_free({1997, 1999}, (1000, 1999), 1, "gaps"), [1998])
+        with self.assertRaises(ValueError):
+            PS.numbers_free({1997, 1999}, (1000, 1999), 2, "gaps")
+        self.assertEqual(PS.numbers_free({1601, 2005}, (1000, 1999), 1), [1602])   # other sets do not count
+
+    def test_suffixed_marks_hold_their_number(self):
+        groups, ignored = PS.group_marks([(1, "P1601"), (2, "P1603-1"), (3, "P1605"), (4, "TP1604-1")])
+        used = PS.numbers_in_use(groups["P"], ignored, "P", (1000, 1999))
+        self.assertEqual(used, {1601, 1603, 1605})                                  # TP's suffix is another sequence
+        self.assertEqual(PS.numbers_free(used, (1000, 1999), 2, "gaps"), [1602, 1604])
+
+    def test_plan(self):
+        ents = entries("P1601", "P1602", "P1605")
+        plan = PS.plan_numbering(ents, [21, 22, 23], (1000, 1999), "gaps", u"P", 4)
+        new = [(r["id"], r["new"]) for r in plan["rows"] if r["kind"] == "numbered"]
+        self.assertEqual(new, [(21, "P1603"), (22, "P1604"), (23, "P1606")])
+        self.assertEqual([r["kind"] for r in plan["rows"]].count("kept"), 3)
+        self.assertEqual((plan["below_top"], plan["above_top"], plan["top_before"]), ([1603, 1604], [1606], 1605))
+        self.assertEqual(plan["gaps_after"], [])
+        padded = PS.plan_numbering(entries("P0012"), [5], (0, 99), "above", u"P", 4)
+        self.assertEqual([r["new"] for r in padded["rows"] if r["kind"] == "numbered"], ["P0013"])
+        text = PS.numbering_text(plan, u"P", 4)
+        self.assertIn("2 unused below the top (P1603 to P1604)", text)
+        self.assertIn("1 above P1605 (P1606)", text)
+
+    def test_order(self):
+        pts = {1: (10.0, 0.0), 2: (0.0, 5.0), 3: (0.0, 9.0), 4: (5.0, 2.0)}
+        self.assertEqual(PS.order_unmarked([4, 3, 2, 1, 7], pts, "placement"), [1, 2, 3, 4, 7])
+        self.assertEqual(PS.order_unmarked([4, 3, 2, 1, 7], pts, "west_east"), [3, 2, 4, 1, 7])   # x, then north first
+        self.assertEqual(PS.order_unmarked([4, 3, 2, 1, 7], pts, "north_south"), [3, 2, 4, 1, 7])  # y down, then x
+        self.assertEqual(PS.order_unmarked([1, 4], {1: (0.0, 0.0), 4: (0.0, 8.0)}, "north_south"), [4, 1])
+
+    def test_preview(self):
+        plan = PS.plan_numbering(entries("P1601", "P1602"), [9], (1000, 1999), "above", u"P", 4)
+        html = PS.preview_html("t", [], plan, points={1: (0, 0), 2: (1, 0), 9: (2, 0)})
+        self.assertIn("had no mark - numbered", html)
+        self.assertIn("class='plan-numbered'", html)
+        self.assertIn(">P1603<", html)
+        plain = PS.preview_html("t", [], PS.plan_fill(entries("P1", "P3"), [2]))
+        self.assertNotIn("had no mark - numbered", plain)                         # the old tool's page is as it was
+
+
 if __name__ == "__main__":
     unittest.main()

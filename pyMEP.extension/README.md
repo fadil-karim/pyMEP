@@ -42,7 +42,7 @@ pyMEP.extension/
     09_Conduits.panel/          # Pipes To Conduits
     10_ManholePlan.panel/       # Export Manholes
     11_COBie.panel/             # Populate, Check
-    12_Struct.panel/            # Add To Pile Sequence
+    12_Struct.panel/            # Add To Pile Sequence, Number Unmarked Piles
     13_Site.panel/              # Place At Coordinates, Element Coordinates, Move To Coordinates
     14_Bridges.panel/           # Bridge Builder, Build Bridge, Update Bridges
 ```
@@ -888,6 +888,23 @@ skipping a suffix already in use there - and can run on its own with no
 numbers typed. **Apply** renames in one undo step, lowest new number
 first, and writes a CSV and an as-applied page to the model's pyMEP
 folder.
+
+**Number Unmarked Piles** - give every pile with an empty Mark a
+number. Pick the category (Structural Foundations by default), the
+prefix and the set (one leading digit, as above), or type any number in
+a set nobody is numbered in yet, such as `3001` - it starts at x001. By
+default the new numbers go above the highest number in the set; the
+other option uses the gaps in the sequence first - the unused numbers
+between the set's lowest and highest pile, lowest first - and then goes
+above the highest. A set that runs out of numbers is refused rather than
+spilling into the next one, and marks with a suffix such as `P1608-1`
+hold their number. The piles take their numbers in the order they were
+placed (element id), west to east or north to south, and a tick limits
+it to the piles selected in the model. The prefix and zero padding are
+the set's. **Preview in browser** shows the same table and plan as Add
+to Pile Sequence with the newly numbered piles in blue; **Apply** writes
+the marks in one undo step, selects the piles and writes a CSV to the
+model's pyMEP folder. The mode and order are remembered.
 
 ### Site
 
