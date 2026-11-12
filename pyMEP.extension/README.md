@@ -1005,7 +1005,7 @@ drawings, and the ring's label sits just under the clicked spot (a dot
 marks it) so the member stays visible. The rest lives under
 **Settings**: panels by target length or count (the diagonals' angle is
 reported by the first diagonal and in the panel tile; it follows the
-panel length, the truss height and the end clearance), the end
+panel length and the truss height), the end
 clearance, the cross beams between
 the posts (blank follows the truss panels), the Revit level, end posts,
 splitting braces where they cross, beams between the cross beams per
@@ -1035,10 +1035,19 @@ are true to the slope: each top node is where the line perpendicular
 to the chords from its bottom node meets the top chord, not plumb
 above it, so the Warren triangles are isosceles to the chord (verticals
 lean with it); the chords themselves still end at the plumb posts.
-The run of diagonals starts a
-clearance (150 mm by default) in from each chord end so the end
-diagonals clear the posts; the whole run shortens evenly, every
-diagonal keeping the same angle, while the chords run the full length. The truss height is to the top of steel of the top chord
+The panels run from post centreline to post centreline: the end nodes
+are where the chords meet the posts (as on the drawing, where the first
+diagonal starts in the corner), so the end panels are the same as the
+rest and every triangle has the same angles. The end clearance (150 mm
+by default) no longer moves the nodes: the end diagonals - and the plan
+braces that end at a post - stop that far short of the post faces,
+their lines still running to the node (in Revit a negative start / end
+extension; where Revit has none to set, the line itself is pulled back
+along itself, so the angle is the same; 0 stops them at the post
+face). The page draws the cut-back member and its line on to the node
+dashed. On Pratt, Howe and X trusses the end top nodes are on the post
+centrelines too (the slope shift of the other top nodes is not applied
+there). The truss height is to the top of steel of the top chord
 (top chords are top justified), and Build Bridge sets the tops of the
 four original posts to it - lengthening or shortening them - and
 Update Bridges keeps them there. There is no top-plan bracing; the
@@ -1051,8 +1060,9 @@ the plan, "Mirror bracing along" and "Mirror bracing across", mirror
 the layout end for end and side for side - each is its own setting,
 also on a brace's ring and in Settings), the cross beams
 (on the side frames' bottom nodes, so they meet the brace connection
-points and move with the end clearance; with a typed count they are
-spread equally between the end nodes) and the optional beams between the cross
+points - the end ones on the post centrelines, between the posts'
+inner faces; with a typed count they are spread equally between the
+end nodes) and the optional beams between the cross
 beams (a count per bay, spread evenly between the truss planes, tops
 on the floor underside) sit under the deck. The deck runs to the outer faces of the posts along the span
 (click its "deck end" value to type another offset from the post
@@ -1099,12 +1109,13 @@ cutback - 10 mm by default, the "top chord cutback" and "bottom chord
 cutback" values on the elevation, "Cutback at posts..." on a chord's
 ring, or Settings - short of the post faces at each end as a fit-up
 gap, and Revit is told not to auto-join the chord ends at the posts so
-a join cannot pull a chord back into a post; the end diagonals are
-treated the same way - Revit is not allowed to join their ends next to
-the posts, the line is put back on its node after placing, and each
-build or update checks it: an end diagonal ends on its chord
-intersection point like every other diagonal, and the result line
-names any end Revit still moved off its node); the cross beams between the truss planes, the
+a join cannot pull a chord back into a post; the end diagonals and
+the plan braces at the posts are treated the same way - Revit is not
+allowed to join their ends at the posts, the line is put back on its
+node after placing, and each build or update checks it: an end
+diagonal's line ends on the chord / post intersection like every other
+diagonal on its node, and the result line names any end Revit still
+moved off its node); the cross beams between the truss planes, the
 end ones on the post centrelines and running between the posts' inner
 faces, and any beams between the cross beams, with z justification Top
 so their top sits on the floor underside; the plan bracing cut at
@@ -1144,11 +1155,14 @@ moved onto their new lines.
 **Update Bridges** - after the posts move or the design changes: opens
 the same Bridges dialog with a tick box per bridge and its status
 (including "newer design saved" when Bridge Builder saved changes that
-are not built yet), then for the ticked ones reads the posts again and
+are not built yet, and "layout updated in pyMEP" when the bridge was
+built by an older pyMEP whose layout gives different members for the
+same design - updating redraws it with the current one), then for the ticked ones reads the posts again and
 takes the newest design file saved for that bridge, then brings the
 model to it in place as described above - element ids kept, so tags
-and dimensions survive. A bridge whose posts have not moved and that
-has no newer design is left alone. One undo step per bridge, and a
+and dimensions survive. A bridge whose posts have not moved, that
+has no newer design and that was built by the current layout is left
+alone. One undo step per bridge, and a
 table says what happened to each.
 
 Railing infill panels are whatever the chosen railing type draws; the

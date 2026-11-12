@@ -71,7 +71,7 @@ DEFAULTS = {
     "top_chord_pieces": [],          # typed piece lengths from the start, None = the variable
     "bottom_chord_pieces": [],       # piece that takes the rest; [] = one piece (then *_split_m)
     "chord_extension_m": None,       # chords run this far past the post centrelines; None = outer face
-    "brace_end_offset_m": 0.15,      # the end diagonals start this far in from the chord ends at the bottom, clear of the posts
+    "brace_end_offset_m": 0.15,      # the end diagonals (and plan braces) stop this short of the post faces; their lines still end on the post centrelines
     "end_posts": False,              # the posts are already there
     "deck_top_offset_m": 0.0,        # deck top relative to the post base
     "deck_end_m": None,              # deck end past the post centrelines; None = the outer face
@@ -95,6 +95,11 @@ DEFAULTS = {
     "level": None,                   # level id the floor and beams reference
 }
 TOL = 1e-6
+# bumped when the same design and posts give different members than before
+# (2: the side frames' end nodes on the post centrelines, the end clearance
+# cutting the end diagonals back); a bridge built under an older layout is
+# offered for an update
+LAYOUT_VERSION = 2
 
 
 def normalize_design(d):
@@ -351,11 +356,11 @@ def layout(design, frame):
         ext = -half
     s0, s1 = -ext, span + ext
     total = s1 - s0
-    # the diagonals (and verticals) run between the end clearances, so the
-    # clearance shortens the whole run evenly and every diagonal keeps the
-    # same angle; the chords still run the full length
-    off = min(design["brace_end_offset_m"], max(0.0, total / 2.0 - TOL))
-    r0, r1 = s0 + off, s1 - off
+    # the side frames' nodes run from post centreline to post centreline: the
+    # end nodes are where the chords meet the posts, so the end panels are
+    # the same as the rest and every triangle has the same angles (the end
+    # clearance cuts the end diagonals back from the posts, not the run)
+    r0, r1 = 0.0, span
     run = r1 - r0
     if design["panel_mode"] == "count":
         n = max(1, int(design["panels"]))
@@ -369,11 +374,9 @@ def layout(design, frame):
     else:
         n = max(1, int(round(run / design["panel_length_m"])))
     L = run / n
-    # the plan bays run from post centreline to post centreline, so the end
-    # cross beams sit on the posts' centre points
-    # the plan bays run between the side frames' end nodes, so the cross beams
-    # land on the brace connection points (with the end clearance) - every
-    # node when the bays follow the panels
+    # the plan bays run between the side frames' end nodes (the post
+    # centrelines), so the cross beams land on the brace connection points -
+    # every node when the bays follow the panels
     d0, d1 = r0, r1
     if d1 - d0 <= TOL:
         raise ValueError(u"the posts are too close together for a deck")
@@ -641,27 +644,21 @@ def members(design, frame):
         else:
             for i in range(1, n):
                 add("vertical", side, i, (pts[i], t, zb), (pts[i] + dtop, t, zt))
+
+            def _top(s):
+                # a top node over a panel point moves by dtop, except at the
+                # two ends: there it is where the top chord meets the (plumb)
+                # post, on the post centreline
+                if abs(s - pts[0]) <= TOL or abs(s - pts[-1]) <= TOL:
+                    return s
+                return s + dtop
             for i in range(n):
                 for sub, (a, b) in enumerate(_diagonal(design["truss"], i, n, pts[i], pts[i + 1])):
                     za = zb if a[0] == "bottom" else zt
                     zb2 = zb if b[0] == "bottom" else zt
-                    sa = a[1] if a[0] == "bottom" else a[1] + dtop
-                    sb = b[1] if b[0] == "bottom" else b[1] + dtop
+                    sa = a[1] if a[0] == "bottom" else _top(a[1])
+                    sb = b[1] if b[0] == "bottom" else _top(b[1])
                     add("diagonal", side, i, (sa, t, za), (sb, t, zb2), sub)
-
-    # the diagonal ends at the two end nodes - on the bottom chord, or on the
-    # top chord for a Pratt / X end panel (a top node sits within dtop of it)
-    # - are next to the posts: Revit is told not to join them there either,
-    # so it does not attach them to the post and they end on their node like
-    # every other diagonal
-    near = abs(dtop) + TOL
-    for m in out:
-        if m["role"] != "diagonal":
-            continue
-        ends = [k for k, p in ((0, m["p1"]), (1, m["p2"]))
-                if abs(p[0] - lay["r0"]) <= near or abs(p[0] - lay["r1"]) <= near]
-        if ends:
-            m["free_ends"] = ends
 
     # cross beams at every bay line, between the truss planes, tops on the
     # floor underside; one that falls within a post's footprint runs between
@@ -725,6 +722,7 @@ def members(design, frame):
             if m["role"] == "bracing":
                 m["p1"] = _mirror(m["p1"])
                 m["p2"] = _mirror(m["p2"])
+    post_ends(design, frame, out)
     # beams along the span between consecutive cross beams, spread evenly
     # between the truss planes, tops on the floor underside like the cross beams
     ks = design["stringers_across"]
@@ -752,6 +750,65 @@ def members(design, frame):
         add("railing", "L", 0, (d0, r_l, zd), (d1, r_l, zd))
         add("railing", "R", 0, (d0, r_r, zd), (d1, r_r, zd))
     return out
+
+
+def _box_exit(p, q, sc, tc, reach):
+    """The fraction along p -> q where the line leaves the square of half
+    side reach round (sc, tc) in plan (p inside it)."""
+    f = 1.0
+    for k, centre in ((0, sc), (1, tc)):
+        d = q[k] - p[k]
+        if abs(d) <= TOL:
+            continue
+        lim = centre + (reach if d > 0 else -reach)
+        f = min(f, (lim - p[k]) / d)
+    return max(0.0, min(f, 0.9))
+
+
+def post_ends(design, frame, mems):
+    """Brace ends on a post - the end diagonals at the nodes on the post
+    centrelines (the chords' intersections with the posts), the plan
+    bracing at the end cross beams: the line stays on the node like every
+    other diagonal, so every triangle is the same, and the member itself
+    stops the end clearance short of the post faces: "end_cuts" lists
+    [end, fraction of the line cut off at that end] (Revit: a negative
+    start / end extension); "free_ends" keeps Revit from joining the end
+    to the post and moving it."""
+    half = frame["post_size"] / 2.0
+    reach = half + max(0.0, design["brace_end_offset_m"])
+    posts = [(0.0, frame["tL"]), (0.0, frame["tR"]),
+             (frame["span"], frame["tL"]), (frame["span"], frame["tR"])]
+    for m in mems:
+        if m["role"] not in ("diagonal", "bracing"):
+            continue
+        ends, cuts = [], []
+        for e, (p, q) in enumerate(((m["p1"], m["p2"]), (m["p2"], m["p1"]))):
+            for sc, tc in posts:
+                if abs(p[0] - sc) <= half + TOL and abs(p[1] - tc) <= half + TOL:
+                    ends.append(e)
+                    f = _box_exit(p, q, sc, tc, reach)
+                    if f > TOL:
+                        cuts.append([e, f])
+                    break
+        if ends:
+            m["free_ends"] = ends
+        if cuts:
+            m["end_cuts"] = cuts
+        elif "end_cuts" in m:
+            del m["end_cuts"]
+    return mems
+
+
+def cut_points(m):
+    """(p1, p2) of the member as built: the line less its end cuts."""
+    p1, p2 = m["p1"], m["p2"]
+    a, b = p1, p2
+    for e, f in m.get("end_cuts") or []:
+        if e == 0:
+            a = tuple(u + (v - u) * f for u, v in zip(p1, p2))
+        else:
+            b = tuple(v + (u - v) * f for u, v in zip(p1, p2))
+    return a, b
 
 
 def deck_profile(design, frame):
@@ -987,10 +1044,18 @@ def record(name, design, source, frame, member_ids, floor_id, stamp, extra=None)
         fr[k] = float(frame.get(k, 0.0))
     rec = {"name": name, "design": design, "source": source, "frame": fr,
            "members": dict((k, v) for k, v in member_ids.items()),
-           "floor": floor_id, "updated": stamp}
+           "floor": floor_id, "updated": stamp, "layout": LAYOUT_VERSION}
     if extra:
         rec.update(extra)
     return rec
+
+
+def layout_outdated(rec):
+    """True when the bridge was built by an older layout than this one."""
+    try:
+        return int(rec.get("layout") or 1) < LAYOUT_VERSION
+    except (TypeError, ValueError):
+        return True
 
 
 # the values Build / Update read from the model's types into a design
@@ -1079,7 +1144,7 @@ def fill_page(template, data):
     return template.replace(PLACEHOLDER, text, 1)
 
 
-__all__ = ["piece_spans", "design_differs", "pick_design_file", "deck_motion", "INJECTED_KEYS", "chord_extent", "bridge_on_posts", "bridge_with_source", "truss_height", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
+__all__ = ["LAYOUT_VERSION", "layout_outdated", "post_ends", "cut_points", "piece_spans", "design_differs", "pick_design_file", "deck_motion", "INJECTED_KEYS", "chord_extent", "bridge_on_posts", "bridge_with_source", "truss_height", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
            "BRACE_ROLES", "TOP_ALIGNED", "DEFAULTS", "normalize_design", "frame_from_posts",
            "frame_from_points", "effective_frame", "planes", "height", "base_z", "to_world",
            "layout", "pieces",

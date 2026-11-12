@@ -150,8 +150,9 @@ class Layout(unittest.TestCase):
         self.assertAlmostEqual(lay["s0"], -0.1)              # outer face of the posts
         self.assertAlmostEqual(lay["s1"], 20.1)
         self.assertEqual(lay["n"], 4)
-        self.assertAlmostEqual(lay["d0"], -0.1)              # bays between the side frames' end nodes
-        self.assertAlmostEqual(lay["d1"], 20.1)
+        self.assertAlmostEqual(lay["d0"], 0.0)               # bays between the side frames' end nodes,
+        self.assertAlmostEqual(lay["d1"], 20.0)              # on the post centrelines
+        self.assertEqual((lay["r0"], lay["r1"], lay["run"]), (0.0, 20.0, 20.0))
         self.assertEqual(lay["bays"], 4)
         self.assertEqual(len(lay["stations"]), 5)
         lay2 = BR.layout(design(chord_extension_m=0.0, plan_bays=10, deck_clearance_m=0.0), FRAME)
@@ -159,7 +160,7 @@ class Layout(unittest.TestCase):
         self.assertEqual(lay2["bays"], 10)
         self.assertAlmostEqual(lay2["d0"], 0.0)                 # bays always start at the post centreline
         lay3 = BR.layout(design(panel_mode="length", panel_length_m=1.92), FRAME)
-        self.assertEqual(lay3["n"], 11)                      # 20.2 / 1.92 = 10.5 -> 11
+        self.assertEqual(lay3["n"], 10)                      # 20.0 / 1.92 = 10.4 -> 10
 
     def test_pieces(self):
         self.assertEqual(BR.pieces(0.0, 20.0, 0.0), [(0.0, 20.0)])
@@ -285,7 +286,7 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(bc["p1"][0], -0.09)
         self.assertAlmostEqual(bc["p2"][0], 20.09)
         self.assertAlmostEqual(by_key(mems, u"top_chord:L:0:0")["p1"][0], -0.1)
-        self.assertAlmostEqual(by_key(mems, u"crossbeam:C:0:0")["p1"][0], -0.1)
+        self.assertAlmostEqual(by_key(mems, u"crossbeam:C:0:0")["p1"][0], 0.0)
         # typed pieces are measured within the cut-back chord: the variable piece takes the rest
         p = BR.members(design(bottom_chord_cutback_m=0.01, bottom_chord_pieces=[6.0, None]), FRAME)
         self.assertAlmostEqual(by_key(p, u"bottom_chord:L:0:0")["p2"][0], -0.09 + 6.0)
@@ -314,19 +315,18 @@ class Members(unittest.TestCase):
             BR.normalize_design({"top_chord_cutback_m": -0.01})
 
     def test_end_diagonals_end_on_their_nodes(self):
-        # the diagonal ends at the two end nodes (next to the posts) are marked
-        # so Revit does not join them to the posts; no other end is. On the
-        # sloping FRAME a top end node sits within dtop of the end of the run
-        dtop = abs(2.3 * 0.1 / 1.01)
+        # the diagonal ends at the two end nodes - on the post centrelines - are
+        # marked so Revit does not join them to the posts, and cut back; no
+        # other end is
         for truss, n_ends in (("warren", 4), ("pratt", 4), ("howe", 4), ("x", 8)):
             d = design(truss=truss, brace_end_offset_m=0.15)
-            lay = BR.layout(d, FRAME)
             mems = BR.members(d, FRAME)
             flagged = []
             for m in mems:
                 for k in m.get("free_ends", []) if m["role"] == "diagonal" else []:
                     p = m["p1"] if k == 0 else m["p2"]
-                    self.assertTrue(abs(p[0] - lay["r0"]) <= dtop + 1e-9 or abs(p[0] - lay["r1"]) <= dtop + 1e-9)
+                    self.assertIn(p[0], (0.0, 20.0))
+                    self.assertIn(k, [e for e, f in m["end_cuts"]])
                     flagged.append((m["key"], k))
             self.assertEqual(len(flagged), n_ends, truss)               # both end nodes, both sides
         warren = BR.members(design(truss="warren"), FRAME)
@@ -392,7 +392,7 @@ class Members(unittest.TestCase):
     def test_plan_members_sit_under_the_floor(self):
         mems = BR.members(design(floor_thickness_m=0.15, deck_top_offset_m=0.0), FRAME)
         cb = by_key(mems, u"crossbeam:C:0:0")
-        self.assertAlmostEqual(cb["p1"][0], -0.1)                # on the first frame node (chord end here)
+        self.assertAlmostEqual(cb["p1"][0], 0.0)                 # on the first frame node (the post centreline)
         self.assertAlmostEqual(cb["p1"][1], 1.4)                 # within the post footprint: between the inner faces
         self.assertAlmostEqual(cb["p2"][1], -1.4)
         cb1 = by_key(mems, u"crossbeam:C:1:0")
@@ -407,12 +407,12 @@ class Members(unittest.TestCase):
         # crosses, the two pieces meeting on it mid-width
         self.assertEqual(count(mems, "bracing"), 4)
         br = by_key(mems, u"bracing:C:0:0")
-        self.assertAlmostEqual(br["p1"][0], -0.1)
+        self.assertAlmostEqual(br["p1"][0], 0.0)
         self.assertAlmostEqual(br["p1"][1], 1.5)
-        self.assertAlmostEqual(br["p2"][0], -0.1 + 20.2 / 4.0)    # on the first cross beam
+        self.assertAlmostEqual(br["p2"][0], 20.0 / 4.0)           # on the first cross beam
         self.assertAlmostEqual(br["p2"][1], 0.0)
         brb = by_key(mems, u"bracing:C:0:1")
-        self.assertAlmostEqual(brb["p2"][0], -0.1 + 20.2 / 2.0)   # two bays on
+        self.assertAlmostEqual(brb["p2"][0], 20.0 / 2.0)          # two bays on
         self.assertAlmostEqual(brb["p2"][1], -1.5)
         br2 = by_key(mems, u"bracing:C:1:0")
         self.assertAlmostEqual(br2["p1"][1], -1.5)                # alternates
@@ -423,7 +423,7 @@ class Members(unittest.TestCase):
         # an odd number of bays: the last diagonal takes the bay that is left
         odd = BR.members(design(plan_bays=5), FRAME)
         self.assertEqual(count(odd, "bracing"), 5)                # 2 + 2 + 1 pieces
-        self.assertAlmostEqual(by_key(odd, u"bracing:C:2:0")["p2"][0], 20.1)
+        self.assertAlmostEqual(by_key(odd, u"bracing:C:2:0")["p2"][0], 20.0)
         one = BR.members(design(brace_bays=1), FRAME)
         self.assertEqual(count(one, "bracing"), 4)
         self.assertAlmostEqual(by_key(one, u"bracing:C:1:0")["p1"][1], -1.5)
@@ -432,7 +432,7 @@ class Members(unittest.TestCase):
         split = BR.members(design(bracing="x", split_x=True), FRAME)
         self.assertEqual(count(split, "bracing"), 16)
         mid = by_key(split, u"bracing:C:0:0")["p2"]
-        self.assertAlmostEqual(mid[0], -0.1 + 20.2 / 8.0)       # the X centre of the first bay
+        self.assertAlmostEqual(mid[0], 20.0 / 8.0)              # the X centre of the first bay
         self.assertAlmostEqual(mid[1], 0.0)
         self.assertEqual(count(BR.members(design(bracing="none"), FRAME), "bracing"), 0)
         self.assertEqual(BR.normalize_design({"brace_bays": 0})["brace_bays"], 1)
@@ -445,7 +445,7 @@ class Members(unittest.TestCase):
         mems = BR.members(d, FRAME)
         st = [m for m in mems if m["role"] == "stiffener"]
         self.assertEqual(len(st), 8)                               # 2 per bay x 4 bays
-        self.assertAlmostEqual(st[0]["p1"][0], 0.0)                # gap from the first cross beam at -0.1
+        self.assertAlmostEqual(st[0]["p1"][0], 0.1)                # gap from the first cross beam at 0
         self.assertAlmostEqual(st[0]["p1"][2], -0.15)
         d0, d1, t_r, t_l = BR.deck_extent(d, FRAME)
         self.assertAlmostEqual(t_l, 1.39)                          # inner face of the post less clearance
@@ -514,8 +514,8 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(deck["head"][0], 20.1)
         # the end cross beams sit on the side frames' end nodes
         mems = BR.members(design(), FRAME)
-        self.assertAlmostEqual(by_key(mems, u"crossbeam:C:0:0")["p1"][0], -0.1)
-        self.assertAlmostEqual(by_key(mems, u"crossbeam:C:4:0")["p1"][0], 20.1)
+        self.assertAlmostEqual(by_key(mems, u"crossbeam:C:0:0")["p1"][0], 0.0)
+        self.assertAlmostEqual(by_key(mems, u"crossbeam:C:4:0")["p1"][0], 20.0)
 
     def test_side_frames_on_the_post_centres(self):
         # the built-in default: the trusses on the posts' centre points, the
@@ -531,8 +531,8 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(by_key(mems, u"top_chord:L:0:0")["p1"][1], 1.5)
         self.assertAlmostEqual(by_key(mems, u"top_chord:L:0:0")["p1"][0], 0.1 + 0.01)   # the inner face less the 10 mm cutback
         cb0 = by_key(mems, u"crossbeam:C:0:0")
-        self.assertAlmostEqual(cb0["p1"][0], 0.1 + 0.15)         # the first node: inner face plus clearance
-        self.assertAlmostEqual(cb0["p1"][1], 1.5)                # clear of the posts, so the full width
+        self.assertAlmostEqual(cb0["p1"][0], 0.0)                # the first node: on the post centreline
+        self.assertAlmostEqual(cb0["p1"][1], 1.4)                # in the posts' footprint: between their inner faces
         self.assertAlmostEqual(by_key(mems, u"crossbeam:C:1:0")["p1"][1], 1.5)
         lines = BR.stiffener_positions(d, FRAME)                 # the 2.78 m deck at 0.5: five lines, centred
         self.assertEqual(len(lines), 5)
@@ -553,7 +553,7 @@ class Members(unittest.TestCase):
             a, b, c = (by_key(mems, u"bracing:C:0:{0}".format(i)) for i in range(3))
             self.assertAlmostEqual(a["p2"][0], b["p1"][0])
             self.assertAlmostEqual(b["p2"][0], c["p1"][0])
-            self.assertAlmostEqual(a["p2"][0], -0.1 + 20.2 / 6.0) # on the first cross beam
+            self.assertAlmostEqual(a["p2"][0], 20.0 / 6.0)        # on the first cross beam
             self.assertAlmostEqual(a["p2"][1], 1.5 - 3.0 / 3.0)   # a third of the way across
             self.assertAlmostEqual(c["p2"][1], -1.5)
         x = BR.members(design(bracing="x", split_x=False), FRAME)
@@ -563,16 +563,16 @@ class Members(unittest.TestCase):
         # angle mode: the panel length follows the typed angle and the height,
         # rounded to whole panels; the laid-out angle is reported
         d = design(truss="warren", panel_mode="angle", brace_angle_deg=55.0)
-        lay = BR.layout(d, FRAME)                                 # 20.2 m chord, 2.3 m high
-        self.assertEqual(lay["n"], 6)                             # 2 x 2.3 / tan 55 = 3.22 -> 6.27 panels
-        self.assertAlmostEqual(BR.brace_angle(d, FRAME), math.degrees(math.atan2(2.3, 20.2 / 6.0 / 2.0)))
+        lay = BR.layout(d, FRAME)                                 # 20 m post to post, 2.3 m high
+        self.assertEqual(lay["n"], 6)                             # 2 x 2.3 / tan 55 = 3.22 -> 6.21 panels
+        self.assertAlmostEqual(BR.brace_angle(d, FRAME), math.degrees(math.atan2(2.3, 20.0 / 6.0 / 2.0)))
         self.assertAlmostEqual(BR.summary(d, FRAME)["brace_angle_deg"], BR.brace_angle(d, FRAME))
         steep = design(truss="warren", panel_mode="angle", brace_angle_deg=70.0)
-        self.assertEqual(BR.layout(steep, FRAME)["n"], 12)        # 2 x 2.3 / tan 70 = 1.67 -> 12.06
+        self.assertEqual(BR.layout(steep, FRAME)["n"], 12)        # 2 x 2.3 / tan 70 = 1.67 -> 11.95
         pratt = design(truss="pratt", panel_mode="angle", brace_angle_deg=55.0)
-        self.assertEqual(BR.layout(pratt, FRAME)["n"], 13)        # 2.3 / tan 55 = 1.61 -> 12.5 -> 13
+        self.assertEqual(BR.layout(pratt, FRAME)["n"], 12)        # 2.3 / tan 55 = 1.61 -> 12.4 -> 12
         self.assertAlmostEqual(BR.brace_angle(design(truss="warren"), FRAME),
-                               math.degrees(math.atan2(2.3, 20.2 / 4.0 / 2.0)))   # as drawn: from the panels
+                               math.degrees(math.atan2(2.3, 20.0 / 4.0 / 2.0)))   # as drawn: from the panels
         self.assertEqual(BR.brace_angle(design(truss="vierendeel"), FRAME), 0.0)
         for bad in (4.0, 86.0):
             with self.assertRaises(ValueError):
@@ -628,32 +628,60 @@ class Members(unittest.TestCase):
                                              BR.layout(design(truss="warren"), BR.frame_from_posts(s, e))["points"][1]) / 2.0)
 
     def test_end_diagonal_clearance(self):
-        # the run of diagonals starts the clearance in from each chord end, so
-        # the whole run shortens evenly and every diagonal keeps the same angle;
-        # the chords still run the full length
+        # the end nodes are where the chords meet the posts (the post
+        # centrelines), so the end panels are the same as the rest and every
+        # triangle has the same angles; the end clearance cuts the end
+        # diagonals back from the post faces, their lines still on the node
         d = design(truss="warren", brace_end_offset_m=0.15)
         level = BR.frame_from_posts(*posts(z0=10.0, z1=10.0))      # level: the top nodes are plumb over mid-panel
         lay = BR.layout(d, level)
-        self.assertAlmostEqual(lay["r0"], -0.1 + 0.15)
-        self.assertAlmostEqual(lay["r1"], 20.1 - 0.15)
-        self.assertAlmostEqual(lay["L"], (20.2 - 0.3) / 4.0)
+        self.assertEqual((lay["r0"], lay["r1"]), (0.0, 20.0))
+        self.assertAlmostEqual(lay["L"], 20.0 / 4.0)
         mems = BR.members(d, level)
         first = by_key(mems, u"diagonal:L:0:0")
-        self.assertAlmostEqual(first["p1"][0], 0.05)
-        self.assertAlmostEqual(first["p1"][2], 0.0)
-        self.assertAlmostEqual(first["p2"][0], 0.05 + lay["L"] / 2.0)
+        self.assertEqual(first["p1"], (0.0, 1.5, 0.0))              # on the bottom chord / post intersection
+        self.assertAlmostEqual(first["p2"][0], 2.5)
+        self.assertEqual(first["free_ends"], [0])
+        self.assertEqual(len(first["end_cuts"]), 1)
+        self.assertEqual(first["end_cuts"][0][0], 0)
+        self.assertAlmostEqual(first["end_cuts"][0][1], (0.1 + 0.15) / 2.5)   # to 150 clear of the post face
+        a, b = BR.cut_points(first)
+        self.assertAlmostEqual(a[0], 0.1 + 0.15)
+        self.assertAlmostEqual(a[2], 2.3 * 0.1)                     # along its own line: same angle
+        self.assertEqual(b, first["p2"])
         last = by_key(mems, u"diagonal:L:3:1")
-        self.assertAlmostEqual(last["p2"][0], 19.95)
+        self.assertEqual(last["p2"][0], 20.0)
+        self.assertEqual([e for e, f in last["end_cuts"]], [1])
+        self.assertAlmostEqual(BR.cut_points(last)[1][0], 20.0 - 0.25)
         inner = by_key(mems, u"diagonal:L:1:0")
-        self.assertAlmostEqual(inner["p1"][0], 0.05 + lay["L"])
+        self.assertAlmostEqual(inner["p1"][0], lay["L"])
+        self.assertNotIn("end_cuts", inner)
+        self.assertNotIn("free_ends", inner)
         runs = [abs(m["p2"][0] - m["p1"][0]) for m in mems if m["role"] == "diagonal"]
-        self.assertTrue(all(abs(r - runs[0]) < 1e-9 for r in runs))            # all alike
+        self.assertTrue(all(abs(r - runs[0]) < 1e-9 for r in runs))            # all alike, the end ones too
         self.assertAlmostEqual(by_key(mems, u"top_chord:L:0:0")["p1"][0], -0.1)   # chords unchanged
         self.assertAlmostEqual(by_key(mems, u"top_chord:L:0:0")["p2"][0], 20.1)
+        # 0: the end diagonals stop at the post faces
+        flush = by_key(BR.members(design(truss="warren", brace_end_offset_m=0.0), level), u"diagonal:L:0:0")
+        self.assertAlmostEqual(BR.cut_points(flush)[0][0], 0.1)
+        # Pratt: the end diagonals' top ends are on the top chord / post
+        # intersection (no slope shift there) and cut back the same way
         pratt = BR.members(design(truss="pratt", brace_end_offset_m=0.2), FRAME)
-        feet = [m["p1"][0] for m in pratt if m["role"] == "diagonal" and m["side"] == "L" and abs(m["p1"][2]) < 1e-9]
-        feet += [m["p2"][0] for m in pratt if m["role"] == "diagonal" and m["side"] == "L" and abs(m["p2"][2]) < 1e-9]
-        self.assertTrue(all(f > -0.1 + 0.2 - 1e-9 and f < 20.1 - 0.2 + 1e-9 for f in feet))
+        ends = [m for m in pratt if m["role"] == "diagonal" and m.get("end_cuts")]
+        self.assertEqual(len(ends), 4)
+        for m in ends:
+            for e, f in m["end_cuts"]:
+                p = m["p1"] if e == 0 else m["p2"]
+                self.assertIn(p[0], (0.0, 20.0))
+                self.assertAlmostEqual(p[2], 2.3)
+                c = BR.cut_points(m)[e]
+                self.assertAlmostEqual(abs(c[0] - p[0]), 0.1 + 0.2)
+        # the plan bracing at the end cross beams is cut back from the posts too
+        br = by_key(BR.members(d, level), u"bracing:C:0:0")
+        self.assertEqual(br["p1"][:2], (0.0, 1.5))
+        self.assertEqual(br["free_ends"], [0])
+        a = BR.cut_points(br)[0]
+        self.assertAlmostEqual(a[0], 0.25)                           # leaves the post 150 clear of its face
         self.assertAlmostEqual(BR.normalize_design({})["brace_end_offset_m"], 0.15)
         with self.assertRaises(ValueError):
             BR.normalize_design({"brace_end_offset_m": -0.1})
@@ -689,20 +717,19 @@ class Members(unittest.TestCase):
         # between the posts' inner faces
         d = design(truss="warren", brace_end_offset_m=0.25)
         lay = BR.layout(d, FRAME)
-        self.assertAlmostEqual(lay["stations"][0], -0.1 + 0.25)
-        self.assertAlmostEqual(lay["stations"][-1], 20.1 - 0.25)
+        self.assertAlmostEqual(lay["stations"][0], 0.0)           # the end nodes on the post centrelines,
+        self.assertAlmostEqual(lay["stations"][-1], 20.0)         # whatever the end clearance
         self.assertEqual([round(s, 6) for s in lay["stations"]], [round(p, 6) for p in lay["points"]])
         mems = BR.members(d, FRAME)
         cb0 = by_key(mems, u"crossbeam:C:0:0")
-        self.assertAlmostEqual(cb0["p1"][0], 0.15)
-        self.assertAlmostEqual(cb0["p1"][1], 1.5)                 # clear of the posts: full width between the planes
+        self.assertAlmostEqual(cb0["p1"][0], 0.0)
+        self.assertAlmostEqual(cb0["p1"][1], 1.4)                 # in the posts' footprint: between the inner faces
+        self.assertAlmostEqual(by_key(mems, u"crossbeam:C:1:0")["p1"][1], 1.5)   # the rest between the planes
         feet = sorted(set(round(m["p1"][0], 6) for m in mems if m["role"] == "diagonal" and abs(m["p1"][2]) < 1e-9))
         self.assertTrue(all(any(abs(f - s) < 1e-6 for s in lay["stations"]) for f in feet))   # every brace foot on a cross beam
         counted = BR.layout(design(brace_end_offset_m=0.25, plan_bays=6), FRAME)
-        self.assertAlmostEqual(counted["stations"][0], 0.15)
-        self.assertAlmostEqual(counted["B"], (20.2 - 0.5) / 6.0)
-        flush = BR.members(design(brace_end_offset_m=0.0), FRAME)   # a node at the post outer face
-        self.assertAlmostEqual(by_key(flush, u"crossbeam:C:0:0")["p1"][1], 1.4)   # shortened to the inner faces
+        self.assertAlmostEqual(counted["stations"][0], 0.0)
+        self.assertAlmostEqual(counted["B"], 20.0 / 6.0)
 
     def test_plan_braces_centre_on_the_bottom_chords(self):
         # the plan braces' centreline sits at the bottom chords' centre: the
@@ -899,6 +926,13 @@ class Files(unittest.TestCase):
         self.assertEqual(BR.deck_motion(old, BR.world_deck(design(floor_thickness_m=0.3), FRAME)), "same")   # thickness: the type's job
         rec = BR.record("B", d, {}, FRAME, {}, 9, "now", extra={"design_file": "x.json", "design_mtime": 5.0})
         self.assertEqual((rec["design_file"], rec["design_mtime"]), ("x.json", 5.0))
+        # a record carries the layout it was built by; one from before (no
+        # layout) or an older one is offered for an update
+        self.assertEqual(rec["layout"], BR.LAYOUT_VERSION)
+        self.assertFalse(BR.layout_outdated(rec))
+        self.assertTrue(BR.layout_outdated({}))
+        self.assertTrue(BR.layout_outdated({"layout": BR.LAYOUT_VERSION - 1}))
+        self.assertTrue(BR.layout_outdated({"layout": "junk"}))
 
     def test_latest_design(self):
         self.assertIsNone(BR.latest_design({"bridges": {}}))

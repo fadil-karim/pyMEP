@@ -54,7 +54,7 @@ def bridge_rows(doc, registry):
             new = BR.frame_from_posts(start, end)
             old = BR.frame_from_record(rec)
             if not BR.frame_changed(old, new):
-                status = u"unchanged"
+                status = u"layout updated in pyMEP" if BR.layout_outdated(rec) else u"unchanged"
             elif BR.rigid_motion(old, new) is not None:
                 status = u"posts moved"
             else:
@@ -336,7 +336,76 @@ def create_member(doc, m, symbol, level):
             el.Location.Curve = member_line(m)
         except Exception:
             pass
+    apply_end_cuts(el, m)
     return el
+
+
+CUT_ROLES = ("diagonal", "bracing")
+EXTENSION_PARAMS = (("START_EXTENSION", u"Start Extension"), ("END_EXTENSION", u"End Extension"))
+
+
+def _extension_param(el, end):
+    bip_name, label = EXTENSION_PARAMS[end]
+    p = None
+    bip = getattr(BuiltInParameter, bip_name, None)
+    if bip is not None:
+        try:
+            p = el.get_Parameter(bip)
+        except Exception:
+            p = None
+    if p is None:
+        try:
+            p = el.LookupParameter(label)
+        except Exception:
+            p = None
+    return p
+
+
+def cut_member(m, ends=None):
+    """m with its line pulled back by its end cuts (only the ends listed,
+    when given) - the line Revit gets when it has no extension to set."""
+    cuts = [c for c in (m.get("end_cuts") or []) if ends is None or c[0] in ends]
+    if not cuts:
+        return m
+    c = dict(m)
+    c["end_cuts"] = cuts
+    c["p1"], c["p2"] = BR.cut_points(c)
+    del c["end_cuts"]
+    return c
+
+
+def apply_end_cuts(el, m):
+    """An end diagonal or plan brace on a post keeps its line on the node
+    and stops short of the post: a negative start / end extension of the
+    cut length (other ends of these members go back to 0, so a diagonal
+    that is no longer at the end loses its cut). When Revit has no
+    extension to set, the line itself is pulled back instead (the angle
+    is the same). Returns the member whose line the element now has."""
+    if m.get("role") not in CUT_ROLES:
+        return m
+    cuts = dict((int(e), f) for e, f in (m.get("end_cuts") or []))
+    length_m = math.sqrt(sum((a - b) ** 2 for a, b in zip(m["p1"], m["p2"])))
+    fallback = []
+    for end in (0, 1):
+        cut_m = cuts.get(end, 0.0) * length_m
+        want = -m_to_ft(cut_m)
+        p = _extension_param(el, end)
+        done = False
+        if p is not None and not p.IsReadOnly:
+            try:
+                done = abs(p.AsDouble() - want) <= 1e-6 or p.Set(want) is not False
+            except Exception:
+                done = False
+        if not done and cut_m > 0.0:
+            fallback.append(end)
+    if fallback:
+        c = cut_member(m, fallback)
+        try:
+            el.Location.Curve = member_line(c)
+            return c
+        except Exception:
+            pass
+    return m
 
 
 def line_matches(el, m, tol_m=0.001):
@@ -348,11 +417,16 @@ def line_matches(el, m, tol_m=0.001):
     except Exception:
         return True
     tol = m_to_ft(tol_m)
-    want = [_xyz(m["p1"]), _xyz(m["p2"])]
 
     def near(p, q):
         return abs(p.X - q.X) <= tol and abs(p.Y - q.Y) <= tol and abs(p.Z - q.Z) <= tol
-    return (near(a, want[0]) and near(b, want[1])) or (near(a, want[1]) and near(b, want[0]))
+    # the full line, or - where Revit had no extension to set - the line
+    # pulled back by the end cuts
+    for c in (m, cut_member(m, [0]), cut_member(m, [1]), cut_member(m)):
+        want = [_xyz(c["p1"]), _xyz(c["p2"])]
+        if (near(a, want[0]) and near(b, want[1])) or (near(a, want[1]) and near(b, want[0])):
+            return True
+    return False
 
 
 def retype(el, typ):
@@ -651,6 +725,7 @@ def set_member_curve(el, m):
         except Exception:
             pass
     free_ends(el, m)
+    apply_end_cuts(el, m)
     return True
 
 

@@ -50,7 +50,8 @@ choice = DLG.choose(
     intro=u"Tick the bridges to update. Each is brought to its posts as they are now and to the newest "
           u"design saved for it, in place: its elements keep their ids, so dimensions and tags stay.",
     hint=u"'posts moved': the posts are not where the bridge was built. 'newer design saved': Bridge "
-         u"Builder saved changes that are not built yet. 'unchanged': nothing to do. 'posts missing': "
+         u"Builder saved changes that are not built yet. 'layout updated in pyMEP': built by an older "
+         u"pyMEP layout - updating redraws it with the current one. 'unchanged': nothing to do. 'posts missing': "
          u"a post is gone, so that bridge cannot be updated.")
 if choice is None:
     script.exit()
@@ -69,7 +70,7 @@ for name in chosen:
     except ValueError as ex:
         report.append((name, u"SKIPPED - {0}".format(ex)))
         continue
-    if newer is None and not BR.frame_changed(BR.frame_from_record(rec), new_frame):
+    if newer is None and not BR.frame_changed(BR.frame_from_record(rec), new_frame) and not BR.layout_outdated(rec):
         report.append((name, u"unchanged - the posts have not moved and no newer design has been saved"))
         continue
     try:
