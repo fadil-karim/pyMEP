@@ -1192,6 +1192,19 @@ file, so a design file saved before the deletion is not built again
 without asking. Undo brings deleted elements back but not the
 tracking.
 
+Build, Update and Delete all touch only a bridge's own elements: a
+recorded id that is no longer in the model is made again, and one that
+now points at some other element - a post, or anything not marked with
+the bridge's name (its current name, the names it was renamed from, or
+for a bridge renamed by an older pyMEP the one name most of its
+elements carry, unless another tracked bridge has that name) - is never
+moved, re-marked or deleted; the member is made new and the report
+counts them. "Rebuild with new elements" deletes by the same rule. A
+design file that names a gone post, for a bridge that has since been
+moved onto other posts, is built on the bridge's current posts. After a
+bridge is deleted, Bridge Builder still starts a new one from its
+design.
+
 Railing infill panels are whatever the chosen railing type draws; the
 trusses are the structure above the deck.
 
