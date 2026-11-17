@@ -377,8 +377,9 @@ if failed:
 for w in plan["warnings"]:
     output.print_md(u"- {0}".format(w))
 
-forms.alert(u"{0} element(s) moved{1}{2}.\n\nThey stay selected; one undo step puts them back.".format(
-    len(done),
-    u", {0} FAILED (see the output window)".format(len(failed)) if failed else u"",
-    u", {0} left alone".format(len(plan["stay"])) if plan["stay"] else u""),
-    title="Move to Coordinates")
+# no closing dialog: the moved elements stay selected and the output window
+# has the details; only a failure stops to say so
+if failed:
+    forms.alert(u"{0} element(s) could not be moved - see the output window for why. The {1} moved "
+                u"stay selected; one undo step puts them back.".format(len(failed), len(done)),
+                title="Move to Coordinates")

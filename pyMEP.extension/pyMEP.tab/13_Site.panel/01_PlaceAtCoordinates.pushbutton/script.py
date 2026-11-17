@@ -593,9 +593,10 @@ if res["errors"]:
         title="Lines skipped ({0})".format(len(res["errors"])),
         columns=["Line", "Text", "Why"])
 
-forms.alert(u"{0} instance(s) of {1} placed on {2}{3}{4}.\n\nThey are selected; one "
-            u"undo step removes them.".format(
-                len(placed), entry["label"], level.Name,
-                u", {0} FAILED (see the output window)".format(len(failed)) if failed else u"",
-                u", {0} line(s) skipped".format(len(res["errors"])) if res["errors"] else u""),
-            title="Place at Coordinates")
+# no closing dialog: the placed instances are left selected and the output
+# window has the details; only a failure stops to say so
+if failed:
+    forms.alert(u"{0} of {1} point(s) FAILED - see the output window for why. The {2} placed are "
+                u"selected; one undo step removes them.".format(
+                    len(failed), len(failed) + len(placed), len(placed)),
+                title="Place at Coordinates")

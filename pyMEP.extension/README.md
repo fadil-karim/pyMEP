@@ -930,7 +930,8 @@ items go in the active view, line based families and beams run along
 given, and adaptive components have their placement points spread along
 that line. All instances go in with one undo step, are left selected,
 and the output window lists each with its element id, how it was placed,
-and its typed and internal coordinates.
+and its typed and internal coordinates. There is no closing dialog -
+one appears only when a point failed.
 
 **Element Coordinates** - the coordinates of the selected elements
 (pick them if nothing is selected): the location point of a family
@@ -958,7 +959,9 @@ element with that Mark. Lines in AutoCAD's ID format
 without it the height stays, and view-specific
 elements only ever move in x, y. The preview lists every move with the
 distance before anything happens; pinned elements are refused unless
-the unpin tick is on; one undo step.
+the unpin tick is on; one undo step. The moved elements stay selected
+and the output window has the details - there is no closing dialog
+unless an element could not be moved.
 
 ### Bridges
 
