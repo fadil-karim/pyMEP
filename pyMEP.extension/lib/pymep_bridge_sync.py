@@ -60,17 +60,28 @@ def _old_deck(old_rec, shared_elev):
         return None
 
 
-def sync(doc, name, design, source, frame, old_rec, types, shared_elev):
+def sync(doc, name, design, source, frame, old_rec, types, shared_elev, others=()):
     """Inside an open transaction, bring the bridge to design on frame,
     keeping the ids of old_rec's elements (None: everything is new).
     Returns {"member_ids", "floor_id", counts, "deck", "posts", "failed",
     "rails_made", "rails_hosted"}."""
-    res = {"recurved": 0, "retyped": 0, "created": 0, "deleted": 0, "hosted_kept": 0, "ends_moved": [],
+    res = {"recurved": 0, "retyped": 0, "created": 0, "deleted": 0, "hosted_kept": 0, "ends_moved": [], "not_ours": 0,
            "hosted_made": 0, "rails_made": 0, "rails_hosted": 0, "failed": [], "deck": u"", "posts": u""}
     old_rec = old_rec or {}
     mems = BR.world_members(design, frame, shared_elev)
     deck = BR.world_deck(design, frame, shared_elev)
     member_ids = dict(old_rec.get("members", {}))
+    floor_id = old_rec.get("floor")
+    if old_rec:
+        # a recorded id that is now another element (a post, or not marked as
+        # this bridge) is left alone: the member is made new instead
+        cls = RV.classify(doc, old_rec, name, others)
+        for key in [k for k, v in member_ids.items() if cls.get(int(v)) == "other"]:
+            del member_ids[key]
+            res["not_ours"] += 1
+        if floor_id is not None and cls.get(int(floor_id)) == "other":
+            floor_id = None
+            res["not_ours"] += 1
     level = types["level"]
     syms = types["symbols"]
     for sym in set(s for s in syms.values() if s is not None):
@@ -95,6 +106,7 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev):
             res["retyped"] += 1
         if m.get("zjust") == "top":
             RV.set_top_justified(el)
+        RV.set_mark_comments(el, name)     # the current name, so Delete Bridges knows it after a rename
         res["recurved"] += 1
     for m in diff["create"]:
         sym = syms.get(m["role"])
@@ -131,7 +143,6 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev):
             res["ends_moved"].append(m["key"])
 
     # the deck: keep, move or (only when its outline, fall or level changed) rebuild
-    floor_id = old_rec.get("floor")
     floor = doc.GetElement(make_id(floor_id)) if floor_id else None
     rebuild = floor is None
     if floor is not None:
@@ -148,6 +159,8 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev):
             rebuild = True
         if not rebuild and RV.retype(floor, types["floor_type"]):
             res["deck"] += u", re-typed"
+        if not rebuild:
+            RV.set_mark_comments(floor, name)
     if rebuild:
         gone = [k for k in member_ids if k.split(":")[0] in HOSTED]
         RV.delete_quiet(doc, [member_ids.pop(k) for k in gone])
@@ -172,6 +185,7 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev):
     for key, m in hd["update"]:
         el = doc.GetElement(make_id(member_ids[key]))
         if el is not None and RV.update_hosted(doc, el, m, types["stiffener"], types["railing"], level):
+            RV.set_mark_comments(el, name)
             res["hosted_kept"] += 1
             continue
         if el is not None:
@@ -227,10 +241,81 @@ def summary_line(res):
             u"{5} stiffener(s)/railing(s) kept, {6} made").format(
         res["recurved"], res["retyped"], res["created"], res["deleted"], res["deck"],
         res["hosted_kept"], res["hosted_made"])
+    if res.get("not_ours"):
+        line += (u"; {0} recorded id(s) pointed at elements that are not this bridge's (not marked with "
+                 u"its name) - left alone, those members made new").format(res["not_ours"])
     if res.get("ends_moved"):
         line += u"; Revit kept moving the end of {0} off its node: {1}".format(
             len(res["ends_moved"]), u", ".join(res["ends_moved"]))
     return line
+
+
+def removal_text(doc, registry, names, delete_elements=True):
+    """What deleting (or forgetting) the named bridges will do, for the
+    confirmation."""
+    lines = []
+    for name in names:
+        rec = registry.get("bridges", {}).get(name)
+        if rec is None:
+            continue
+        ours, gone, other = RV.bridge_elements(doc, rec, name, [n for n in registry.get("bridges", {}) if n != name])
+        if delete_elements:
+            line = u"{0}: {1} element(s) deleted".format(name, len(ours))
+            if gone:
+                line += u" ({0} already gone)".format(gone)
+            if other:
+                line += u"; {0} left alone - not marked '{1}' in Comments".format(len(other), name)
+        else:
+            line = u"{0}: no longer tracked; its {1} element(s) stay in the model".format(name, len(ours) + len(other))
+        lines.append(line)
+    if delete_elements:
+        tail = (u"The posts are not touched. One undo step per bridge - but undo brings the elements "
+                u"back without the tracking: build the bridge again (or use Forget instead) if unsure.")
+    else:
+        tail = (u"Nothing in the model changes. Its posts are free for a new bridge, and Update "
+                u"Bridges no longer moves it.")
+    return u"\n".join(lines) + u"\n\n" + tail
+
+
+def remove(doc, registry, names, delete_elements, stamp, ts):
+    """Delete the named bridges - their elements, one undo step each, and
+    their records - or, with delete_elements False, only forget them (the
+    elements stay, no longer tracked). Only elements still carrying the
+    bridge's name are deleted, never its posts. The records are kept
+    under registry["deleted"]; the caller saves the registry. Returns
+    [(name, note)]."""
+    from Autodesk.Revit.DB import Transaction
+    from pymep_revit import quiet
+    out = []
+    for name in names:
+        rec = registry.get("bridges", {}).get(name)
+        if rec is None:
+            out.append((name, u"not tracked - nothing to do"))
+            continue
+        if not delete_elements:
+            BR.forget_bridge(registry, name, stamp, ts, False)
+            out.append((name, u"forgotten - its elements stay in the model, no longer tracked"))
+            continue
+        t = Transaction(doc, u"pyMEP: Delete bridge '{0}'".format(name))
+        quiet(t)
+        t.Start()
+        try:
+            r = RV.delete_bridge(doc, rec, name, [n for n in registry.get("bridges", {}) if n != name])
+            t.Commit()
+        except Exception as ex:
+            t.RollBack()
+            out.append((name, u"FAILED, nothing deleted - {0}".format(ex)))
+            continue
+        BR.forget_bridge(registry, name, stamp, ts, True)
+        note = u"{0} element(s) deleted".format(r["deleted"])
+        if r["gone"]:
+            note += u", {0} were already gone".format(r["gone"])
+        if r["kept"]:
+            shown = u", ".join(u"{0}".format(i) for i in r["kept"][:8])
+            note += u"; {0} left alone - not marked '{1}' in Comments ({2}{3})".format(
+                len(r["kept"]), name, shown, u", ..." if len(r["kept"]) > 8 else u"")
+        out.append((name, note + u"; the posts are untouched"))
+    return out
 
 
 def design_candidates(folders):

@@ -37,34 +37,269 @@ def ft_to_m(x):
     return float(x) * FT
 
 
+def _ids_text(ids):
+    return u", ".join(u"{0}".format(i) for i in ids)
+
+
+def read_posts(doc, rec):
+    """The bridge's posts as they are now: {"start", "end" (post_info
+    lists, or None), "missing" (ids no longer in the model), "error"
+    (why a post that is there cannot be read, else u"")}."""
+    src = rec.get("source", {}) or {}
+    out = {"start": None, "end": None, "missing": [], "error": u""}
+    pairs = []
+    for key in ("start_ids", "end_ids"):
+        pair = []
+        for i in src.get(key, []) or []:
+            try:
+                el = doc.GetElement(make_id(int(i)))
+            except Exception:
+                el = None
+            if el is None:
+                out["missing"].append(int(i))
+                continue
+            try:
+                pair.append(post_info(el))
+            except Exception as ex:
+                if not out["error"]:
+                    out["error"] = u"post {0}: {1}".format(i, ex)
+        pairs.append(pair)
+    if not out["missing"] and not out["error"] and len(pairs) == 2:
+        out["start"], out["end"] = pairs
+    return out
+
+
+def posts_problem(doc, rec):
+    """u"" when all four posts can be read, else one line saying which are
+    gone (or why one cannot be read)."""
+    p = read_posts(doc, rec)
+    if p["missing"]:
+        return u"post{0} {1} {2} no longer in the model".format(
+            u"s" if len(p["missing"]) > 1 else u"", _ids_text(p["missing"]),
+            u"are" if len(p["missing"]) > 1 else u"is")
+    if p["error"]:
+        return p["error"]
+    if p["start"] is None:
+        return u"the bridge does not say which four posts it is on"
+    return u""
+
+
+def mark_of(el):
+    """The bridge name a member carries in Comments, or u""."""
+    try:
+        p = el.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)
+        return u"{0}".format(p.AsString() or u"") if p is not None else u""
+    except Exception:
+        return u""
+
+
+def _recorded_ids(rec):
+    ids = []
+    for v in list((rec.get("members") or {}).values()) + [rec.get("floor")]:
+        try:
+            ids.append(int(v))
+        except (TypeError, ValueError):
+            continue
+    return ids
+
+
+def classify(doc, rec, name, others=()):
+    """{recorded id: "ours" | "gone" | "other"} for a bridge's members and
+    deck. "ours": still in the model and marked with the bridge's name in
+    Comments - its name now, the record's name, the names it was renamed
+    from, or (for a bridge renamed before those were kept) the one mark
+    most of its elements carry, unless that is another tracked bridge's
+    name (others). "other": in the model but not this bridge's - a post,
+    or unmarked / marked otherwise - so never moved, re-marked or
+    deleted. "gone": no longer in the model."""
+    posts = set(post_ids_of(rec))
+    marks = set([u"{0}".format(name), u"{0}".format(rec.get("name") or name)] +
+                [u"{0}".format(a) for a in (rec.get("aliases") or [])])
+    others = set(u"{0}".format(o) for o in others) - marks
+    found = {}
+    out = {}
+    for i in _recorded_ids(rec):
+        el = doc.GetElement(make_id(i))
+        if el is None:
+            out[i] = "gone"
+        elif i in posts:
+            out[i] = "other"
+        else:
+            found[i] = mark_of(el)
+    counts = {}
+    for m in found.values():
+        if m and m not in marks and m not in others:
+            counts[m] = counts.get(m, 0) + 1
+    if counts:
+        top = max(counts.items(), key=lambda kv: kv[1])
+        if top[1] * 2 > len(found):
+            marks.add(top[0])
+    for i, m in found.items():
+        out[i] = "ours" if m in marks else "other"
+    return out
+
+
+def bridge_elements(doc, rec, name, others=()):
+    """(ours, gone, other): the recorded element ids that are this
+    bridge's, how many are no longer in the model, and those that are
+    there but are not this bridge's (see classify) - never to be
+    touched."""
+    cls = classify(doc, rec, name, others)
+    ours = [i for i, c in cls.items() if c == "ours"]
+    other = [i for i, c in cls.items() if c == "other"]
+    return ours, len([1 for c in cls.values() if c == "gone"]), other
+
+
+def post_ids_of(rec):
+    src = rec.get("source", {}) or {}
+    out = []
+    for i in list(src.get("start_ids", []) or []) + list(src.get("end_ids", []) or []):
+        try:
+            out.append(int(i))
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def delete_bridge(doc, rec, name, others=()):
+    """Inside an open transaction, delete the bridge's elements - only
+    those that are still there and carry its name; never its posts.
+    The deck goes first (its stiffeners and railings go with it).
+    Returns {"deleted", "gone", "kept"}."""
+    ours, gone, other = bridge_elements(doc, rec, name, others)
+    floor = rec.get("floor")
+    first = [i for i in ours if floor is not None and i == int(floor)]
+    done = delete_quiet(doc, first) if first else 0
+    done += delete_quiet(doc, [i for i in ours if i not in first])
+    return {"deleted": done, "gone": gone, "kept": other}
+
+
 def bridge_rows(doc, registry):
     """One row per tracked bridge for the Bridges dialog: name, post ids,
     member count, last build and a status against the posts as they are
     now - unchanged, posts moved (a rigid move), posts moved / levels
-    changed, or posts missing."""
+    changed, layout updated in pyMEP, or which posts are gone and how
+    much of the bridge is left (the real reason when a post cannot be
+    read)."""
     import pymep_bridge as BR
     rows = []
     for name in sorted(registry.get("bridges", {})):
         rec = registry["bridges"][name]
-        src = rec.get("source", {})
-        ids = list(src.get("start_ids", [])) + list(src.get("end_ids", []))
+        ids = post_ids_of(rec)
+        missing = []
         try:
-            start = posts_from_ids(doc, src.get("start_ids", []))
-            end = posts_from_ids(doc, src.get("end_ids", []))
-            new = BR.frame_from_posts(start, end)
-            old = BR.frame_from_record(rec)
-            if not BR.frame_changed(old, new):
-                status = u"layout updated in pyMEP" if BR.layout_outdated(rec) else u"unchanged"
-            elif BR.rigid_motion(old, new) is not None:
-                status = u"posts moved"
+            p = read_posts(doc, rec)
+            missing = p["missing"]
+            if missing or p["error"] or p["start"] is None:
+                ours, gone, other = bridge_elements(doc, rec, name, [n for n in registry["bridges"] if n != name])
+                left = u"{0} of {1} elements still this bridge's".format(len(ours), len(ours) + gone + len(other))
+                if gone:
+                    left += u", {0} gone".format(gone)
+                if other:
+                    left += u", {0} recorded ids now other elements".format(len(other))
+                if missing:
+                    status = u"post{0} {1} gone; {2}".format(u"s" if len(missing) > 1 else u"", _ids_text(missing), left)
+                else:
+                    status = u"{0}; {1}".format(p["error"] or u"posts not recorded", left)
             else:
-                status = u"posts moved / levels changed"
-        except Exception:
-            status = u"posts missing"
-        rows.append({"name": name, "posts": u", ".join(u"{0}".format(i) for i in ids),
+                new = BR.frame_from_posts(p["start"], p["end"])
+                old = BR.frame_from_record(rec)
+                if not BR.frame_changed(old, new):
+                    status = u"layout updated in pyMEP" if BR.layout_outdated(rec) else u"unchanged"
+                elif BR.rigid_motion(old, new) is not None:
+                    status = u"posts moved"
+                else:
+                    status = u"posts moved / levels changed"
+        except Exception as ex:
+            status = u"cannot read: {0}".format(ex)
+        rows.append({"name": name, "posts": _ids_text(ids),
                      "members": len(rec.get("members", {})), "updated": rec.get("updated", u""),
-                     "status": status, "checked": True})
+                     "status": status, "missing": missing, "checked": not missing})
     return rows
+
+
+# ---------------------------------------------------------------------------
+# picking the four posts
+# ---------------------------------------------------------------------------
+POST_CATEGORIES = ("Structural Framing", "Structural Columns", "Columns")
+
+
+def is_post_candidate(el):
+    try:
+        return u"{0}".format(el.Category.Name) in POST_CATEGORIES
+    except Exception:
+        return False
+
+
+def pair_posts(els):
+    """Four elements as (start pair, end pair): the two nearest each other
+    first. ValueError when one does not stand up."""
+    infos = [post_info(e) for e in els]
+    best = None
+    for i in range(4):
+        for j in range(i + 1, 4):
+            d = (infos[i]["x"] - infos[j]["x"]) ** 2 + (infos[i]["y"] - infos[j]["y"]) ** 2
+            if best is None or d < best[0]:
+                best = (d, i, j)
+    a = [els[best[1]], els[best[2]]]
+    b = [els[k] for k in range(4) if k not in (best[1], best[2])]
+    return a, b
+
+
+def preselected_posts(doc, uidoc):
+    """(start pair, end pair) from four posts selected before the click,
+    else None."""
+    try:
+        sel = [doc.GetElement(i) for i in uidoc.Selection.GetElementIds()]
+        sel = [e for e in sel if e is not None and is_post_candidate(e)]
+        if len(sel) == 4:
+            return pair_posts(sel)
+    except Exception:
+        pass
+    return None
+
+
+def pick_pair(doc, uidoc, which, alert):
+    """Two posts picked in the model for the start or end, or None when
+    cancelled."""
+    clr.AddReference("RevitAPIUI")
+    from Autodesk.Revit.UI.Selection import ISelectionFilter, ObjectType
+
+    class PostFilter(ISelectionFilter):
+        def AllowElement(self, el):
+            return is_post_candidate(el)
+
+        def AllowReference(self, ref, pt):
+            return False
+    while True:
+        try:
+            refs = uidoc.Selection.PickObjects(
+                ObjectType.Element, PostFilter(),
+                "Pick the TWO posts at the {0} (one each side), then Finish".format(which))
+        except Exception:
+            return None
+        els = [doc.GetElement(r.ElementId) for r in refs]
+        if len(els) == 2:
+            return els
+        alert(u"Pick exactly two posts for the {0} - you picked {1}.".format(which, len(els)))
+
+
+def pick_posts(doc, uidoc, alert, use_selection=True):
+    """(start pair, end pair) of post elements: four selected before the
+    click, else picked pair by pair. None when cancelled; ValueError when
+    a post is at both ends."""
+    pre = preselected_posts(doc, uidoc) if use_selection else None
+    if pre is not None:
+        return pre
+    start = pick_pair(doc, uidoc, "START", alert)
+    if start is None:
+        return None
+    end = pick_pair(doc, uidoc, "END", alert)
+    if end is None:
+        return None
+    if set(id_value(e.Id) for e in start) & set(id_value(e.Id) for e in end):
+        raise ValueError(u"A post was picked at both ends.")
+    return start, end
 
 
 def registry_path(doc):

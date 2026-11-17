@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-"""The Bridges list dialog, shared by Bridge Builder (edit a built bridge
-or build a new one) and Update Bridges (which bridges to update).
+"""The Bridges list dialog, shared by Bridge Builder (edit a built bridge,
+delete one, or build a new one), Update Bridges (which bridges to
+update) and Delete Bridges (which bridges to delete or forget).
 
 A WPF window from lib/pymep_bridges.xaml, as the other pyMEP dialogs:
 a grid of the bridges tracked in the model with their posts, member
@@ -18,8 +19,9 @@ _Base = getattr(forms, "WPFWindow", object)
 
 
 class BridgeListWindow(_Base):
-    """mode "edit": pick a bridge to edit or ask for a new one;
-    mode "update": tick the bridges to update."""
+    """mode "edit": pick a bridge to edit or delete, or ask for a new one;
+    mode "update": tick the bridges to update;
+    mode "delete": tick the bridges to delete or forget."""
 
     def __init__(self, rows, mode, intro, hint):
         forms.WPFWindow.__init__(self, XAML_PATH)
@@ -47,12 +49,19 @@ class BridgeListWindow(_Base):
         self.TxtIntro.Text = intro
         self.TxtHint.Text = hint
         edit = mode == "edit"
-        self.Title = u"Bridge Builder" if edit else u"Update Bridges"
-        self.ColPick.Visibility = Visibility.Collapsed if edit else Visibility.Visible
-        self.BtnNew.Visibility = Visibility.Visible if edit else Visibility.Collapsed
-        self.BtnEdit.Visibility = Visibility.Visible if edit else Visibility.Collapsed
-        self.BtnUpdate.Visibility = Visibility.Collapsed if edit else Visibility.Visible
-        (self.BtnEdit if edit else self.BtnUpdate).IsDefault = True
+        delete = mode == "delete"
+
+        def show(ctrl, on):
+            ctrl.Visibility = Visibility.Visible if on else Visibility.Collapsed
+        self.Title = {"edit": u"Bridge Builder", "update": u"Update Bridges"}.get(mode, u"Delete Bridges")
+        show(self.ColPick, not edit)
+        show(self.BtnNew, edit)
+        show(self.BtnEdit, edit)
+        show(self.BtnDelete, edit)
+        show(self.BtnUpdate, mode == "update")
+        show(self.BtnForget, delete)
+        show(self.BtnDeleteTicked, delete)
+        {"edit": self.BtnEdit, "update": self.BtnUpdate}.get(mode, self.BtnDeleteTicked).IsDefault = True
         if rows and edit:
             self.GridBridges.SelectedIndex = 0
 
@@ -81,12 +90,39 @@ class BridgeListWindow(_Base):
         if self.mode == "edit":
             self.on_edit(sender, args)
 
+    def _ticked(self):
+        return [u"{0}".format(row["Name"]) for row in self.table.Rows if bool(row["Pick"])]
+
     def on_update(self, sender, args):
-        names = [u"{0}".format(row["Name"]) for row in self.table.Rows if bool(row["Pick"])]
+        names = self._ticked()
         if not names:
             forms.alert("Tick at least one bridge to update.")
             return
         self.result = ("update", names)
+        self.Close()
+
+    def on_delete_one(self, sender, args):
+        name = self._selected_name()
+        if name is None:
+            forms.alert("Pick a bridge in the list first.")
+            return
+        self.result = ("delete", [name])
+        self.Close()
+
+    def on_delete_ticked(self, sender, args):
+        names = self._ticked()
+        if not names:
+            forms.alert("Tick at least one bridge to delete.")
+            return
+        self.result = ("delete", names)
+        self.Close()
+
+    def on_forget(self, sender, args):
+        names = self._ticked()
+        if not names:
+            forms.alert("Tick at least one bridge to forget.")
+            return
+        self.result = ("forget", names)
         self.Close()
 
     def on_cancel(self, sender, args):
@@ -95,8 +131,8 @@ class BridgeListWindow(_Base):
 
 
 def choose(rows, mode, intro=u"", hint=u""):
-    """Show the dialog. ("new", None), ("edit", name), ("update", [names])
-    or None when cancelled."""
+    """Show the dialog. ("new", None), ("edit", name), ("update", [names]),
+    ("delete", [names]), ("forget", [names]) or None when cancelled."""
     win = BridgeListWindow(rows, mode, intro, hint)
     win.ShowDialog()
     return win.result

@@ -19,14 +19,13 @@ import datetime
 import io
 import os
 import sys
+import time
 
 for _mod in [m for m in list(sys.modules.keys()) if m.startswith("pymep_")]:
     del sys.modules[_mod]
 
 import clr
 clr.AddReference("RevitAPI")
-clr.AddReference("RevitAPIUI")
-from Autodesk.Revit.UI.Selection import ISelectionFilter, ObjectType
 
 from pyrevit import revit, forms, script
 
@@ -43,99 +42,108 @@ doc = revit.doc
 uidoc = revit.uidoc
 
 HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(BR.__file__)), "pymep_bridge_builder.html")
-POST_CATEGORIES = ("Structural Framing", "Structural Columns", "Columns")
 
-
-class PostFilter(ISelectionFilter):
-    def AllowElement(self, el):
-        try:
-            return u"{0}".format(el.Category.Name) in POST_CATEGORIES
-        except Exception:
-            return False
-
-    def AllowReference(self, ref, pt):
-        return False
-
-
-def pick_pair(which, preselected):
-    """Two posts: the preselected ones when exactly two were given, else
-    picked in the model. None when cancelled."""
-    if preselected is not None:
-        return preselected
-    while True:
-        try:
-            refs = uidoc.Selection.PickObjects(
-                ObjectType.Element, PostFilter(),
-                "Pick the TWO posts at the {0} (one each side), then Finish".format(which))
-        except Exception:
-            return None
-        els = [doc.GetElement(r.ElementId) for r in refs]
-        if len(els) == 2:
-            return els
-        forms.alert("Pick exactly two posts for the {0} - you picked {1}.".format(which, len(els)))
-
-
-# edit a bridge already built here, or build a new one on four posts
-registry = BR.load_registry(RV.registry_path(doc))
+registry_file = RV.registry_path(doc)
+registry = BR.load_registry(registry_file)
 cands = SYNC.design_candidates(SYNC.design_folders(registry))
-rows = SYNC.bridge_rows(doc, registry, cands)
+
+
+def delete_bridges(names):
+    """Confirm, then delete the bridges' elements and records. True when
+    deleted."""
+    text = SYNC.removal_text(doc, registry, names)
+    if forms.alert(text, title="Delete bridge", options=["Delete", "Cancel"]) != "Delete":
+        return False
+    notes = SYNC.remove(doc, registry, names, True,
+                        datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), time.time())
+    BR.save_registry(registry_file, registry)
+    output.print_md("### Deleted")
+    output.print_table(table_data=[[n, r] for n, r in notes], columns=["Bridge", "Result"])
+    return True
+
+
+def pick_four(skip):
+    """(start posts, end posts, (bridge, post) when one of them already
+    carries a bridge other than skip) - the four posts selected before
+    the click, else picked pair by pair."""
+    try:
+        pair = RV.pick_posts(doc, uidoc, forms.alert)
+    except ValueError as ex:
+        forms.alert(u"{0}".format(ex), exitscript=True)
+    if pair is None:
+        script.exit()
+    ids = [id_value(e.Id) for e in pair[0] + pair[1]]
+    return pair[0], pair[1], BR.bridge_on_posts(registry, ids, skip=skip)
+
+
+# edit a bridge already built here, delete one, or build a new one on four posts
 editing = None
-if rows:
+while True:
+    rows = SYNC.bridge_rows(doc, registry, cands)
+    if not rows:
+        break
     choice = DLG.choose(
         rows, "edit",
         intro=u"Bridges built in this model. Edit one - the page opens on its posts with its saved "
-              u"design - or build a new bridge on four other posts.",
-        hint=u"A bridge's posts cannot be used for another bridge. 'posts moved': the posts are not "
-             u"where the bridge was built - editing lays its design out on them as they are now, or "
-             u"run Update Bridges to move the bridge.")
+              u"design - delete one, or build a new bridge on four other posts.",
+        hint=u"A post carries one bridge. 'posts moved': the posts are not where the bridge was built - "
+             u"editing lays its design out on them as they are now, or run Update Bridges to move the "
+             u"bridge. 'post ... gone': edit it to pick its posts again (it keeps its element ids), or "
+             u"delete it.")
     if choice is None:
         script.exit()
+    if choice[0] == "delete":
+        delete_bridges(choice[1])
+        continue
     if choice[0] == "edit":
         editing = choice[1]
+    break
 
+start_els = end_els = None
 if editing:
     rec = registry["bridges"][editing]
-    src = rec.get("source", {})
-    start_els = [doc.GetElement(make_id(int(i))) for i in src.get("start_ids", [])]
-    end_els = [doc.GetElement(make_id(int(i))) for i in src.get("end_ids", [])]
-    if len(start_els) != 2 or len(end_els) != 2 or any(e is None for e in start_els + end_els):
-        forms.alert(u"The posts of {0} are no longer all in the model, so it cannot be edited. "
-                    u"Run Update Bridges to see what is left of it.".format(editing), exitscript=True)
+    problem = RV.posts_problem(doc, rec)
+    if problem:
+        again = u"Pick its posts again"
+        drop = u"Delete '{0}'".format(editing)
+        ans = forms.alert(
+            u"{0}: {1}.\n\nPick its four posts again - the bridge keeps its design and, when you build "
+            u"it, its element ids, so dimensions and tags on it stay. Or delete it.".format(editing, problem),
+            title="Bridge Builder", options=[again, drop, u"Cancel"])
+        if ans == drop:
+            delete_bridges([editing])
+            script.exit()
+        if ans != again:
+            script.exit()
+        start_els, end_els, taken = pick_four(editing)
+    else:
+        src = rec.get("source", {})
+        start_els = [doc.GetElement(make_id(int(i))) for i in src.get("start_ids", [])]
+        end_els = [doc.GetElement(make_id(int(i))) for i in src.get("end_ids", [])]
+        taken = None
 else:
-    # a selection of four posts made before the click is taken as start pair then end pair,
-    # the two nearest each other first
-    pre_start = pre_end = None
-    try:
-        sel = [doc.GetElement(i) for i in uidoc.Selection.GetElementIds()]
-        sel = [e for e in sel if e is not None and PostFilter().AllowElement(e)]
-        if len(sel) == 4:
-            infos = [RV.post_info(e) for e in sel]
-            best = None
-            for i in range(4):
-                for j in range(i + 1, 4):
-                    d = (infos[i]["x"] - infos[j]["x"]) ** 2 + (infos[i]["y"] - infos[j]["y"]) ** 2
-                    if best is None or d < best[0]:
-                        best = (d, i, j)
-            a = [sel[best[1]], sel[best[2]]]
-            b = [sel[k] for k in range(4) if k not in (best[1], best[2])]
-            pre_start, pre_end = a, b
-    except Exception:
-        pre_start = pre_end = None
+    start_els, end_els, taken = pick_four(None)
 
-    start_els = pick_pair("START", pre_start)
-    if start_els is None:
+# a post carries one bridge: edit that bridge on these posts, or delete it and build here
+if taken:
+    other = taken[0]
+    other_problem = RV.posts_problem(doc, registry["bridges"][other])
+    use = u"Edit '{0}' on these posts".format(other)
+    drop = u"Delete '{0}', then build here".format(other)
+    ans = forms.alert(
+        u"Post {1} already carries '{0}'{2}. A post carries one bridge.\n\n"
+        u"Edit '{0}' on these four posts - it keeps its design and, when you build it, its element "
+        u"ids - or delete '{0}' and build {3} here.".format(
+            other, taken[1], u" ({0})".format(other_problem) if other_problem else u"",
+            u"'{0}'".format(editing) if editing else u"a new bridge"),
+        title="Bridge Builder", options=[use, drop, u"Cancel"])
+    if ans == use:
+        editing = other
+    elif ans == drop:
+        if not delete_bridges([other]):
+            script.exit()
+    else:
         script.exit()
-    end_els = pick_pair("END", pre_end)
-    if end_els is None:
-        script.exit()
-    if set(id_value(e.Id) for e in start_els) & set(id_value(e.Id) for e in end_els):
-        forms.alert("A post was picked at both ends.", exitscript=True)
-    # a bridge's posts cannot take another bridge
-    taken = BR.bridge_on_posts(registry, [id_value(e.Id) for e in start_els + end_els])
-    if taken:
-        forms.alert(u"Post {0} already belongs to {1}. A bridge's posts cannot be used for another "
-                    u"bridge - open Bridge Builder again and choose 'Edit {1}'.".format(taken[1], taken[0]),
-                    exitscript=True)
 
 try:
     start_posts = [RV.post_info(e) for e in start_els]
@@ -183,6 +191,9 @@ output.print_md("**{0}**: start posts {1}, end posts {2}; span **{3:.3f} m** bet
                     frame["tL"] - frame["tR"], frame["post_size"] * 1000.0, frame["post_height"],
                     frame["z0"], frame["z1"], (frame["z1"] - frame["z0"]) * 1000.0))
 if existing_name:
-    output.print_md("These posts already carry **{0}** - its design is loaded; saving and "
-                    "building replaces it.".format(existing_name))
+    moved_to = sorted(BR.post_ids(source)) != sorted(BR.post_ids(existing))
+    output.print_md("**{0}** - its design is loaded{1}; saving and building updates it in place "
+                    "(element ids kept).".format(
+                        existing_name, " onto these posts (it was on {0})".format(
+                            ", ".join(str(i) for i in BR.post_ids(existing))) if moved_to else ""))
 output.print_md("Builder page: `{0}`. Save the design there, then run **Build Bridge**.".format(page))

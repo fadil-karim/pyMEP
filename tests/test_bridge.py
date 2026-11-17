@@ -934,6 +934,39 @@ class Files(unittest.TestCase):
         self.assertTrue(BR.layout_outdated({"layout": BR.LAYOUT_VERSION - 1}))
         self.assertTrue(BR.layout_outdated({"layout": "junk"}))
 
+    def test_forget_and_deleted_bridges(self):
+        # deleting or forgetting a bridge keeps its record under "deleted",
+        # so an older design file for it is not built again unasked; a
+        # design saved after that is a fresh start
+        reg = {"bridges": {"B": {"source": {"start_ids": [1, 2], "end_ids": [3, 4]}, "members": {"x": 9}}}}
+        rec = BR.forget_bridge(reg, "B", "2026-11-17 10:00", 1000.0, True)
+        self.assertEqual(rec["members"], {"x": 9})
+        self.assertNotIn("B", reg["bridges"])
+        self.assertEqual(reg["deleted"]["B"]["elements_deleted"], True)
+        self.assertEqual(reg["deleted"]["B"]["record"], rec)
+        self.assertIsNotNone(BR.deleted_bridge(reg, "B", 999.0))       # a design from before
+        self.assertIsNone(BR.deleted_bridge(reg, "B", 1001.0))         # saved since
+        self.assertIsNone(BR.deleted_bridge(reg, "C", 1.0))
+        self.assertIsNone(BR.forget_bridge(reg, "B", "x", 1.0, False))  # gone already
+        self.assertIsNone(BR.bridge_on_posts(reg, [1, 2, 3, 4]))       # its posts are free again
+        # a bridge deleted to build another in its place still lends its design
+        reg2 = {"bridges": {}, "deleted": {"B": {"record": {"design": {"truss": "howe", "level_start_m": 4.0},
+                                                            "updated": "2026-11-17 10:00"}, "ts": 5.0}}}
+        d = BR.latest_design(reg2)
+        self.assertEqual(d["truss"], "howe")
+        self.assertNotIn("level_start_m", d)
+        reg2["bridges"]["C"] = {"design": {"truss": "pratt"}, "updated": "2026-11-17 11:00"}
+        self.assertEqual(BR.latest_design(reg2)["truss"], "pratt")        # the newest wins
+
+    def test_posts_of_a_bridge(self):
+        reg = {"bridges": {"A": {"source": {"start_ids": [1, 2], "end_ids": [3, 4]}},
+                           "B": {"source": {"start_ids": [5, 6], "end_ids": ["7", 8]}}}}
+        self.assertEqual(BR.post_ids(reg["bridges"]["B"]), [5, 6, 7, 8])
+        self.assertEqual(BR.post_ids({"start_ids": [1, 2], "end_ids": [3, 4]}), [1, 2, 3, 4])
+        self.assertEqual(BR.bridge_on_posts(reg, [9, 3]), ("A", 3))
+        self.assertIsNone(BR.bridge_on_posts(reg, [9, 3], skip="A"))   # the bridge being edited
+        self.assertEqual(BR.bridge_on_posts(reg, [7], skip="A"), ("B", 7))
+
     def test_latest_design(self):
         self.assertIsNone(BR.latest_design({"bridges": {}}))
         reg = {"bridges": {

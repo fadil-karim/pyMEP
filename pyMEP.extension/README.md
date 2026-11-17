@@ -44,7 +44,7 @@ pyMEP.extension/
     11_COBie.panel/             # Populate, Check
     12_Struct.panel/            # Add To Pile Sequence, Number Unmarked Piles
     13_Site.panel/              # Place At Coordinates, Element Coordinates, Move To Coordinates
-    14_Bridges.panel/           # Bridge Builder, Build Bridge, Update Bridges
+    14_Bridges.panel/           # Bridge Builder, Build Bridge, Update Bridges, Delete Bridges
 ```
 
 Every button has its own icon.
@@ -966,15 +966,21 @@ kept as a bridge, so the button first opens the Bridges dialog (the
 same WPF window style as the other pyMEP dialogs): a grid of the
 bridges built here with their posts, member count, last build and a
 status against the posts as they are now (unchanged, posts moved,
-posts moved / levels changed, posts missing), with **Edit this bridge**
-and **Build a new bridge** buttons. Editing opens the page on that
+posts moved / levels changed, or which post is gone and how many of
+the bridge's elements are left - or the real reason a post cannot be
+read), with **Edit this bridge**, **Delete this bridge...** and
+**Build a new bridge** buttons. Editing opens the page on that
 bridge's own posts with its saved design, and building it again
-replaces it (under a new name too, if the name was changed on the
-page). For a new bridge, pick the two posts at the start and the two
-at the end: vertical structural framing or columns already in the
-model (four posts selected beforehand are taken as the two pairs); a
-post that already belongs to a bridge is refused with the bridge's
-name - edit that bridge instead. The midpoint of
+updates it in place (under a new name too, if the name was changed on
+the page). When one of its posts is no longer in the model, editing
+offers to pick its four posts again - the bridge keeps its design and,
+when built, its element ids - or to delete it. For a new bridge, pick
+the two posts at the start and the two at the end: vertical structural
+framing or columns already in the model (four posts selected
+beforehand are taken as the two pairs). A post carries one bridge: if
+one of them already carries one, you can edit that bridge on these
+four posts (it moves onto them, keeping its element ids when built) or
+delete it and build here. The midpoint of
 each pair is the deck centreline at that end and the line between the
 midpoints is the bridge direction; the post spacing gives the width,
 the post bases the deck level at each end (so the deck slopes between
@@ -1090,7 +1096,13 @@ numbered copy when the name is taken, and Build Bridge takes the
 newest. **Load...** reads one back. Build Bridge lists the designs in
 Downloads and can browse for one saved elsewhere.
 
-**Build Bridge** - reads that file, reads the four posts again and
+**Build Bridge** - reads that file, reads the four posts again (when
+one of the design's posts is no longer in the model it says which and
+offers to pick the four posts to build it on - an already built bridge
+is then updated in place on them - or to choose another design file;
+a design for a deleted bridge saved before it was deleted asks before
+building it again; posts that carry another bridge offer to replace
+that bridge with this design) and
 places everything in one undo step: the deck as a floor from post
 face to post face along the span and inside the posts across (less the
 clearance) with a slope arrow from start to end;
@@ -1162,8 +1174,23 @@ takes the newest design file saved for that bridge, then brings the
 model to it in place as described above - element ids kept, so tags
 and dimensions survive. A bridge whose posts have not moved, that
 has no newer design and that was built by the current layout is left
-alone. One undo step per bridge, and a
+alone. A bridge one of whose posts is gone is not ticked; its row and
+the report say which post, and Bridge Builder > Edit picks its posts
+again or Delete Bridges removes it. One undo step per bridge, and a
 table says what happened to each.
+
+**Delete Bridges** - the same dialog with a tick per bridge and two
+buttons. **Delete ticked bridges** deletes their elements - only those
+still in the model and still marked with the bridge's name in Comments
+(every build and update re-marks them, so a renamed bridge's elements
+carry its current name); anything else recorded for it, and its posts,
+are left alone and listed - the deck first, its stiffeners and railings
+going with it, one undo step per bridge. **Forget ticked (keep
+elements)** only stops tracking them. Either way the posts are free for
+a new bridge, and the record is kept under "deleted" in the tracking
+file, so a design file saved before the deletion is not built again
+without asking. Undo brings deleted elements back but not the
+tracking.
 
 Railing infill panels are whatever the chosen railing type draws; the
 trusses are the structure above the deck.

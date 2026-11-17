@@ -1,0 +1,2 @@
+title: "Delete\nBridges"
+tooltip: "Delete built bridges, or stop tracking them: tick bridges in the list (each with the state of its posts and elements) and either delete them - the trusses, cross beams, bracing, deck, stiffeners and railings still marked with the bridge's name, never its posts; one undo step per bridge - or forget them, leaving the elements in the model untracked. Either way the bridge's posts are free for a new bridge."

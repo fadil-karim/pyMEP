@@ -51,8 +51,9 @@ choice = DLG.choose(
           u"design saved for it, in place: its elements keep their ids, so dimensions and tags stay.",
     hint=u"'posts moved': the posts are not where the bridge was built. 'newer design saved': Bridge "
          u"Builder saved changes that are not built yet. 'layout updated in pyMEP': built by an older "
-         u"pyMEP layout - updating redraws it with the current one. 'unchanged': nothing to do. 'posts missing': "
-         u"a post is gone, so that bridge cannot be updated.")
+         u"pyMEP layout - updating redraws it with the current one. 'unchanged': nothing to do. 'post ... "
+         u"gone': that post is no longer in the model - Bridge Builder > Edit picks the bridge's posts "
+         u"again (keeping its element ids), Delete Bridges removes it.")
 if choice is None:
     script.exit()
 chosen = [n for n in choice[1] if n in bridges]
@@ -63,12 +64,17 @@ for name in chosen:
     source = rec["source"]
     newer = SYNC.newer_design(rec, cands)
     design = BR.normalize_design(newer[2]["design"] if newer else rec["design"])
+    problem = RV.posts_problem(doc, rec)
+    if problem:
+        report.append((name, u"SKIPPED - {0}. Bridge Builder > Edit '{1}' picks its posts again (its element "
+                             u"ids are kept); Delete Bridges removes it.".format(problem, name)))
+        continue
     try:
         start_posts = RV.posts_from_ids(doc, source["start_ids"])
         end_posts = RV.posts_from_ids(doc, source["end_ids"])
         new_frame = BR.frame_from_posts(start_posts, end_posts)
     except ValueError as ex:
-        report.append((name, u"SKIPPED - {0}".format(ex)))
+        report.append((name, u"SKIPPED - the posts cannot carry a bridge: {0}".format(ex)))
         continue
     if newer is None and not BR.frame_changed(BR.frame_from_record(rec), new_frame) and not BR.layout_outdated(rec):
         report.append((name, u"unchanged - the posts have not moved and no newer design has been saved"))
@@ -83,7 +89,8 @@ for name in chosen:
     quiet(t)
     t.Start()
     try:
-        res = SYNC.sync(doc, name, design, source, new_frame, rec, types, shared_elev)
+        res = SYNC.sync(doc, name, design, source, new_frame, rec, types, shared_elev,
+                        [n for n in bridges if n != name])
         t.Commit()
     except Exception as ex:
         t.RollBack()
@@ -96,6 +103,7 @@ for name in chosen:
     stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     extra = {"design_file": newer[0], "design_mtime": newer[1]} if newer else \
         {"design_file": rec.get("design_file"), "design_mtime": rec.get("design_mtime")}
+    extra["aliases"] = list(rec.get("aliases") or [])
     bridges[name] = BR.record(name, design, source, new_frame, res["member_ids"], res["floor_id"], stamp, extra)
     note = SYNC.summary_line(res)
     if newer:

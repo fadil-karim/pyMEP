@@ -990,6 +990,9 @@ def latest_design(registry):
     carry over); the per-bridge survey levels do not. None when nothing
     has been built yet."""
     recs = [r for r in registry.get("bridges", {}).values() if r.get("design")]
+    # a bridge deleted to build another in its place still lends its design
+    recs += [e["record"] for e in (registry.get("deleted") or {}).values()
+             if isinstance(e, dict) and isinstance(e.get("record"), dict) and e["record"].get("design")]
     if not recs:
         return None
     recs.sort(key=lambda r: u"{0}".format(r.get("updated") or r.get("stamp") or r.get("built") or u""))
@@ -999,17 +1002,47 @@ def latest_design(registry):
     return d
 
 
-def bridge_on_posts(registry, post_ids):
+def bridge_on_posts(registry, post_ids, skip=None):
     """(bridge name, post id) for the first of post_ids that already
-    belongs to a recorded bridge - a bridge's posts cannot take another
-    bridge - else None."""
+    belongs to a recorded bridge (other than skip) - a bridge's posts
+    cannot take another bridge - else None."""
     want = set(int(i) for i in post_ids)
     for name in sorted(registry.get("bridges", {})):
+        if name == skip:
+            continue
         src = registry["bridges"][name].get("source", {})
         for i in list(src.get("start_ids", [])) + list(src.get("end_ids", [])):
             if int(i) in want:
                 return name, int(i)
     return None
+
+
+def forget_bridge(registry, name, stamp, ts, elements_deleted):
+    """Drop a bridge's record, keeping it under registry["deleted"] (with
+    when, and whether its elements went too) so an old design file for it
+    is not built again unasked. Returns the record or None."""
+    rec = registry.get("bridges", {}).pop(name, None)
+    if rec is None:
+        return None
+    registry.setdefault("deleted", {})[name] = {"record": rec, "when": stamp, "ts": float(ts),
+                                                "elements_deleted": bool(elements_deleted)}
+    return rec
+
+
+def deleted_bridge(registry, name, mtime):
+    """The registry["deleted"] entry for name when that bridge was deleted
+    or forgotten after a design file saved at mtime, else None (a design
+    saved since is a fresh start)."""
+    entry = (registry.get("deleted") or {}).get(name)
+    if entry and float(mtime) <= float(entry.get("ts") or 0.0):
+        return entry
+    return None
+
+
+def post_ids(rec_or_source):
+    """The four post ids of a record or a source, start pair first."""
+    src = rec_or_source.get("source", rec_or_source) or {}
+    return [int(i) for i in list(src.get("start_ids", [])) + list(src.get("end_ids", []))]
 
 
 def bridge_with_source(registry, source):
@@ -1144,7 +1177,7 @@ def fill_page(template, data):
     return template.replace(PLACEHOLDER, text, 1)
 
 
-__all__ = ["LAYOUT_VERSION", "layout_outdated", "post_ends", "cut_points", "piece_spans", "design_differs", "pick_design_file", "deck_motion", "INJECTED_KEYS", "chord_extent", "bridge_on_posts", "bridge_with_source", "truss_height", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
+__all__ = ["forget_bridge", "deleted_bridge", "post_ids", "LAYOUT_VERSION", "layout_outdated", "post_ends", "cut_points", "piece_spans", "design_differs", "pick_design_file", "deck_motion", "INJECTED_KEYS", "chord_extent", "bridge_on_posts", "bridge_with_source", "truss_height", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
            "BRACE_ROLES", "TOP_ALIGNED", "DEFAULTS", "normalize_design", "frame_from_posts",
            "frame_from_points", "effective_frame", "planes", "height", "base_z", "to_world",
            "layout", "pieces",
