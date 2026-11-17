@@ -1067,7 +1067,11 @@ the layout end for end and side for side - each is its own setting,
 also on a brace's ring and in Settings), the cross beams
 (on the side frames' bottom nodes, so they meet the brace connection
 points - the end ones on the post centrelines, between the posts'
-inner faces; with a typed count they are spread equally between the
+inner faces, with a family type of their own: click an end cross beam
+on the plan, or "End cross beams..." on any cross beam's ring, and pick
+a type, or "(same as the cross beams)" - the default - to follow the
+cross beam type; changing it re-types the two in place on the next
+build or update, and Build Bridge lists them as their own row; with a typed count they are spread equally between the
 end nodes) and the optional beams between the cross
 beams (a count per bay, spread evenly between the truss planes, tops
 on the floor underside) sit under the deck. The deck runs to the outer faces of the posts along the span

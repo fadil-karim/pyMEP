@@ -98,7 +98,7 @@ var DEFAULTS = {truss:"warren",panel_mode:"length",brace_angle_deg:55,panel_leng
 var TRUSSES = [["warren","Warren - top nodes at mid-panel (as the drawing)"],["warren_verticals","Warren with verticals"],
   ["pratt","Pratt"],["howe","Howe"],["x","X braced"],["vierendeel","Vierendeel"]];
 var PLANES = [["outside","outside faces"],["centre","centrelines"],["inside","inside faces"]];
-var ROLES = {top_chord:"Top chord",bottom_chord:"Bottom chord",end_post:"End post",vertical:"Vertical",diagonal:"Diagonal",crossbeam:"Cross beam",bracing:"Plan bracing",stringer:"Beam between cross beams",stiffener:"Deck stiffener",railing:"Railing",deck:"Deck",post:"Post"};
+var ROLES = {top_chord:"Top chord",bottom_chord:"Bottom chord",end_post:"End post",vertical:"Vertical",diagonal:"Diagonal",crossbeam:"Cross beam",end_crossbeam:"End cross beam",bracing:"Plan bracing",stringer:"Beam between cross beams",stiffener:"Deck stiffener",railing:"Railing",deck:"Deck",post:"Post"};
 var FRAMING = ["top_chord","bottom_chord","end_post","vertical","diagonal","crossbeam","bracing","stringer"];
 var $ = function(id){ return document.getElementById(id); };
 var SHARED = (DATA && DATA.shared_elev_m) || 0;      // internal z + SHARED = survey level
@@ -200,7 +200,7 @@ function members(d){
   });
   var st = lay.stations;
   var halfP = F.post_size / 2;
-  st.forEach(function(s, j){ var inPost = Math.abs(s) <= halfP + 1e-6 || Math.abs(s - F.span) <= halfP + 1e-6, ta = inPost ? Math.min(tl, F.tL - halfP) : tl, tb = inPost ? Math.max(tr, F.tR + halfP) : tr; add("crossbeam", "C", j, [s,ta,zu], [s,tb,zu]); });
+  st.forEach(function(s, j){ var inPost = Math.abs(s) <= halfP + 1e-6 || Math.abs(s - F.span) <= halfP + 1e-6, ta = inPost ? Math.min(tl, F.tL - halfP) : tl, tb = inPost ? Math.max(tr, F.tR + halfP) : tr; add("crossbeam", "C", j, [s,ta,zu], [s,tb,zu]); if (j === 0 || j === st.length - 1) out[out.length - 1].type_role = "end_crossbeam"; });   // the end cross beams take their own type
   if (d.bracing === "x") for (var j2 = 0; j2 < st.length - 1; j2++){
     var sa = st[j2], sb = st[j2+1];
     if (d.split_x){ var sm = (sa+sb)/2, tm = (tl+tr)/2; add("bracing","C",j2,[sa,tl,zc],[sm,tm,zc],0); add("bracing","C",j2,[sm,tm,zc],[sb,tr,zc],1); add("bracing","C",j2,[sa,tr,zc],[sm,tm,zc],2); add("bracing","C",j2,[sm,tm,zc],[sb,tl,zc],3); }
@@ -269,7 +269,8 @@ var selected = null;        // member key
 var model = null;           // members(design) of the last render
 function typeList(role){ if (role === "deck") return DATA.floor_types || []; if (role === "stiffener") return DATA.stiffener_types || []; if (role === "railing") return DATA.railing_types || []; return DATA.framing_types || []; }
 function typeKey(role){ return role === "deck" ? "floor" : role; }
-function typeName(role){ var id = design.types[typeKey(role)]; if (!id || id === "none") return role === "stiffener" || role === "railing" ? "(none)" : "(first type)"; var t = typeList(role).filter(function(x){ return String(x.id) === String(id); })[0]; return t ? t.name : "(type " + id + ")"; }
+function tRole(m){ return m.type_role || m.role; }   // the role whose family type the member takes
+function typeName(role){ var id = design.types[typeKey(role)]; if (role === "end_crossbeam" && (!id || id === "none")) return "same as the cross beams - " + typeName("crossbeam"); if (!id || id === "none") return role === "stiffener" || role === "railing" ? "(none)" : "(first type)"; var t = typeList(role).filter(function(x){ return String(x.id) === String(id); })[0]; return t ? t.name : "(type " + id + ")"; }
 function floorThickness(){ var t = (DATA.floor_types || []).filter(function(x){ return String(x.id) === String(design.types.floor); })[0]; return t && t.thickness_m ? t.thickness_m : DEFAULTS.floor_thickness_m; }
 function typeDepth(role){ var t = (DATA.framing_types || []).filter(function(x){ return String(x.id) === String(design.types[role]); })[0]; return t && t.depth_m ? t.depth_m : 0; }
 function chordDepth(){ return typeDepth("bottom_chord"); }
@@ -360,9 +361,9 @@ function dimV(svg, x, y1, y2, label, onEdit, title, right){
 }
 function memberLine(svg, m, x1, y1, x2, y2, color, w){
   var l = line(svg, x1, y1, x2, y2, color, w, {"class":"hit" + (selected === m.key ? " sel" : "")});
-  el(l, "title", {}, ROLES[m.role] + " - " + typeName(m.role) + " - " + fmt(len3(m), 2) + " m  (click for the family)");
-  l.addEventListener("click", function(ev){ ev.stopPropagation(); selected = m.key; var p = pagePoint(ev); memberRing(m.role, p[0], p[1]); render(); });
-  l.addEventListener("contextmenu", function(ev){ ev.preventDefault(); ev.stopPropagation(); selected = m.key; var p = pagePoint(ev); memberRing(m.role, p[0], p[1]); render(); });
+  el(l, "title", {}, ROLES[tRole(m)] + " - " + typeName(tRole(m)) + " - " + fmt(len3(m), 2) + " m  (click for the family)");
+  l.addEventListener("click", function(ev){ ev.stopPropagation(); selected = m.key; var p = pagePoint(ev); memberRing(tRole(m), p[0], p[1]); render(); });
+  l.addEventListener("contextmenu", function(ev){ ev.preventDefault(); ev.stopPropagation(); selected = m.key; var p = pagePoint(ev); memberRing(tRole(m), p[0], p[1]); render(); });
   return l;
 }
 function pagePoint(ev){ return [ev.clientX + window.scrollX, ev.clientY + window.scrollY]; }
@@ -405,29 +406,31 @@ function closePop(){ POP.style.display = "none"; POP.innerHTML = ""; }
 function esc(s){ return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
 function familyPop(role, x, y){
   var list = typeList(role), key = typeKey(role), cur = design.types[key] || "";
-  var optional = role === "stiffener" || role === "railing";
+  var optional = role === "stiffener" || role === "railing", same = role === "end_crossbeam";
   var options = function(q){
     var words = (q || "").toLowerCase().split(/\s+/).filter(Boolean), o = "";
     if (optional) o += '<option value="none"' + (cur === "none" || !cur ? " selected" : "") + '>(none)</option>';
+    if (same) o += '<option value="same"' + (!cur ? " selected" : "") + '>(same as the cross beams)</option>';
     if (!list.length) o += '<option value="">(no types of this kind are loaded in the model)</option>';
     var shown = 0;
     list.forEach(function(t){ var name = String(t.name).toLowerCase(); if (words.every(function(w){ return name.indexOf(w) >= 0; })){ shown++; o += '<option value="' + esc(t.id) + '"' + (String(t.id) === String(cur) ? " selected" : "") + '>' + esc(t.name) + '</option>'; } });
     if (list.length && !shown) o += '<option value="" disabled>(nothing matches)</option>';
     return o;
   };
-  var curName = (list.filter(function(t){ return String(t.id) === String(cur); })[0] || {}).name || (optional ? "(none)" : "(first type)");
+  var curName = (list.filter(function(t){ return String(t.id) === String(cur); })[0] || {}).name || (optional ? "(none)" : same ? "(same as the cross beams)" : "(first type)");
   var extra = "";
   if (role === "top_chord" || role === "bottom_chord") extra = '<div class="hint" style="padding:4px 0 0 0">Pieces: the strip under the elevation - click + to add a split and type its length; the dashed piece is the variable one and takes the rest.</div>';
+  if (same) extra = '<div class="hint" style="padding:4px 0 0 0">The two cross beams on the post centrelines at the ends. Their tops stay on the floor underside like the others.</div>';
   if (role === "deck") extra = '<label>Revit level <select id="pp_level">' + (DATA.levels || []).map(function(l){ return '<option value="' + esc(l.id) + '"' + (String(l.id) === String(design.level) ? " selected" : "") + '>' + esc(l.name) + ' (' + l.elevation_m.toFixed(3) + ' m)</option>'; }).join("") + '</select></label>';
   openPop(x, y, '<div class="fam"><h3>' + ROLES[role] + ' family</h3><div class="cur" title="current">' + esc(curName) + '</div>' +
     '<input type="text" id="pp_find" placeholder="type to search the ' + list.length + ' types...">' +
     '<select id="pp_type" size="' + Math.max(4, Math.min(10, list.length + (optional ? 1 : 0))) + '">' + options("") + '</select>' + extra +
     (role === "deck" ? '<div class="hint" style="padding:4px 0 0 0">Thickness comes from the floor type.</div>' : "") + '</div>', function(p){
     var sel = p.querySelector("#pp_type"), find = p.querySelector("#pp_find"); find.focus();
-    var pick = function(){ if (!sel.value && sel.value !== "none") return; var t = JSON.parse(JSON.stringify(design.types)); t[key] = sel.value; setDesign("types", t); cur = sel.value; p.querySelector(".cur").textContent = sel.options[sel.selectedIndex].textContent; };
+    var pick = function(){ if (!sel.value && sel.value !== "none") return; var t = JSON.parse(JSON.stringify(design.types)); if (sel.value === "same") delete t[key]; else t[key] = sel.value; setDesign("types", t); cur = sel.value === "same" ? "" : sel.value; p.querySelector(".cur").textContent = sel.options[sel.selectedIndex].textContent; };
     sel.onchange = pick;
-    find.oninput = function(){ sel.innerHTML = options(find.value); if (sel.options.length === 1 + (optional ? 1 : 0) && sel.options[sel.options.length - 1].value){ sel.selectedIndex = sel.options.length - 1; } };
-    find.onkeydown = function(ev){ if (ev.key === "Enter"){ var o = Array.prototype.filter.call(sel.options, function(x){ return x.value && x.value !== "none"; }); if (o.length){ sel.value = o[0].value; pick(); } } else if (ev.key === "ArrowDown"){ sel.focus(); } };
+    find.oninput = function(){ sel.innerHTML = options(find.value); if (sel.options.length === 1 + (optional || same ? 1 : 0) && sel.options[sel.options.length - 1].value){ sel.selectedIndex = sel.options.length - 1; } };
+    find.onkeydown = function(ev){ if (ev.key === "Enter"){ var o = Array.prototype.filter.call(sel.options, function(x){ return x.value && x.value !== "none" && x.value !== "same"; }); if (o.length){ sel.value = o[0].value; pick(); } } else if (ev.key === "ArrowDown"){ sel.focus(); } };
     var lv = p.querySelector("#pp_level"); if (lv) lv.onchange = function(){ setDesign("level", lv.value || null); };
   });
 }
@@ -497,6 +500,9 @@ function memberRing(role, x, y){
   }
   if (role === "diagonal" || role === "vertical") items.push({label:"Truss type...", run:function(){ $("truss").focus(); }});
   if (role === "diagonal") items.push({label:"End clearance... (" + mm(design.brace_end_offset_m) + ")", run:function(){ inlineEditAt(x, y, {value:design.brace_end_offset_m, unit:"mm", set:function(v){ setDesign("brace_end_offset_m", Math.max(0, v)); }}); }});
+  if (role === "end_crossbeam" && design.types.end_crossbeam) items.push({label:"Same as the cross beams", run:function(){ var t = JSON.parse(JSON.stringify(design.types)); delete t.end_crossbeam; setDesign("types", t); }});
+  if (role === "end_crossbeam") items.push({label:"Cross beams... (" + typeName("crossbeam") + ")", run:function(){ familyPop("crossbeam", x, y); }});
+  if (role === "crossbeam") items.push({label:"End cross beams... (" + typeName("end_crossbeam") + ")", run:function(){ familyPop("end_crossbeam", x, y); }});
   if (role === "bracing" || role === "crossbeam" || role === "stringer"){
     if (role === "crossbeam") items.push({label:"Cross beams between... (" + (model.layout.bays - 1) + ")", run:function(){ inlineEditAt(x, y, {value:model.layout.bays - 1, unit:"n", min:0, set:function(v){ setDesign("plan_bays", Math.max(0, Math.round(v)) + 1); }}); }});
     [["zigzag","Single diagonals"],["x","X bracing"],["none","No bracing"]].forEach(function(b){ if (b[0] !== design.bracing) items.push({label:b[1], run:function(){ setDesign("bracing", b[0]); }}); });
@@ -648,7 +654,7 @@ function render(){
   [[0, F.tL], [0, F.tR], [F.span, F.tL], [F.span, F.tR]].forEach(function(p){ el(pl, "rect", {x:PX(p[0] - half), y:PY(p[1] + half), width:Math.max(3, 2 * half * psx), height:Math.max(3, 2 * half * psy), fill:"var(--post)"}); });
   mems.forEach(function(m){
     var c = null, w = 2;
-    if (m.role === "bottom_chord") { c = "var(--steel)"; w = 4; } else if (m.role === "crossbeam" || m.role === "stringer") { c = "var(--steel)"; w = 2.5; }
+    if (m.role === "bottom_chord") { c = "var(--steel)"; w = 4; } else if (m.role === "crossbeam" || m.role === "stringer") { c = "var(--steel)"; w = m.type_role === "end_crossbeam" && design.types.end_crossbeam ? 4 : 2.5; }
     else if (m.role === "bracing") c = "var(--brace)"; else if (m.role === "stiffener") c = "var(--stiff)"; else if (m.role === "railing") { c = "var(--rail)"; w = 1.5; }
     if (c){
       var cq = cutPts(m);
@@ -674,7 +680,7 @@ function render(){
   el(dks, "title", {}, "Deck - " + typeName("deck") + " - " + mm(design.floor_thickness_m) + " mm"); dks.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("deck", p[0], p[1]); });
   var brc = mems.filter(function(m){ return m.role === "bracing"; })[0];
   if (brc){ var zbr = brc.p1[2], bl = line(se, SX(res.planes[0]), SY(zbr), SX(res.planes[1]), SY(zbr), "var(--brace)", 2, {"stroke-dasharray":"6 4", "class":"hit"}); el(bl, "title", {}, "Plan bracing - its centreline at the bottom chords' centre (" + (design.bottom_chord_depth_m ? mm(design.bottom_chord_depth_m) + " deep) " : "section depth unknown, so at the chord line) ") + "- " + typeName("bracing")); bl.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("bracing", p[0], p[1]); }); }
-  var cbm = mems.filter(function(m){ return m.role === "crossbeam"; })[0];
+  var cbm = mems.filter(function(m){ return m.role === "crossbeam" && !m.type_role; })[0] || mems.filter(function(m){ return m.role === "crossbeam"; })[0];
   if (cbm){ var cbr = el(se, "rect", {x:SX(res.planes[0]), y:SY(res.zu), width:(res.planes[0] - res.planes[1]) * ss, height:0.18 * ss, fill:"var(--steel)", "class":"hit"}); el(cbr, "title", {}, "Cross beam - " + typeName("crossbeam") + " - top on the floor underside"); cbr.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("crossbeam", p[0], p[1]); }); }
   mems.filter(function(m){ return m.role === "stringer" && m.i === 0; }).forEach(function(m){ var r = el(se, "rect", {x:SX(m.p1[1]) - 7, y:SY(res.zu), width:14, height:0.18 * ss, fill:"var(--steel)", "class":"hit"}); el(r, "title", {}, "Beam between cross beams - " + typeName("stringer")); r.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("stringer", p[0], p[1]); }); });
   mems.filter(function(m){ return m.role === "stiffener" && m.i === 0; }).forEach(function(m){ var r = el(se, "rect", {x:SX(m.p1[1]) - 3, y:SY(res.zu), width:6, height:0.1 * ss, fill:"var(--stiff)", "class":"hit"}); el(r, "title", {}, "Deck stiffener - " + typeName("stiffener")); r.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("stiffener", p[0], p[1]); }); });
@@ -762,7 +768,7 @@ function draw3d(){
     for (var i = 0; i < 4; i++){ var a = c[i], b = c[(i + 1) % 4];
       [[a, z0, b, z0], [a, z1, b, z1], [a, z0, a, z1]].forEach(function(e){ var q1 = proj([e[0][0], e[0][1], e[1]]), q2 = proj([e[2][0], e[2][1], e[3]]); prims.push({kind:"seg", a:q1, b:q2, color:"var(--post)", w:3, near:(q1[2] + q2[2]) / 2, role:"post"}); }); }
   });
-  model.members.forEach(function(m){ var w = world3(m), q1 = proj(w[0]), q2 = proj(w[1]); prims.push({kind:"seg", a:q1, b:q2, color:colorOf(m.role), w:(m.role === "top_chord" || m.role === "bottom_chord") ? 4 : (m.role === "railing" || m.role === "stiffener") ? 1.5 : 2.2, near:(q1[2] + q2[2]) / 2, m:m, role:m.role, dash:m.role === "stiffener" ? "5 3" : null}); });
+  model.members.forEach(function(m){ var w = world3(m), q1 = proj(w[0]), q2 = proj(w[1]); prims.push({kind:"seg", a:q1, b:q2, color:colorOf(m.role), w:(m.role === "top_chord" || m.role === "bottom_chord") ? 4 : (m.role === "railing" || m.role === "stiffener") ? 1.5 : 2.2, near:(q1[2] + q2[2]) / 2, m:m, role:tRole(m), dash:m.role === "stiffener" ? "5 3" : null}); });
   // far first; the members under the deck are drawn before the deck when seen from
   // above (the deck hides them) and after it when seen from below
   var fromAbove = Math.sin(cam.el * Math.PI / 180) > 0, UNDER = {crossbeam:1, bracing:1, stringer:1, stiffener:1};
@@ -791,7 +797,7 @@ function wrap180(a){ return ((a + 180) % 360 + 360) % 360 - 180; }
 V3.addEventListener("pointerdown", function(e){ closeRadial(); closePop(); e.preventDefault(); V3.setPointerCapture(e.pointerId); var sp = sp3(e); drag3 = {sx:sp[0], sy:sp[1], az:cam.az, el:cam.el, px:cam.px, py:cam.py, pan:e.button === 2 || e.button === 1 || e.shiftKey, button:e.button, moved:false}; });
 V3.addEventListener("pointermove", function(e){
   var sp = sp3(e);
-  if (!drag3){ var h = pick3d(sp); V3.style.cursor = h ? "pointer" : "grab"; $("info3d").textContent = h ? (h.m ? ROLES[h.m.role] + " " + h.m.key + " - " + typeName(h.m.role) + " - " + fmt(len3(h.m), 2) + " m" : "Deck - " + typeName("deck")) : "Hover a member to see what it is; right-click it for its family."; return; }
+  if (!drag3){ var h = pick3d(sp); V3.style.cursor = h ? "pointer" : "grab"; $("info3d").textContent = h ? (h.m ? ROLES[tRole(h.m)] + " " + h.m.key + " - " + typeName(tRole(h.m)) + " - " + fmt(len3(h.m), 2) + " m" : "Deck - " + typeName("deck")) : "Hover a member to see what it is; right-click it for its family."; return; }
   var dx = sp[0] - drag3.sx, dy = sp[1] - drag3.sy;
   if (!drag3.moved && Math.hypot(dx, dy) <= 3) return; drag3.moved = true;
   if (drag3.pan){ cam.px = drag3.px + dx; cam.py = drag3.py + dy; } else { cam.az = wrap180(drag3.az - dx * 0.5); cam.el = wrap180(drag3.el + dy * 0.5); }

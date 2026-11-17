@@ -45,9 +45,15 @@ PLANES = (("outside", u"the outside faces of the posts"),
 FRAMING_ROLES = ("top_chord", "bottom_chord", "end_post", "vertical", "diagonal",
                  "crossbeam", "bracing", "stringer")
 ROLES = FRAMING_ROLES + ("stiffener", "railing")
+# a member placed with another role's type: the two end cross beams (on the
+# post centrelines) take "end_crossbeam" - the cross beam type when unset
+TYPE_ROLES = {"end_crossbeam": "crossbeam"}
+TABLE_ROLES = ("top_chord", "bottom_chord", "end_post", "vertical", "diagonal", "end_crossbeam",
+               "crossbeam", "bracing", "stringer", "stiffener", "railing")
 ROLE_LABELS = {"top_chord": u"Top chord", "bottom_chord": u"Bottom chord",
                "end_post": u"End post", "vertical": u"Vertical",
-               "diagonal": u"Diagonal", "crossbeam": u"Cross beam", "bracing": u"Plan bracing",
+               "diagonal": u"Diagonal", "crossbeam": u"Cross beam", "end_crossbeam": u"End cross beam",
+               "bracing": u"Plan bracing",
                "stringer": u"Beam between cross beams", "stiffener": u"Deck stiffener", "railing": u"Railing"}
 BRACE_ROLES = ("diagonal", "bracing")       # placed as braces, the rest as beams
 TOP_ALIGNED = ("crossbeam", "stringer", "top_chord", "bottom_chord")  # the member's top sits on the line: the floor underside, or the chord levels as top of steel
@@ -91,7 +97,7 @@ DEFAULTS = {
     "stiffener_gap_m": 0.1,          # stiffener end gap to the cross beams
     "railing_inset_m": 0.1,          # railing path inside the deck edge when no width is typed; type "none" = none
     "railing_width_m": None,         # railing to railing, centred on the bridge centreline; None = deck less the inset
-    "types": {},                     # role -> type id (text); "floor", "stiffener", "railing" too
+    "types": {},                     # role -> type id (text); "floor", "stiffener", "railing", "end_crossbeam" too
     "level": None,                   # level id the floor and beams reference
 }
 TOL = 1e-6
@@ -672,6 +678,8 @@ def members(design, frame):
         else:
             ta, tb = tl, tr
         add("crossbeam", "C", j, (s, ta, zu), (s, tb, zu))
+        if j in (0, len(st) - 1):
+            out[-1]["type_role"] = "end_crossbeam"     # the end cross beams take their own type
     # plan bracing: an X in every bay, or one diagonal at a time from side
     # beam to side beam over brace_bays bays, alternating (the drawing has
     # each diagonal over two bays, crossing the middle cross beam mid-width)
@@ -812,6 +820,11 @@ def cut_points(m):
     return a, b
 
 
+def type_role(m):
+    """The role whose family type the member is placed with."""
+    return m.get("type_role") or m["role"]
+
+
 def deck_profile(design, frame):
     """The four corners of the deck in local (s, t) - start left, end
     left, end right, start right."""
@@ -824,10 +837,14 @@ def summary(design, frame, mems=None):
     mems = mems if mems is not None else members(design, frame)
     lay = layout(design, frame)
     by_role = {}
+    by_type = {}
     steel = 0.0
     for m in mems:
         d = math.sqrt(sum((a - b) ** 2 for a, b in zip(m["p1"], m["p2"])))
         r = by_role.setdefault(m["role"], {"count": 0, "length_m": 0.0})
+        q = by_type.setdefault(type_role(m), {"count": 0, "length_m": 0.0})
+        q["count"] += 1
+        q["length_m"] += d
         r["count"] += 1
         r["length_m"] += d
         if m["role"] in FRAMING_ROLES:
@@ -836,7 +853,7 @@ def summary(design, frame, mems=None):
     return {"span_m": frame["span"], "panels": lay["n"], "panel_length_m": lay["L"],
             "brace_angle_deg": brace_angle(design, frame),
             "truss_length_m": lay["total"], "bays": lay["bays"], "bay_length_m": lay["B"],
-            "members": len(mems), "steel_length_m": steel, "by_role": by_role,
+            "members": len(mems), "steel_length_m": steel, "by_role": by_role, "by_type": by_type,
             "deck_length_m": d1 - d0, "deck_width_m": t_l - t_r,
             "deck_area_m2": (d1 - d0) * (t_l - t_r), "height_m": height(design, frame),
             "truss_height_m": truss_height(design, frame)}
@@ -1178,7 +1195,7 @@ def fill_page(template, data):
     return template.replace(PLACEHOLDER, text, 1)
 
 
-__all__ = ["forget_bridge", "deleted_bridge", "post_ids", "LAYOUT_VERSION", "layout_outdated", "post_ends", "cut_points", "piece_spans", "design_differs", "pick_design_file", "deck_motion", "INJECTED_KEYS", "chord_extent", "bridge_on_posts", "bridge_with_source", "truss_height", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
+__all__ = ["TYPE_ROLES", "TABLE_ROLES", "type_role", "forget_bridge", "deleted_bridge", "post_ids", "LAYOUT_VERSION", "layout_outdated", "post_ends", "cut_points", "piece_spans", "design_differs", "pick_design_file", "deck_motion", "INJECTED_KEYS", "chord_extent", "bridge_on_posts", "bridge_with_source", "truss_height", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
            "BRACE_ROLES", "TOP_ALIGNED", "DEFAULTS", "normalize_design", "frame_from_posts",
            "frame_from_points", "effective_frame", "planes", "height", "base_z", "to_world",
            "layout", "pieces",

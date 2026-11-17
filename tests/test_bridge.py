@@ -627,6 +627,27 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(fa["p2"][0], (BR.layout(design(truss="warren"), BR.frame_from_posts(s, e))["points"][0] +
                                              BR.layout(design(truss="warren"), BR.frame_from_posts(s, e))["points"][1]) / 2.0)
 
+    def test_end_cross_beams_take_their_own_type(self):
+        # the two cross beams on the post centrelines are placed with the
+        # "end_crossbeam" type (the cross beam type when unset); their keys
+        # are the cross beams' own, so a type change re-types them in place
+        mems = BR.members(design(plan_bays=5), FRAME)
+        cbs = [m for m in mems if m["role"] == "crossbeam"]
+        self.assertEqual(len(cbs), 6)
+        ends = [m for m in cbs if m.get("type_role") == "end_crossbeam"]
+        self.assertEqual(sorted(m["key"] for m in ends), [u"crossbeam:C:0:0", u"crossbeam:C:5:0"])
+        self.assertEqual([round(m["p1"][0], 9) for m in sorted(ends, key=lambda m: m["i"])], [0.0, 20.0])
+        self.assertEqual(BR.type_role(ends[0]), "end_crossbeam")
+        self.assertEqual(BR.type_role(by_key(mems, u"crossbeam:C:1:0")), "crossbeam")
+        self.assertEqual(BR.TYPE_ROLES["end_crossbeam"], "crossbeam")
+        s = BR.summary(design(plan_bays=5), FRAME, mems)
+        self.assertEqual(s["by_role"]["crossbeam"]["count"], 6)          # by role: all six
+        self.assertEqual(s["by_type"]["crossbeam"]["count"], 4)          # by type: four plus
+        self.assertEqual(s["by_type"]["end_crossbeam"]["count"], 2)      # the two end ones
+        self.assertIn("end_crossbeam", BR.TABLE_ROLES)
+        w = [m for m in BR.world_members(design(plan_bays=5), FRAME) if m.get("type_role") == "end_crossbeam"]
+        self.assertTrue(all("roll" in m for m in w))                     # still rolled to the slope
+
     def test_end_diagonal_clearance(self):
         # the end nodes are where the chords meet the posts (the post
         # centrelines), so the end panels are the same as the rest and every

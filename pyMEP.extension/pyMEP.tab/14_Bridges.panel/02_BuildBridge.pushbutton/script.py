@@ -261,8 +261,8 @@ output.print_md("**Span:** {0:.3f} m  |  **Rise:** {1:+.0f} mm  |  **Height:** {
                     len(failed), output.linkify(make_id(floor_id)) if floor_id else "not made",
                     level.Name))
 rows = []
-for role in BR.ROLES:
-    r = summ["by_role"].get(role)
+for role in BR.TABLE_ROLES:
+    r = summ["by_type"].get(role)
     if not r:
         continue
     if role == "stiffener":

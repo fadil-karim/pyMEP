@@ -38,6 +38,10 @@ def resolve(doc, design, frame):
     symbols = {}
     for role in BR.FRAMING_ROLES:
         symbols[role] = RV.first_of(framing, u"{0}".format(design["types"].get(role) or u""), doc)
+    for role, base in BR.TYPE_ROLES.items():
+        # unset: the type of the role it stands in for (the end cross beams: the cross beams')
+        wanted = u"{0}".format(design["types"].get(role) or u"")
+        symbols[role] = RV.first_of(framing, wanted, doc) if wanted and wanted != u"none" else symbols.get(base)
     floor_type = RV.first_of(floors, u"{0}".format(design["types"].get("floor") or u""), doc)
     design["floor_thickness_m"] = RV.floor_thickness_m(floor_type) or design["floor_thickness_m"]
     design["bottom_chord_depth_m"] = RV.section_depth_m(symbols.get("bottom_chord"))
@@ -103,7 +107,7 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev, others=(
             RV.set_joins(el, (0, 1), False)
     for key, m in diff["update"]:
         el = doc.GetElement(make_id(member_ids[key]))
-        sym = syms.get(m["role"])
+        sym = syms.get(BR.type_role(m))
         if el is None or sym is None or not RV.set_member_curve(el, m):
             if el is not None:
                 RV.delete_quiet(doc, [member_ids[key]])
@@ -118,7 +122,7 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev, others=(
         RV.set_mark_comments(el, name)     # the current name, so Delete Bridges knows it after a rename
         res["recurved"] += 1
     for m in diff["create"]:
-        sym = syms.get(m["role"])
+        sym = syms.get(BR.type_role(m))
         if sym is None:
             res["failed"].append((m, u"no framing type"))
             continue
