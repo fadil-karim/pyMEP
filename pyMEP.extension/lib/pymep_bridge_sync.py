@@ -66,6 +66,7 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev, others=(
     Returns {"member_ids", "floor_id", counts, "deck", "posts", "failed",
     "rails_made", "rails_hosted"}."""
     res = {"recurved": 0, "retyped": 0, "created": 0, "deleted": 0, "hosted_kept": 0, "ends_moved": [], "not_ours": 0,
+           "reseated": 0, "joins_left_off": [],
            "hosted_made": 0, "rails_made": 0, "rails_hosted": 0, "failed": [], "deck": u"", "posts": u""}
     old_rec = old_rec or {}
     mems = BR.world_members(design, frame, shared_elev)
@@ -92,6 +93,14 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev, others=(
     # framing: re-curve / re-type the members that stay, make the new ones, drop the rest
     framing_mems = [m for m in mems if m["role"] not in HOSTED]
     diff = BR.diff_members([k for k in member_ids if k.split(":")[0] not in HOSTED], framing_mems)
+    # Revit drags the ends joined to a member along when the member moves, so
+    # moving one member can pull a neighbour that is already in place off its
+    # node: every member that stays is unjoined at both ends first, and its
+    # joins are given back once all of them are on their new lines
+    for key, m in diff["update"]:
+        el = doc.GetElement(make_id(member_ids[key]))
+        if el is not None:
+            RV.set_joins(el, (0, 1), False)
     for key, m in diff["update"]:
         el = doc.GetElement(make_id(member_ids[key]))
         sym = syms.get(m["role"])
@@ -122,25 +131,48 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev, others=(
             res["failed"].append((m, u"{0}".format(ex)))
     for key in diff["delete"]:
         res["deleted"] += RV.delete_quiet(doc, [member_ids.pop(key)])
-    # the members whose ends meet the posts must end on their own points: check
-    # them, put any Revit moved back once more, and report any it moves again
-    try:
-        doc.Regenerate()
-    except Exception:
-        pass
-    for m in framing_mems:
-        if not m.get("free_ends") or m["key"] not in member_ids:
-            continue
-        el = doc.GetElement(make_id(member_ids[m["key"]]))
-        if el is None or RV.line_matches(el, m):
-            continue
-        RV.set_member_curve(el, m)
+    # every member must end on its own points: put back any that are off (a few
+    # passes, still unjoined), give the joins back - except at the ends that
+    # meet the posts - and check once more; one that a join moves again is put
+    # back and left unjoined, and any still off is reported
+    kept_keys = set(k for k, _m in diff["update"])
+    placed = [m for m in framing_mems if m["key"] in member_ids]
+
+    def _el(m):
+        return doc.GetElement(make_id(member_ids[m["key"]]))
+
+    def _regen():
         try:
             doc.Regenerate()
         except Exception:
             pass
-        if not RV.line_matches(el, m):
-            res["ends_moved"].append(m["key"])
+
+    def _off():
+        _regen()
+        out = []
+        for m in placed:
+            el = _el(m)
+            if el is not None and not RV.line_matches(el, m):
+                out.append((m, el))
+        return out
+    for _pass in range(3):
+        off = _off()
+        if not off:
+            break
+        for m, el in off:
+            RV.set_joins(el, (0, 1), False)
+            RV.set_member_curve(el, m)
+            res["reseated"] += 1
+    for m in placed:
+        if m["key"] in kept_keys:
+            el = _el(m)
+            if el is not None:
+                RV.set_joins(el, [e for e in (0, 1) if e not in (m.get("free_ends") or [])], True)
+    for m, el in _off():
+        RV.set_joins(el, (0, 1), False)
+        RV.set_member_curve(el, m)
+        res["joins_left_off"].append(m["key"])
+    res["ends_moved"] = [m["key"] for m, el in _off()]
 
     # the deck: keep, move or (only when its outline, fall or level changed) rebuild
     floor = doc.GetElement(make_id(floor_id)) if floor_id else None
@@ -235,6 +267,17 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev, others=(
     return res
 
 
+def problem_line(res):
+    """The warnings of a build or update alone (u"" when none)."""
+    parts = []
+    if res.get("joins_left_off"):
+        parts.append(u"{0} member(s) left unjoined because a Revit join moved them again: {1}".format(
+            len(res["joins_left_off"]), u", ".join(res["joins_left_off"])))
+    if res.get("ends_moved"):
+        parts.append(u"STILL OFF THEIR LINES - check these: {0}".format(u", ".join(res["ends_moved"])))
+    return u"; ".join(parts)
+
+
 def summary_line(res):
     """One line for a report."""
     line = (u"{0} kept and re-aligned ({1} re-typed), {2} added, {3} removed; {4}; "
@@ -244,9 +287,13 @@ def summary_line(res):
     if res.get("not_ours"):
         line += (u"; {0} recorded id(s) pointed at elements that are not this bridge's (not marked with "
                  u"its name) - left alone, those members made new").format(res["not_ours"])
+    if res.get("reseated"):
+        line += u"; {0} member(s) Revit had pulled off their lines put back".format(res["reseated"])
+    if res.get("joins_left_off"):
+        line += u"; {0} member(s) left unjoined because a Revit join moved them again: {1}".format(
+            len(res["joins_left_off"]), u", ".join(res["joins_left_off"]))
     if res.get("ends_moved"):
-        line += u"; Revit kept moving the end of {0} off its node: {1}".format(
-            len(res["ends_moved"]), u", ".join(res["ends_moved"]))
+        line += u"; STILL OFF THEIR LINES - check these: {0}".format(u", ".join(res["ends_moved"]))
     return line
 
 

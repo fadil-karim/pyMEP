@@ -116,6 +116,7 @@ if editing:
         if ans != again:
             script.exit()
         start_els, end_els, taken = pick_four(editing)
+        start_els, end_els = RV.orient_like(rec, start_els, end_els)   # its start stays its start
     else:
         src = rec.get("source", {})
         start_els = [doc.GetElement(make_id(int(i))) for i in src.get("start_ids", [])]
@@ -139,6 +140,7 @@ if taken:
         title="Bridge Builder", options=[use, drop, u"Cancel"])
     if ans == use:
         editing = other
+        start_els, end_els = RV.orient_like(registry["bridges"][other], start_els, end_els)
     elif ans == drop:
         if not delete_bridges([other]):
             script.exit()

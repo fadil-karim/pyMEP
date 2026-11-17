@@ -284,6 +284,27 @@ def pick_pair(doc, uidoc, which, alert):
         alert(u"Pick exactly two posts for the {0} - you picked {1}.".format(which, len(els)))
 
 
+def orient_like(rec, start, end):
+    """(start, end) post pairs turned to run the way the recorded bridge
+    runs: when the new end pair is behind the new start pair along the
+    bridge's recorded direction they swap, so the design's start and end
+    (typed levels, chord pieces, member keys) stay at the same ends."""
+    import pymep_bridge as BR
+    if not rec or not rec.get("frame"):
+        return start, end
+    try:
+        old = BR.frame_from_record(rec)
+        a = [post_info(e) for e in start]
+        b = [post_info(e) for e in end]
+        ax, ay = (a[0]["x"] + a[1]["x"]) / 2.0, (a[0]["y"] + a[1]["y"]) / 2.0
+        bx, by = (b[0]["x"] + b[1]["x"]) / 2.0, (b[0]["y"] + b[1]["y"]) / 2.0
+        if (bx - ax) * old["u"][0] + (by - ay) * old["u"][1] < 0:
+            return end, start
+    except Exception:
+        pass
+    return start, end
+
+
 def pick_posts(doc, uidoc, alert, use_selection=True):
     """(start pair, end pair) of post elements: four selected before the
     click, else picked pair by pair. None when cancelled; ValueError when
@@ -701,6 +722,28 @@ def update_hosted(doc, el, m, stiffener_sym, railing_type, level):
     except Exception:
         return False
     return False
+
+
+def set_joins(el, ends, allowed):
+    """Allow or disallow Revit's automatic join at the given member ends
+    (0 start, 1 end). Returns how many ends changed."""
+    try:
+        from Autodesk.Revit.DB.Structure import StructuralFramingUtils
+    except Exception:
+        return 0
+    n = 0
+    for e in ends:
+        try:
+            now = StructuralFramingUtils.IsJoinAllowedAtEnd(el, int(e))
+            if allowed and not now:
+                StructuralFramingUtils.AllowJoinAtEnd(el, int(e))
+                n += 1
+            elif not allowed and now:
+                StructuralFramingUtils.DisallowJoinAtEnd(el, int(e))
+                n += 1
+        except Exception:
+            pass
+    return n
 
 
 def free_ends(el, m):

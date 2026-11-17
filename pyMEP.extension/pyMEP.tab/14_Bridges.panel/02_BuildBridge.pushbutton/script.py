@@ -129,6 +129,7 @@ while True:
             forms.alert(u"{0}".format(ex), exitscript=True)
         if pair is None:
             script.exit()
+        pair = RV.orient_like(built, pair[0], pair[1])      # a built bridge keeps its start at the same end
         source = {"start_ids": [id_value(e.Id) for e in pair[0]], "end_ids": [id_value(e.Id) for e in pair[1]],
                   "labels": [RV.element_label(e) for e in pair[0] + pair[1]]}
     break
@@ -282,5 +283,6 @@ forms.alert(u"'{0}' {1}: {2} element(s){3} and the deck{4}.{5}\n\nThe elements a
                 name, u"updated in place" if old and not rebuild else u"built", len(member_ids),
                 u", {0} failed".format(len(failed)) if failed else u"",
                 u"" if floor_id else u" (deck FAILED - see the output window)",
-                u"\n\n" + SYNC.summary_line(res) if old and not rebuild else u""),
+                u"\n\n" + SYNC.summary_line(res) if old and not rebuild else
+                (u"\n\n" + SYNC.problem_line(res) if SYNC.problem_line(res) else u"")),
             title="Build Bridge")

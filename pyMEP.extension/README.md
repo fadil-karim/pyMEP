@@ -1192,6 +1192,21 @@ file, so a design file saved before the deletion is not built again
 without asking. Undo brings deleted elements back but not the
 tracking.
 
+Revit drags the ends joined to a member along when the member moves,
+so on an update moving one member could pull a neighbour that was
+already in place off its node. Every member that stays is therefore
+unjoined at both ends before anything moves; once all are on their new
+lines every member is checked against its line and any that is off is
+put back (a few passes), the joins are given back (except at the ends
+that meet the posts) and everything is checked once more - a member a
+join moves again is put back and left unjoined, and the result names
+it; any member still off is listed as "STILL OFF THEIR LINES". Posts
+picked again for a built bridge (in Bridge Builder or Build Bridge)
+keep the bridge's start at the same end whatever order they are picked
+in, so its typed end levels, chord pieces and members stay where they
+were. Bridges built before this show "layout updated in pyMEP" in
+Update Bridges, which redraws them with the check.
+
 Build, Update and Delete all touch only a bridge's own elements: a
 recorded id that is no longer in the model is made again, and one that
 now points at some other element - a post, or anything not marked with

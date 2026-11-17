@@ -95,11 +95,12 @@ DEFAULTS = {
     "level": None,                   # level id the floor and beams reference
 }
 TOL = 1e-6
-# bumped when the same design and posts give different members than before
-# (2: the side frames' end nodes on the post centrelines, the end clearance
-# cutting the end diagonals back); a bridge built under an older layout is
-# offered for an update
-LAYOUT_VERSION = 2
+# bumped when the same design and posts give different members than before,
+# or when built bridges need redrawing (2: the side frames' end nodes on the
+# post centrelines, the end clearance cutting the end diagonals back; 3:
+# updates check every member, putting back any a Revit join dragged off its
+# node); a bridge built under an older layout is offered for an update
+LAYOUT_VERSION = 3
 
 
 def normalize_design(d):
