@@ -77,7 +77,7 @@
                                  TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
                                  FontFamily="Consolas" Margin="0,3,0,0" TextChanged="on_changed"/>
                         <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource Hint}"
-                                   Text="One line moves everything together. One line per element pairs them in list order. Lines starting with a Mark (P1605, 12.5, 8.0) move that element. z is the new offset above the element's level; without it the height stays. 2D elements (regions, annotations) only move in x, y."/>
+                                   Text="One line moves everything together. One line per element pairs them in list order. Lines starting with a Mark (P1605, 12.5, 8.0) move that element. AutoCAD lines (X = 47289.0     Y = 47289.0     Z = 0.0) work as pasted. z - AutoCAD's Z too - is the new offset above the element's level; without it the height stays. 2D elements (regions, annotations) only move in x, y."/>
                     </Grid>
                 </GroupBox>
 

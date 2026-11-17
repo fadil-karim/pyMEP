@@ -915,7 +915,10 @@ pick the level; say what the coordinates are relative to (internal
 origin, project base point, or shared easting / northing) and their
 unit (metres, millimetres, feet); then type one point per line as
 `x, y` or `x, y, z` - z is the offset above the level and 0 when left
-out. Lines paste straight from a spreadsheet, and one extra word on a
+out. Lines paste straight from a spreadsheet, or from AutoCAD's ID
+command as it writes them (`X = 47289.0     Y = 47289.0     Z = 0.0`,
+the labels and spaces as they come; the Z is the offset above the level
+like a typed third number), and one extra word on a
 line (`P1605, 12.5, 8.0`) is written to the instance's Mark. Every
 loaded family is offered and placed by its own rule: level based
 families take the offset through the placement, columns and work-plane
@@ -949,8 +952,10 @@ point lands on the typed coordinates. One typed line moves the whole
 selection together, the element highlighted in the list landing on it
 and the rest keeping their spacing; one line per element pairs them in
 list order; lines starting with a Mark (`P1605, 12.5, 8.0`) move the
-element with that Mark. An optional z is the new offset above the
-element's level; without it the height stays, and view-specific
+element with that Mark. Lines in AutoCAD's ID format
+(`X = 47289.0     Y = 47289.0     Z = 0.0`) are read too. An optional z
+- AutoCAD's Z included - is the new offset above the element's level;
+without it the height stays, and view-specific
 elements only ever move in x, y. The preview lists every move with the
 distance before anything happens; pinned elements are refused unless
 the unpin tick is on; one undo step.

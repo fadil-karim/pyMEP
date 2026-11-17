@@ -32,6 +32,32 @@ class Parsing(unittest.TestCase):
         self.assertEqual([(p["x"], p["y"], p["z"]) for p in pts],
                          [(1, 2, 3), (4, 5, 0), (6, 7, 8), (9, 10, 11), (12, 13, 0)])
 
+    def test_autocad_id_lines(self):
+        # AutoCAD's ID command: a label, spaces, '=', spaces, the value, and
+        # runs of spaces between them - pasted as it is, several lines at once
+        text = (u"X = 47289.0     Y = 47289.0     Z = 47289.0\n"
+                u"  X = -12.5000     Y = 7.2500     Z = 0.0000\n"
+                u"P1605 X = 523100.25     Y = 181200.50     Z = 1.2\n"
+                u"X = 1.5     Y = 2.5\n"
+                u"X =3   Y= 4   Z :5")
+        pts, errs = PC.parse_points(text)
+        self.assertEqual(errs, [])
+        self.assertEqual([(p["x"], p["y"], p["z"], p["has_z"]) for p in pts],
+                         [(47289.0, 47289.0, 47289.0, True), (-12.5, 7.25, 0.0, True),
+                          (523100.25, 181200.5, 1.2, True), (1.5, 2.5, 0.0, False),
+                          (3.0, 4.0, 5.0, True)])
+        self.assertEqual([p["name"] for p in pts], [u"", u"", u"P1605", u"", u""])
+        # Z is the offset above the level, the same as a typed third number
+        same, _e = PC.parse_points(u"47289.0, 47289.0, 47289.0")
+        self.assertEqual((same[0]["x"], same[0]["y"], same[0]["z"]), (pts[0]["x"], pts[0]["y"], pts[0]["z"]))
+        t = PC.prepare(pts[:1], "mm", 10.0, "internal")[0]
+        self.assertAlmostEqual(t["z"], 10.0 + 47289.0 / 304.8)
+        # a Mark followed by a colon reads as before - only letters-only
+        # labels are joined to their value
+        mark, errs = PC.parse_points(u"P1605: 12.5 8.0")
+        self.assertEqual(errs, [])
+        self.assertEqual((mark[0]["x"], mark[0]["y"], mark[0]["name"]), (12.5, 8.0, u"P1605:"))
+
     def test_names_blank_lines_and_comments(self):
         pts, errs = PC.parse_points(u"# piles\n\nP1605, 10, 20\n30, 40, 2, P1606\n  \n")
         self.assertEqual(errs, [])

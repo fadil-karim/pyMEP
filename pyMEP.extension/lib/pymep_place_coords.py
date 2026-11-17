@@ -21,12 +21,17 @@ SYSTEMS = (("internal", u"internal origin (model coordinates)"),
            ("shared", u"shared / survey point (easting, northing)"))
 
 _NUM = re.compile(r"^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$")
+# a letters-only label with spaces around its = or : before a number, as
+# AutoCAD's ID command writes them (X = 47289.0     Y = 47289.0     Z = 0.0):
+# joined up to X=47289.0 so the label is dropped like a typed x=12.5
+_SPACED_LABEL = re.compile(r"(?<![A-Za-z0-9_.])([A-Za-z_]+)\s*([=:])\s*(?=[-+]?(?:\d|\.\d))")
 
 
 def _tokens(line):
     """Cells of a line: split on commas, semicolons, tabs, or runs of
-    spaces; '=' and ':' labels such as x=12.5 or E: 523.1 are dropped."""
-    s = line.strip()
+    spaces; '=' and ':' labels such as x=12.5, E: 523.1 or AutoCAD's
+    X = 47289.0 are dropped."""
+    s = _SPACED_LABEL.sub(r"\1\2", line.strip())
     if u"," in s or u";" in s or u"\t" in s:
         parts = re.split(r"[,;\t]", s)
     else:
@@ -49,7 +54,11 @@ def parse_points(text, default_z=0.0):
     """(points, errors) from text with one point per line.
 
     A line is x, y or x, y, z - z is the offset above the level and
-    is default_z when left out. Four numbers are two points, x1, y1,
+    is default_z when left out. Values can be labelled, as AutoCAD's
+    ID command writes a point: X = 47289.0     Y = 47289.0     Z = 0.0
+    (x=12.5, E: 523.1 too) - the labels are dropped and the values read
+    in order, so Z is the offset above the level like a typed third
+    number. Four numbers are two points, x1, y1,
     x2, y2 (the start and end of a line based family, or the length
     and direction of an adaptive one), five add a common z. Commas,
     semicolons, tabs or spaces separate the values. One extra word on
