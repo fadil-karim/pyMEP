@@ -1014,7 +1014,14 @@ design itself, and shows in red on the elevation. The builder page
 then opens in the browser with all of that and the model's framing,
 floor, stiffener and railing types and levels.
 
-The page has no settings form: the drawings are the inputs. Blue
+The page has no settings form: the drawings are the inputs. **Undo** and
+**Redo** in the toolbar (Ctrl+Z, and Ctrl+Y or Ctrl+Shift+Z) step back
+and forth through the design's changes - each click is a step, typing
+in a box is one step once you pause for half a second, and loading a
+file or Defaults is a step too; the status line and the buttons' tips
+say what is undone or redone. Inside a text box Ctrl+Z is the box's
+own. The history lasts while the page is open (up to 200 steps); a
+new change after an undo drops the steps that could be redone. Blue
 values on the elevation, plan and section are clicked and typed over
 (panel length, truss height, deck top, bottom chord level, chord
 extension, how many cross beams sit between the posts, clearance,

@@ -14,6 +14,7 @@ header select{height:26px;border:1px solid #bbb;border-radius:3px;font:inherit;m
 button{border:1px solid #999;background:#fff;border-radius:3px;padding:4px 11px;font:inherit;cursor:pointer}
 button.primary{background:var(--acc);border-color:#c98b00;font-weight:600}
 button:hover{background:#f0f0f0} button.primary:hover{background:#ffb81c}
+button:disabled{opacity:.45;cursor:default;background:#fff}
 .status{color:#2e7d32;font-size:12px;margin-left:auto}
 .warn{color:#b00020;font-size:12px}
 main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(520px,3fr) minmax(380px,2fr);grid-template-rows:auto 1fr;gap:10px;padding:10px 16px 16px 16px;overflow:auto}
@@ -69,6 +70,8 @@ text.lbl{fill:#555}
   <h1>Bridge Builder</h1>
   <input type="text" id="name" title="bridge name">
   <select id="truss" title="truss type"></select>
+  <button id="undo" disabled title="Undo (Ctrl+Z)">&#8630; Undo</button>
+  <button id="redo" disabled title="Redo (Ctrl+Y)">&#8631; Redo</button>
   <button id="settings">Settings</button>
   <button class="primary" id="save" title="writes the design file; once you have chosen the file it is overwritten in place on every save">Save design</button>
   <button id="saveas" title="choose where to save (a new file or another one to overwrite)">Save as...</button>
@@ -542,6 +545,7 @@ document.addEventListener("keydown", function(ev){ if (ev.key === "Escape"){ clo
 
 // ---- the drawings ----
 function render(){
+  histTouch();
   var res; try { res = members(design); } catch (e) { $("status").textContent = "Cannot lay out: " + e; return; }
   model = res;
   var ef = effFrame(design), mems = res.members, lay = res.layout, ex = res.deck, half = F.post_size / 2;
@@ -822,6 +826,66 @@ new ResizeObserver(function(){ draw3d(); }).observe(V3);
 // ---- header controls, save / load ----
 function fillSelect(sel, items, value){ sel.innerHTML = ""; items.forEach(function(it){ var o = document.createElement("option"); o.value = it[0]; o.textContent = it[1]; sel.appendChild(o); }); if (value !== undefined && value !== null) sel.value = String(value); }
 function write(){ $("name").value = DATA.name || "Bridge 1"; fillSelect($("truss"), TRUSSES, design.truss); render(); }
+
+// ---- undo / redo: every change to the design is a step - one click, or typing in a box within
+// half a second of the last key; loading a file and Defaults are steps too
+var HIST = {undo:[], redo:[], committed:null, timer:null, restoring:false, LIMIT:200};
+function histSnap(){ return JSON.stringify(design); }
+function histCommit(){
+  if (HIST.timer){ clearTimeout(HIST.timer); HIST.timer = null; }
+  var now = histSnap();
+  if (HIST.committed === null){ HIST.committed = now; histButtons(); return; }
+  if (now === HIST.committed) return;
+  HIST.undo.push(HIST.committed); if (HIST.undo.length > HIST.LIMIT) HIST.undo.shift();
+  HIST.redo = []; HIST.committed = now; histButtons();
+}
+function histTouch(){ if (HIST.restoring || HIST.committed === null) return; if (HIST.timer) clearTimeout(HIST.timer); HIST.timer = setTimeout(histCommit, 500); }
+var HIST_NAMES = {truss:"truss type", panel_length_m:"panel length", panels:"panel count", panel_mode:"panels by", height_m:"truss height",
+  level_start_m:"start level", level_end_m:"end level", bottom_chord_offset_m:"bottom chord level", bottom_chord_cutback_m:"bottom chord cutback",
+  top_chord_cutback_m:"top chord cutback", top_chord_pieces:"top chord pieces", bottom_chord_pieces:"bottom chord pieces",
+  chord_extension_m:"chord extension", brace_end_offset_m:"end clearance", deck_top_offset_m:"deck top", deck_end_m:"deck ends",
+  deck_clearance_m:"deck clearance", plan_bays:"cross beams between", bracing:"plan bracing", brace_bays:"bays per diagonal",
+  split_x:"X split", brace_mirror_span:"mirror along", brace_mirror_across:"mirror across", stringers_across:"beams between",
+  stiffener_mode:"stiffeners by", stiffener_spacing_m:"stiffener spacing", stiffeners_across:"stiffener count", stiffener_gap_m:"stiffener end gap",
+  railing_width_m:"railing width", railing_inset_m:"railing inset", level:"Revit level", end_posts:"end posts"};
+function histWhat(a, b){
+  // what differs between two snapshots, in words
+  var x = JSON.parse(a), y = JSON.parse(b), out = [];
+  Object.keys(Object.assign({}, x, y)).forEach(function(k){
+    if (/_depth_m$|^floor_thickness_m$/.test(k)) return;          // follow the types
+    if (k === "types"){ var tx = x.types || {}, ty = y.types || {}; Object.keys(Object.assign({}, tx, ty)).forEach(function(r){ if (String(tx[r]) !== String(ty[r])) out.push((ROLES[r === "floor" ? "deck" : r] || r).toLowerCase() + " family"); }); return; }
+    if (JSON.stringify(x[k]) !== JSON.stringify(y[k])) out.push(HIST_NAMES[k] || k.replace(/_m$/, "").replace(/_/g, " "));
+  });
+  return out.length ? (out.length > 3 ? out.slice(0, 3).join(", ") + " and " + (out.length - 3) + " more" : out.join(", ")) : "a change";
+}
+function histButtons(){
+  var u = $("undo"), r = $("redo");
+  u.disabled = !HIST.undo.length; r.disabled = !HIST.redo.length;
+  u.title = HIST.undo.length ? "Undo " + histWhat(HIST.undo[HIST.undo.length - 1], HIST.committed) + " (Ctrl+Z)" : "Nothing to undo";
+  r.title = HIST.redo.length ? "Redo " + histWhat(HIST.committed, HIST.redo[HIST.redo.length - 1]) + " (Ctrl+Y)" : "Nothing to redo";
+}
+function histStep(back){
+  histCommit();                                   // a change still waiting becomes its own step first
+  var from = back ? HIST.undo : HIST.redo, to = back ? HIST.redo : HIST.undo;
+  if (!from.length){ $("status").textContent = back ? "Nothing to undo." : "Nothing to redo."; return; }
+  var target = from.pop(), what = histWhat(HIST.committed, target);
+  to.push(HIST.committed); HIST.committed = target;
+  HIST.restoring = true;
+  try { design = JSON.parse(target); closeRadial(); closePop(); fillSelect($("truss"), TRUSSES, design.truss); render(); }
+  finally { HIST.restoring = false; }
+  histButtons();
+  $("status").textContent = (back ? "Undone: " : "Redone: ") + what + ".";
+}
+$("undo").addEventListener("click", function(){ histStep(true); });
+$("redo").addEventListener("click", function(){ histStep(false); });
+document.addEventListener("keydown", function(ev){
+  if (!(ev.ctrlKey || ev.metaKey) || ev.altKey) return;
+  var t = ev.target, typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+  if (typing) return;                             // a text box keeps its own undo
+  var k = (ev.key || "").toLowerCase();
+  if (k === "z" && !ev.shiftKey){ ev.preventDefault(); histStep(true); }
+  else if (k === "y" || (k === "z" && ev.shiftKey)){ ev.preventDefault(); histStep(false); }
+});
 $("truss").addEventListener("change", function(){ setDesign("truss", $("truss").value); });
 $("settings").addEventListener("click", function(ev){ ev.stopPropagation(); var r = ev.target.getBoundingClientRect(); settingsPop(r.left, r.bottom); });
 function safeName(s){ return (s || "bridge").replace(/[^A-Za-z0-9_\-]+/g, "_"); }
@@ -888,6 +952,7 @@ function applyModelDefaults(){
   if (!(DATA.floor_types || []).length) missing.push("floor types");
   if (missing.length) $("status").innerHTML = '<span class="warn">The model gave no ' + missing.join(" or ") + ' - load the families and open the builder again.</span>';
   applyModelDefaults(); write(); fit3d();
+  histCommit();                                   // the opening design is where undo stops
 })();
 </script>
 </body>
