@@ -105,8 +105,10 @@ TOL = 1e-6
 # or when built bridges need redrawing (2: the side frames' end nodes on the
 # post centrelines, the end clearance cutting the end diagonals back; 3:
 # updates check every member, putting back any a Revit join dragged off its
-# node); a bridge built under an older layout is offered for an update
-LAYOUT_VERSION = 3
+# node; 4: the posts' centres and faces from their measured sections, so
+# the chords stop at the real post faces); a bridge built under an older
+# layout is offered for an update
+LAYOUT_VERSION = 4
 
 
 def normalize_design(d):
@@ -232,15 +234,54 @@ def frame_from_posts(start_pair, end_pair):
             raise ValueError(u"the two posts of a pair sit on the same side")
         rights.append(ts[0])
         lefts.append(ts[1])
+    size_s, size_t = post_sizes(start_pair, end_pair, (ux, uy), (vx, vy))
     return {"origin": (sx, sy), "u": (ux, uy), "v": (vx, vy), "span": span,
             "angle": math.atan2(uy, ux),
             "tL": _mean(lefts), "tR": _mean(rights),
-            "post_size": _mean(p.get("size_m", 0.2) for p in list(start_pair) + list(end_pair)),
+            "post_size": size_s, "post_size_t": size_t,
             "z0": _mean(p["z_bottom"] for p in start_pair),
             "z1": _mean(p["z_bottom"] for p in end_pair),
             "post_height": _mean(p["z_top"] - p["z_bottom"] for p in list(start_pair) + list(end_pair)),
             "gradient": (_mean(p["z_bottom"] for p in end_pair)
                          - _mean(p["z_bottom"] for p in start_pair)) / span}
+
+
+def _reach(p, d):
+    """How far the post's measured section reaches from its centre in
+    direction d (a unit vector), or None when it has no section."""
+    pts = p.get("section")
+    if not pts:
+        return None
+    return max((x - p["x"]) * d[0] + (y - p["y"]) * d[1] for x, y in pts)
+
+
+def post_sizes(start_pair, end_pair, u, v):
+    """(along the span, across) post sizes: twice the mean reach of the
+    posts' measured sections to their inner faces - towards the other
+    pair along the span, towards the bridge centreline across - when
+    every post has a section (read from its geometry); else the mean of
+    their size_m both ways (from the type's parameters)."""
+    posts = list(start_pair) + list(end_pair)
+    if all(p.get("section") for p in posts):
+        mid = (_mean(p["x"] for p in posts), _mean(p["y"] for p in posts))
+        along, across = [], []
+        for p in start_pair:
+            along.append(_reach(p, u))
+        for p in end_pair:
+            along.append(_reach(p, (-u[0], -u[1])))
+        for p in posts:
+            side = (p["x"] - mid[0]) * v[0] + (p["y"] - mid[1]) * v[1]
+            across.append(_reach(p, (-v[0], -v[1]) if side > 0 else v))
+        if min(along + across) > 0.005:
+            return 2.0 * _mean(along), 2.0 * _mean(across)
+    s = _mean(p.get("size_m", 0.2) for p in posts)
+    return s, s
+
+
+def post_half_t(frame):
+    """Half the posts' size across the bridge (their inner faces from
+    their centres); the size along the span when not measured apart."""
+    return float(frame.get("post_size_t") or frame["post_size"]) / 2.0
 
 
 def frame_from_points(start, end, width=3.0, post_size=0.2, height=1.8):
@@ -569,10 +610,11 @@ def deck_extent(design, frame):
     the truss planes when those are inside the posts, less the
     clearance."""
     half = frame["post_size"] / 2.0
+    half_t = post_half_t(frame)
     ext = design["deck_end_m"] if design["deck_end_m"] is not None else half
     tl, tr = planes(design, frame)
-    left_limit = min(frame["tL"] - half, tl)
-    right_limit = max(frame["tR"] + half, tr)
+    left_limit = min(frame["tL"] - half_t, tl)
+    right_limit = max(frame["tR"] + half_t, tr)
     c = design["deck_clearance_m"]
     return -ext, frame["span"] + ext, right_limit + c, left_limit - c
 
@@ -672,9 +714,10 @@ def members(design, frame):
     # the posts' inner faces so it does not pass through the posts
     st = lay["stations"]
     half = frame["post_size"] / 2.0
+    half_t = post_half_t(frame)
     for j, s in enumerate(st):
         if abs(s) <= half + TOL or abs(s - frame["span"]) <= half + TOL:
-            ta, tb = min(tl, frame["tL"] - half), max(tr, frame["tR"] + half)
+            ta, tb = min(tl, frame["tL"] - half_t), max(tr, frame["tR"] + half_t)
         else:
             ta, tb = tl, tr
         add("crossbeam", "C", j, (s, ta, zu), (s, tb, zu))
@@ -761,15 +804,17 @@ def members(design, frame):
     return out
 
 
-def _box_exit(p, q, sc, tc, reach):
-    """The fraction along p -> q where the line leaves the square of half
-    side reach round (sc, tc) in plan (p inside it)."""
+def _box_exit(p, q, sc, tc, reach, reach_t=None):
+    """The fraction along p -> q where the line leaves the rectangle of
+    half sides reach (along the span) and reach_t (across, reach when
+    not given) round (sc, tc) in plan (p inside it)."""
     f = 1.0
     for k, centre in ((0, sc), (1, tc)):
         d = q[k] - p[k]
         if abs(d) <= TOL:
             continue
-        lim = centre + (reach if d > 0 else -reach)
+        r = reach if k == 0 or reach_t is None else reach_t
+        lim = centre + (r if d > 0 else -r)
         f = min(f, (lim - p[k]) / d)
     return max(0.0, min(f, 0.9))
 
@@ -784,7 +829,8 @@ def post_ends(design, frame, mems):
     start / end extension); "free_ends" keeps Revit from joining the end
     to the post and moving it."""
     half = frame["post_size"] / 2.0
-    reach = half + max(0.0, design["brace_end_offset_m"])
+    half_t = post_half_t(frame)
+    clr = max(0.0, design["brace_end_offset_m"])
     posts = [(0.0, frame["tL"]), (0.0, frame["tR"]),
              (frame["span"], frame["tL"]), (frame["span"], frame["tR"])]
     for m in mems:
@@ -793,9 +839,9 @@ def post_ends(design, frame, mems):
         ends, cuts = [], []
         for e, (p, q) in enumerate(((m["p1"], m["p2"]), (m["p2"], m["p1"]))):
             for sc, tc in posts:
-                if abs(p[0] - sc) <= half + TOL and abs(p[1] - tc) <= half + TOL:
+                if abs(p[0] - sc) <= half + TOL and abs(p[1] - tc) <= half_t + TOL:
                     ends.append(e)
-                    f = _box_exit(p, q, sc, tc, reach)
+                    f = _box_exit(p, q, sc, tc, half + clr, half_t + clr)
                     if f > TOL:
                         cuts.append([e, f])
                     break
@@ -913,7 +959,7 @@ def diff_members(old_keys, new_members):
             "delete": [k for k in old if k not in new_by_key]}
 
 
-_SHAPE_KEYS = ("span", "tL", "tR", "post_size")      # the deck does not care about the post height
+_SHAPE_KEYS = ("span", "tL", "tR", "post_size", "post_size_t")      # the deck does not care about the post height
 
 
 def rigid_motion(old_frame, new_frame, tol=0.001):
@@ -1084,7 +1130,7 @@ def next_name(registry, stem=u"Bridge"):
     return u"{0} {1}".format(stem, i)
 
 
-FRAME_KEYS = ("z0", "z1", "span", "angle", "tL", "tR", "post_size", "post_height")
+FRAME_KEYS = ("z0", "z1", "span", "angle", "tL", "tR", "post_size", "post_size_t", "post_height")
 
 
 def record(name, design, source, frame, member_ids, floor_id, stamp, extra=None):
@@ -1175,6 +1221,8 @@ def frame_from_record(rec):
            "v": (-math.sin(ang), math.cos(ang))}
     for k in FRAME_KEYS:
         out[k] = float(f.get(k, 0.0))
+    if not f.get("post_size_t"):
+        out["post_size_t"] = out["post_size"]     # recorded before the sizes were measured apart
     out["gradient"] = (out["z1"] - out["z0"]) / out["span"] if out["span"] else 0.0
     return out
 
@@ -1195,7 +1243,7 @@ def fill_page(template, data):
     return template.replace(PLACEHOLDER, text, 1)
 
 
-__all__ = ["TYPE_ROLES", "TABLE_ROLES", "type_role", "forget_bridge", "deleted_bridge", "post_ids", "LAYOUT_VERSION", "layout_outdated", "post_ends", "cut_points", "piece_spans", "design_differs", "pick_design_file", "deck_motion", "INJECTED_KEYS", "chord_extent", "bridge_on_posts", "bridge_with_source", "truss_height", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
+__all__ = ["post_sizes", "post_half_t", "TYPE_ROLES", "TABLE_ROLES", "type_role", "forget_bridge", "deleted_bridge", "post_ids", "LAYOUT_VERSION", "layout_outdated", "post_ends", "cut_points", "piece_spans", "design_differs", "pick_design_file", "deck_motion", "INJECTED_KEYS", "chord_extent", "bridge_on_posts", "bridge_with_source", "truss_height", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
            "BRACE_ROLES", "TOP_ALIGNED", "DEFAULTS", "normalize_design", "frame_from_posts",
            "frame_from_points", "effective_frame", "planes", "height", "base_z", "to_world",
            "layout", "pieces",

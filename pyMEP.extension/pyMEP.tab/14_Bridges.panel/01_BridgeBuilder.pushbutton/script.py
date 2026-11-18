@@ -186,12 +186,16 @@ launch_html(page)
 
 output.print_md("### Bridge Builder")
 output.print_md("**{0}**: start posts {1}, end posts {2}; span **{3:.3f} m** between the pair "
-                "midpoints, posts {4:.3f} m apart, {5:.0f} mm, {6:.3f} m tall; bases {7:.3f} -> "
-                "{8:.3f} m (rise {9:+.0f} mm).".format(
+                "midpoints, posts {4:.3f} m apart, {5:.0f} mm along x {6:.0f} mm across ({10}), "
+                "{7:.3f} m tall; bases {8:.3f} -> {9:.3f} m (rise {11:+.0f} mm).".format(
                     data["name"], ", ".join(str(i) for i in source["start_ids"]),
                     ", ".join(str(i) for i in source["end_ids"]), frame["span"],
-                    frame["tL"] - frame["tR"], frame["post_size"] * 1000.0, frame["post_height"],
-                    frame["z0"], frame["z1"], (frame["z1"] - frame["z0"]) * 1000.0))
+                    frame["tL"] - frame["tR"], frame["post_size"] * 1000.0,
+                    BR.post_half_t(frame) * 2000.0, frame["post_height"],
+                    frame["z0"], frame["z1"],
+                    "measured from the posts' geometry" if all(p.get("section") for p in start_posts + end_posts)
+                    else "from the post type's size parameters - the posts' geometry could not be read",
+                    (frame["z1"] - frame["z0"]) * 1000.0))
 if existing_name:
     moved_to = sorted(BR.post_ids(source)) != sorted(BR.post_ids(existing))
     output.print_md("**{0}** - its design is loaded{1}; saving and building updates it in place "

@@ -412,9 +412,79 @@ def post_size_m(el):
     return 0.2
 
 
+def _solid_points(el):
+    """Every point of the element's solid geometry edges, in model feet
+    (XYZ) - [] when Revit gives none."""
+    from Autodesk.Revit.DB import GeometryInstance, Options, Solid
+    out = []
+    try:
+        opt = Options()
+        geo = el.get_Geometry(opt)
+    except Exception:
+        geo = None
+    if geo is None:
+        return out
+
+    def walk(g, depth=0):
+        for obj in g:
+            if isinstance(obj, Solid):
+                try:
+                    if obj.Volume <= 1e-9:
+                        continue
+                    for edge in obj.Edges:
+                        for p in edge.Tessellate():
+                            out.append(p)
+                except Exception:
+                    continue
+            elif isinstance(obj, GeometryInstance) and depth < 3:
+                try:
+                    walk(obj.GetInstanceGeometry(), depth + 1)
+                except Exception:
+                    continue
+    try:
+        walk(geo)
+    except Exception:
+        pass
+    return out
+
+
+def post_section(el, z_lo_ft, z_hi_ft):
+    """The post's shaft in plan: (x, y) metres of the edges of its solid
+    geometry that pass through its middle half (so a base plate, a cap
+    or a bracket at the ends does not count), or None when that is not
+    a section with some size both ways (a round post's seams, no
+    geometry)."""
+    pts = _solid_points(el)
+    if not pts:
+        return None
+    h = z_hi_ft - z_lo_ft
+    band_lo, band_hi = z_lo_ft + 0.25 * h, z_hi_ft - 0.25 * h
+    # a plan position the shaft runs through has geometry both below and
+    # above the middle half (a vertical edge's two ends, a round post's
+    # bottom and top rims); a plate or bracket at one height does not
+    by_xy = {}
+    for p in pts:
+        key = (round(p.X, 4), round(p.Y, 4))       # grouping only; the point keeps its own x, y
+        lo, hi, x, y = by_xy.get(key, (p.Z, p.Z, p.X, p.Y))
+        by_xy[key] = (min(lo, p.Z), max(hi, p.Z), x, y)
+    sec = [(ft_to_m(x), ft_to_m(y)) for lo, hi, x, y in by_xy.values()
+           if lo <= band_lo and hi >= band_hi]
+    if len(sec) < 3:
+        return None
+    xs = [x for x, y in sec]
+    ys = [y for x, y in sec]
+    if max(xs) - min(xs) < 0.02 or max(ys) - min(ys) < 0.02:
+        return None
+    return sec
+
+
 def post_info(el):
-    """{"id", "x", "y", "z_bottom", "z_top", "size_m", "label"} for a
-    vertical framing member or column. ValueError when the element does
+    """{"id", "x", "y", "z_bottom", "z_top", "size_m", "label",
+    "section"} for a vertical framing member or column. x, y is the
+    centre of its measured shaft section when its geometry gives one
+    (a framing post's location line can sit off the steel with its
+    justification), else its location; "section" is that section's plan
+    points (None when not measured). ValueError when the element does
     not stand up."""
     pts = None
     try:
@@ -435,9 +505,43 @@ def post_info(el):
     lo, hi = (a, b) if a.Z < b.Z else (b, a)
     if math.hypot(hi.X - lo.X, hi.Y - lo.Y) > abs(hi.Z - lo.Z) * 0.3:
         raise ValueError(u"{0} leans too far to be a post".format(element_label(el)))
-    return {"id": id_value(el.Id), "x": ft_to_m(lo.X), "y": ft_to_m(lo.Y),
+    x, y = ft_to_m(lo.X), ft_to_m(lo.Y)
+    sec = post_section(el, lo.Z, hi.Z)
+    if sec:
+        xs = [p[0] for p in sec]
+        ys = [p[1] for p in sec]
+        x, y = (min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0
+    return {"id": id_value(el.Id), "x": x, "y": y,
             "z_bottom": ft_to_m(lo.Z), "z_top": ft_to_m(hi.Z), "size_m": post_size_m(el),
-            "label": element_label(el)}
+            "label": element_label(el), "section": sec}
+
+
+def into_posts(el, frame, tol_m=0.005):
+    """How far (metres) the element's steel reaches into any of the four
+    posts past their inner faces along the span, judged from its solid
+    geometry in the bridge's plan frame; 0 when it stays clear or Revit
+    gives no geometry."""
+    pts = _solid_points(el)
+    if not pts:
+        return 0.0
+    ox, oy = frame["origin"]
+    ux, uy = frame["u"]
+    vx, vy = frame["v"]
+    half = frame["post_size"] / 2.0
+    half_t = BR.post_half_t(frame)
+    span = frame["span"]
+    worst = 0.0
+    for p in pts:
+        x, y = ft_to_m(p.X) - ox, ft_to_m(p.Y) - oy
+        s, t = x * ux + y * uy, x * vx + y * vy
+        for tc in (frame["tL"], frame["tR"]):
+            if abs(t - tc) >= half_t - tol_m:
+                continue
+            if -half < s < half:
+                worst = max(worst, half - s)          # into a start post past its inner face
+            if span - half < s < span + half:
+                worst = max(worst, s - (span - half))  # into an end post
+    return worst if worst > tol_m else 0.0
 
 
 def posts_from_ids(doc, ids):

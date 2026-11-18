@@ -173,7 +173,8 @@ function stiffenerTs(d){
   return out;
 }
 function railingTs(d, ex){ if (d.railing_width_m !== null && d.railing_width_m !== undefined && d.railing_width_m > 0) return [d.railing_width_m / 2, -d.railing_width_m / 2]; return [ex.tl - d.railing_inset_m, ex.tr + d.railing_inset_m]; }
-function deckExtent(d){ var half = F.post_size / 2, pl = planes(d), ext = (d.deck_end_m === null || d.deck_end_m === undefined) ? half : d.deck_end_m; var left = Math.min(F.tL - half, pl[0]), right = Math.max(F.tR + half, pl[1]); return {d0:-ext, d1:F.span + ext, tr:right + d.deck_clearance_m, tl:left - d.deck_clearance_m}; }
+function halfT(){ return (F.post_size_t || F.post_size) / 2; }   // the posts' half size across the bridge
+function deckExtent(d){ var half = F.post_size / 2, ht = halfT(), pl = planes(d), ext = (d.deck_end_m === null || d.deck_end_m === undefined) ? half : d.deck_end_m; var left = Math.min(F.tL - ht, pl[0]), right = Math.max(F.tR + ht, pl[1]); return {d0:-ext, d1:F.span + ext, tr:right + d.deck_clearance_m, tl:left - d.deck_clearance_m}; }
 function members(d){
   var lay = layout(d), pl = planes(d), tl = pl[0], tr = pl[1], zb = chordLevel(d), zt = heightOf(d), zd = d.deck_top_offset_m, zu = zd - d.floor_thickness_m;
   var zc = zb - Math.max(0, d.bottom_chord_depth_m || 0) / 2;   // the bottom chords' centre: the plan braces centre on it
@@ -200,7 +201,7 @@ function members(d){
   });
   var st = lay.stations;
   var halfP = F.post_size / 2;
-  st.forEach(function(s, j){ var inPost = Math.abs(s) <= halfP + 1e-6 || Math.abs(s - F.span) <= halfP + 1e-6, ta = inPost ? Math.min(tl, F.tL - halfP) : tl, tb = inPost ? Math.max(tr, F.tR + halfP) : tr; add("crossbeam", "C", j, [s,ta,zu], [s,tb,zu]); if (j === 0 || j === st.length - 1) out[out.length - 1].type_role = "end_crossbeam"; });   // the end cross beams take their own type
+  st.forEach(function(s, j){ var inPost = Math.abs(s) <= halfP + 1e-6 || Math.abs(s - F.span) <= halfP + 1e-6, ta = inPost ? Math.min(tl, F.tL - halfT()) : tl, tb = inPost ? Math.max(tr, F.tR + halfT()) : tr; add("crossbeam", "C", j, [s,ta,zu], [s,tb,zu]); if (j === 0 || j === st.length - 1) out[out.length - 1].type_role = "end_crossbeam"; });   // the end cross beams take their own type
   if (d.bracing === "x") for (var j2 = 0; j2 < st.length - 1; j2++){
     var sa = st[j2], sb = st[j2+1];
     if (d.split_x){ var sm = (sa+sb)/2, tm = (tl+tr)/2; add("bracing","C",j2,[sa,tl,zc],[sm,tm,zc],0); add("bracing","C",j2,[sm,tm,zc],[sb,tr,zc],1); add("bracing","C",j2,[sa,tr,zc],[sm,tm,zc],2); add("bracing","C",j2,[sm,tm,zc],[sb,tl,zc],3); }
@@ -235,7 +236,7 @@ function members(d){
 function postEnds(d, mems){
   // brace ends on a post (the end diagonals at the post centreline nodes, the plan bracing at the end
   // cross beams): the line stays on the node, the member stops the end clearance short of the post faces
-  var half = F.post_size / 2, reach = half + Math.max(0, d.brace_end_offset_m || 0);
+  var half = F.post_size / 2, ht = halfT(), clr = Math.max(0, d.brace_end_offset_m || 0);
   var posts = [[0, F.tL], [0, F.tR], [F.span, F.tL], [F.span, F.tR]];
   mems.forEach(function(m){
     if (m.role !== "diagonal" && m.role !== "bracing") return;
@@ -244,9 +245,9 @@ function postEnds(d, mems){
       var p = pq[0], q = pq[1];
       for (var k = 0; k < posts.length; k++){
         var c = posts[k];
-        if (Math.abs(p[0] - c[0]) <= half + 1e-6 && Math.abs(p[1] - c[1]) <= half + 1e-6){
+        if (Math.abs(p[0] - c[0]) <= half + 1e-6 && Math.abs(p[1] - c[1]) <= ht + 1e-6){
           var f = 1;
-          [0, 1].forEach(function(ax){ var dd = q[ax] - p[ax]; if (Math.abs(dd) <= 1e-6) return; var lim = c[ax] + (dd > 0 ? reach : -reach); f = Math.min(f, (lim - p[ax]) / dd); });
+          [0, 1].forEach(function(ax){ var dd = q[ax] - p[ax]; if (Math.abs(dd) <= 1e-6) return; var r = (ax === 0 ? half : ht) + clr, lim = c[ax] + (dd > 0 ? r : -r); f = Math.min(f, (lim - p[ax]) / dd); });
           f = Math.max(0, Math.min(f, 0.9)); if (f > 1e-6) cuts.push([e, f]);
           break;
         }
@@ -616,7 +617,9 @@ function render(){
   var tde = el(sv, "text", {x:X(ex.d0), y:Y(baseZ(ex.d0) + Math.min(zb, res.zu)) + 30, "font-size":12, "class":"dim"}, "deck end " + (ex.d0 <= 0 ? "+" : "") + mm(-ex.d0) + (design.deck_end_m === null ? " (post face)" : ""));
   el(tde, "title", {}, "where the deck ends, past the post centrelines (mm; negative = inside) - blank is the outer face of the posts");
   tde.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(tde, {value:-ex.d0, unit:"mm", allowBlank:true, blankLabel:"face", set:function(v){ setDesign("deck_end_m", v); }}); });
-  var te = el(sv, "text", {x:X(lay.s0), y:Y(baseZ(lay.s0) + zt) - 8, "font-size":12, "class":"dim", "text-anchor":"start"}, "ext " + mm(-lay.s0) + (design.chord_extension_m === null ? " (face)" : ""));
+  var intoPosts = design.chord_extension_m !== null && lay.s0 < half - 1e-6;   // a typed extension that runs the chords into the posts
+  var te = el(sv, "text", {x:X(lay.s0), y:Y(baseZ(lay.s0) + zt) - 8, "font-size":12, "class":"dim", "text-anchor":"start", style:intoPosts ? "fill:#b00020" : null}, "ext " + mm(-lay.s0) + (design.chord_extension_m === null ? " (face)" : intoPosts ? " - runs " + mm(half - lay.s0) + " into the posts: click, blank = stop at the face" : ""));
+  if (intoPosts) el(te, "title", {}, "the chord extension is typed, so the chords run past the post faces - clear it to stop them at the faces");
   te.addEventListener("click", function(ev){ ev.stopPropagation(); inlineEdit(te, {value:-lay.s0, unit:"mm", allowBlank:true, blankLabel:"face", set:function(v){ setDesign("chord_extension_m", v); }}); });
   // chord pieces: a strip per chord - typed lengths from the start, the variable piece (dashed) takes the rest
   var ys = {top_chord: H - 112, bottom_chord: H - 66};
@@ -647,11 +650,11 @@ function render(){
   el(sv, "text", {x:W - 8, y:H - 8, "text-anchor":"end", "font-size":10, "class":"lbl"}, "vertical scale x" + fmt(sz / sx, 1));
 
   // ---- plan from below
-  var pl = $("plan"); clear(pl); var PW = 1000, PH = 250, pp = 56, hw = Math.max(F.tL + half, Math.abs(F.tR - half), res.planes[0]) + 0.1;
+  var pl = $("plan"); clear(pl); var PW = 1000, PH = 250, pp = 56, hw = Math.max(F.tL + halfT(), Math.abs(F.tR - halfT()), res.planes[0]) + 0.1;
   var psx = (PW - 2 * pp) / lay.total, psy = (PH - 2 * pp) / (2 * hw), PX = function(s){ return pp + (s - lay.s0) * psx; }, PY = function(t){ return PH / 2 - t * psy; };
   var dk = el(pl, "rect", {x:PX(ex.d0), y:PY(ex.tl), width:(ex.d1 - ex.d0) * psx, height:(ex.tl - ex.tr) * psy, fill:"var(--deck)", "class":"hit"});
   el(dk, "title", {}, "Deck - " + typeName("deck")); dk.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("deck", p[0], p[1]); });
-  [[0, F.tL], [0, F.tR], [F.span, F.tL], [F.span, F.tR]].forEach(function(p){ el(pl, "rect", {x:PX(p[0] - half), y:PY(p[1] + half), width:Math.max(3, 2 * half * psx), height:Math.max(3, 2 * half * psy), fill:"var(--post)"}); });
+  [[0, F.tL], [0, F.tR], [F.span, F.tL], [F.span, F.tR]].forEach(function(p){ el(pl, "rect", {x:PX(p[0] - half), y:PY(p[1] + halfT()), width:Math.max(3, 2 * half * psx), height:Math.max(3, 2 * halfT() * psy), fill:"var(--post)"}); });
   mems.forEach(function(m){
     var c = null, w = 2;
     if (m.role === "bottom_chord") { c = "var(--steel)"; w = 4; } else if (m.role === "crossbeam" || m.role === "stringer") { c = "var(--steel)"; w = m.type_role === "end_crossbeam" && design.types.end_crossbeam ? 4 : 2.5; }
@@ -675,7 +678,7 @@ function render(){
   var ztop = Math.max(zt, F.post_height) + 0.25, zbot = Math.min(zb, res.zu) - 0.3;
   var ss = Math.min((SW - 2 * sp) / (2 * hw + 0.6), (SH - 2 * sp) / (ztop - zbot));
   var SX = function(t){ return SW / 2 - t * ss; }, SY = function(z){ return SH - sp - (z - zbot) * ss; };
-  [F.tL, F.tR].forEach(function(t){ var g = el(se, "rect", {x:SX(t + half), y:SY(zt), width:Math.max(3, 2 * half * ss), height:zt * ss, fill:"var(--post)"}); el(g, "title", {}, "post - the side frames sit on the post centre points"); });
+  [F.tL, F.tR].forEach(function(t){ var g = el(se, "rect", {x:SX(t + halfT()), y:SY(zt), width:Math.max(3, 2 * halfT() * ss), height:zt * ss, fill:"var(--post)"}); el(g, "title", {}, "post - the side frames sit on the post centre points"); });
   var dks = el(se, "rect", {x:SX(ex.tl), y:SY(res.zd), width:(ex.tl - ex.tr) * ss, height:Math.max(2, design.floor_thickness_m * ss), fill:"var(--deck)", stroke:"#a08a60", "class":"hit"});
   el(dks, "title", {}, "Deck - " + typeName("deck") + " - " + mm(design.floor_thickness_m) + " mm"); dks.addEventListener("click", function(ev){ ev.stopPropagation(); var p = pagePoint(ev); memberRing("deck", p[0], p[1]); });
   var brc = mems.filter(function(m){ return m.role === "bracing"; })[0];
@@ -739,7 +742,7 @@ function pts3(){
   var out = [], ef = effFrame(design), half = F.post_size / 2;
   if (!model) return out;
   model.members.forEach(function(m){ var w = world3(m); out.push(w[0], w[1]); });
-  [[0, F.tL], [0, F.tR], [F.span, F.tL], [F.span, F.tR]].forEach(function(p){ out.push([p[0] - half, p[1] - half, ef.z0 + ef.gradient * p[0]], [p[0] + half, p[1] + half, ef.z0 + ef.gradient * p[0] + model.zt]); });
+  [[0, F.tL], [0, F.tR], [F.span, F.tL], [F.span, F.tR]].forEach(function(p){ out.push([p[0] - half, p[1] - halfT(), ef.z0 + ef.gradient * p[0]], [p[0] + half, p[1] + halfT(), ef.z0 + ef.gradient * p[0] + model.zt]); });
   return out;
 }
 function fit3d(){
@@ -764,7 +767,7 @@ function draw3d(){
   // posts as boxes (12 edges)
   [[0, F.tL], [0, F.tR], [F.span, F.tL], [F.span, F.tR]].forEach(function(p){
     var z0 = ef.z0 + ef.gradient * p[0], z1 = z0 + model.zt, c = [];
-    [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(function(d){ c.push([p[0] + d[0] * half, p[1] + d[1] * half]); });
+    [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(function(d){ c.push([p[0] + d[0] * half, p[1] + d[1] * halfT()]); });
     for (var i = 0; i < 4; i++){ var a = c[i], b = c[(i + 1) % 4];
       [[a, z0, b, z0], [a, z1, b, z1], [a, z0, a, z1]].forEach(function(e){ var q1 = proj([e[0][0], e[0][1], e[1]]), q2 = proj([e[2][0], e[2][1], e[3]]); prims.push({kind:"seg", a:q1, b:q2, color:"var(--post)", w:3, near:(q1[2] + q2[2]) / 2, role:"post"}); }); }
   });

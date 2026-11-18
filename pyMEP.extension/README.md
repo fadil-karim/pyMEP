@@ -992,7 +992,20 @@ delete it and build here. The midpoint of
 each pair is the deck centreline at that end and the line between the
 midpoints is the bridge direction; the post spacing gives the width,
 the post bases the deck level at each end (so the deck slopes between
-them) and the post length the default truss height. The builder page
+them) and the post length the default truss height. Each post's centre and faces come from its solid
+geometry, read through the middle half of its height (so a base plate,
+a cap or a bracket does not count, and a framing post whose location
+line sits off its steel with its justification is still measured on its
+steel): the size along the span sets where the chords stop and the end
+diagonals' clearance is measured from, the size across sets the deck
+edges and the end cross beams. When the geometry cannot be read the
+type's size parameters (b, d, h ...) are used, as before; Bridge
+Builder's output says which. After every build and update the steel of
+every member meeting a post (the chord ends, the end diagonals, the
+plan braces there) is measured against the post faces, and any that
+still reaches into a post is named in the result ("INTO THE POSTS",
+with how far). A typed chord extension (the "ext" value on the
+elevation) that runs the chords into the posts shows in red there. The builder page
 then opens in the browser with all of that and the model's framing,
 floor, stiffener and railing types and levels.
 

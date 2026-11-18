@@ -627,6 +627,51 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(fa["p2"][0], (BR.layout(design(truss="warren"), BR.frame_from_posts(s, e))["points"][0] +
                                              BR.layout(design(truss="warren"), BR.frame_from_posts(s, e))["points"][1]) / 2.0)
 
+    def test_post_sizes_from_measured_sections(self):
+        # posts whose geometry gives a section: the chords stop at the real
+        # faces along the span, the deck and end cross beams at the real
+        # faces across - a 300 x 200 post (300 along the span) whose type
+        # parameters only say 200
+        def sec(x, y, a, b):          # a along x (the span here), b along y
+            return [(x - a / 2, y - b / 2), (x + a / 2, y - b / 2), (x + a / 2, y + b / 2), (x - a / 2, y + b / 2)]
+        s, e = posts()
+        for p in s + e:
+            p["section"] = sec(p["x"], p["y"], 0.3, 0.2)
+        fr = BR.frame_from_posts(s, e)
+        self.assertAlmostEqual(fr["post_size"], 0.3)
+        self.assertAlmostEqual(fr["post_size_t"], 0.2)
+        self.assertAlmostEqual(BR.post_half_t(fr), 0.1)
+        d = BR.normalize_design({"panel_mode": "count", "panels": 4, "bottom_chord_offset_m": 0.0})
+        self.assertAlmostEqual(BR.chord_extent(d, fr, "bottom_chord")[0], 0.15 + 0.01)   # real face + cutback
+        self.assertAlmostEqual(BR.chord_extent(d, fr, "top_chord")[1], 20.0 - 0.15 - 0.01)
+        mems = BR.members(d, fr)
+        cb0 = by_key(mems, u"crossbeam:C:0:0")
+        self.assertAlmostEqual(cb0["p1"][1], 1.5 - 0.1)                                 # inner face across
+        d0, d1, t_r, t_l = BR.deck_extent(d, fr)
+        self.assertAlmostEqual(t_l, 1.5 - 0.1 - 0.01)
+        self.assertAlmostEqual(d0, -0.15)                                               # deck to the outer face along
+        dg = by_key(mems, u"diagonal:L:0:0")
+        self.assertAlmostEqual(BR.cut_points(dg)[0][0], 0.15 + 0.15)                    # clearance from the real face
+        # an off-centre section: the reach to the inner face counts, not the half size
+        s2, e2 = posts()
+        for p in s2:
+            p["section"] = [(x + 0.05, y) for x, y in sec(p["x"], p["y"], 0.3, 0.2)]   # shifted towards the span
+        for p in e2:
+            p["section"] = sec(p["x"], p["y"], 0.3, 0.2)
+        self.assertAlmostEqual(BR.frame_from_posts(s2, e2)["post_size"], (0.4 + 0.3) / 2.0)
+        # one post without a section: the type's sizes, both ways alike
+        s3, e3 = posts()
+        for p in s3:
+            p["section"] = sec(p["x"], p["y"], 0.3, 0.2)
+        fr3 = BR.frame_from_posts(s3, e3)
+        self.assertAlmostEqual(fr3["post_size"], 0.2)
+        self.assertAlmostEqual(fr3["post_size_t"], 0.2)
+        # a record from before keeps working: the across size is the along size
+        rec = BR.record("B", d, {}, FRAME, {}, None, "now")
+        del rec["frame"]["post_size_t"]
+        self.assertAlmostEqual(BR.frame_from_record(rec)["post_size_t"], FRAME["post_size"])
+        self.assertAlmostEqual(BR.frame_from_record(BR.record("B", d, {}, fr, {}, None, "now"))["post_size_t"], 0.2)
+
     def test_end_cross_beams_take_their_own_type(self):
         # the two cross beams on the post centrelines are placed with the
         # "end_crossbeam" type (the cross beam type when unset); their keys

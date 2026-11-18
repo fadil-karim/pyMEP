@@ -70,7 +70,7 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev, others=(
     Returns {"member_ids", "floor_id", counts, "deck", "posts", "failed",
     "rails_made", "rails_hosted"}."""
     res = {"recurved": 0, "retyped": 0, "created": 0, "deleted": 0, "hosted_kept": 0, "ends_moved": [], "not_ours": 0,
-           "reseated": 0, "joins_left_off": [],
+           "reseated": 0, "joins_left_off": [], "into_posts": [], "chord_extension_typed": False,
            "hosted_made": 0, "rails_made": 0, "rails_hosted": 0, "failed": [], "deck": u"", "posts": u""}
     old_rec = old_rec or {}
     mems = BR.world_members(design, frame, shared_elev)
@@ -177,6 +177,17 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev, others=(
         RV.set_member_curve(el, m)
         res["joins_left_off"].append(m["key"])
     res["ends_moved"] = [m["key"] for m, el in _off()]
+    # the steel itself, not just its line: any member that meets a post and
+    # still reaches past the post's inner face (a Revit join or extension, a
+    # typed chord extension) is named
+    for m in placed:
+        if not m.get("free_ends"):
+            continue
+        el = _el(m)
+        depth = RV.into_posts(el, frame) if el is not None else 0.0
+        if depth > 0.0:
+            res["into_posts"].append((m["key"], depth))
+    res["chord_extension_typed"] = design.get("chord_extension_m") is not None
 
     # the deck: keep, move or (only when its outline, fall or level changed) rebuild
     floor = doc.GetElement(make_id(floor_id)) if floor_id else None
@@ -279,7 +290,18 @@ def problem_line(res):
             len(res["joins_left_off"]), u", ".join(res["joins_left_off"])))
     if res.get("ends_moved"):
         parts.append(u"STILL OFF THEIR LINES - check these: {0}".format(u", ".join(res["ends_moved"])))
+    if res.get("into_posts"):
+        parts.append(_into_text(res))
     return u"; ".join(parts)
+
+
+def _into_text(res):
+    line = u"INTO THE POSTS - steel past the post faces: {0}".format(u", ".join(
+        u"{0} ({1:.0f} mm)".format(k, d * 1000.0) for k, d in res["into_posts"]))
+    if res.get("chord_extension_typed"):
+        line += (u" - the chord extension is typed (the 'ext' value on the elevation): blank it to stop "
+                 u"the chords at the post faces")
+    return line
 
 
 def summary_line(res):
@@ -298,6 +320,8 @@ def summary_line(res):
             len(res["joins_left_off"]), u", ".join(res["joins_left_off"]))
     if res.get("ends_moved"):
         line += u"; STILL OFF THEIR LINES - check these: {0}".format(u", ".join(res["ends_moved"]))
+    if res.get("into_posts"):
+        line += u"; " + _into_text(res)
     return line
 
 
