@@ -35,7 +35,7 @@ pyMEP.extension/
     07_PipeNetworks.panel/      # 'Pipe Networks': Lines to Pipes (always creates) + Update Pipes (scoped in-place update) + Connect Inflow to Collector + Sync Input Nodes
     03_Topography.panel/        # Align to Topo, Cut Toposolid, Drape Floor
     04_Chambers.panel/          # 'Chamber Drawing Setup': sections workflow, Chamber Plans
-    05_Parameters.panel/        # Bulk Change, CSV to Parameter, Id, Replicate Parameter
+    05_Parameters.panel/        # Bulk Change, CSV to Parameter, Replicate Parameter
     06_ProjectDataTransfer.panel/ # 'Project Data Transfer': Export/Import Project Data (view templates + filters as JSON)
     06_Annotate.panel/          # 3 annotation buttons
     08_Electrical.panel/        # Encasement (shown before Drainage on the ribbon)
@@ -553,12 +553,6 @@ changed when the dialog closes.
 source parameter and a writable target parameter; the value is copied onto
 every placed instance of that type, with a preview table and safe type
 coercion.
-
-**Id** - pick an element and its id is on the clipboard, with no
-window: the id shows in Revit's status bar as the prompt for the next
-pick. Keep picking, Esc stops; with one element already selected its id
-is copied at once. Several picks are listed in the output afterwards so
-none is lost.
 
 **CSV to Parameter** - set one instance parameter on the elements of a
 category from a CSV file. Pick the category (or keep to the current
