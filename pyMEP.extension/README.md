@@ -1002,10 +1002,15 @@ edges and the end cross beams. When the geometry cannot be read the
 type's size parameters (b, d, h ...) are used, as before; Bridge
 Builder's output says which. After every build and update the steel of
 every member meeting a post (the chord ends, the end diagonals, the
-plan braces there) is measured against the post faces, and any that
-still reaches into a post is named in the result ("INTO THE POSTS",
-with how far). A typed chord extension (the "ext" value on the
-elevation) that runs the chords into the posts shows in red there. The builder page
+plan braces there) is measured against the post faces by its full
+extent (a member wider than the post, or running right through it,
+counts), and any that still reaches into a post is named in the result
+("INTO THE POSTS", with how far). The result also gives the posts'
+size along and across and whether it was measured; when the posts'
+geometry could not be read it says the steel was not checked rather
+than reporting it clear. A typed chord extension (the "ext" value on
+the elevation) that runs the chords into the posts is reported from the
+design itself, and shows in red on the elevation. The builder page
 then opens in the browser with all of that and the model's framing,
 floor, stiffener and railing types and levels.
 

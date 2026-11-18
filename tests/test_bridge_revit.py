@@ -138,7 +138,7 @@ def extract(module_file, names, ns):
 
 RV = extract("pymep_bridge_revit.py", ["_solid_points", "post_section", "into_posts"],
              {"math": math, "BR": BR, "ft_to_m": lambda v: v * FT})
-SY = extract("pymep_bridge_sync.py", ["problem_line", "_into_text"], {})
+SY = extract("pymep_bridge_sync.py", ["problem_line", "_into_text", "post_line"], {})
 
 
 class PostSection(StandIns):
@@ -205,17 +205,27 @@ class IntoPosts(StandIns):
         el = El([Solid(box_edges(-1.55, 0.05, -1.45, 19.84, 0.0, 0.2))])   # starts 100 mm into the start post
         self.assertAlmostEqual(RV["into_posts"](el, fr), 0.10)
 
+    def test_wider_than_the_post_or_right_through_it(self):
+        # a 300 mm wide chord on a 200 mm wide post: no corner of it lies inside the post
+        wide = El([Solid(box_edges(0.05, 1.35, 19.84, 1.65, 0.0, 0.2))])
+        self.assertAlmostEqual(RV["into_posts"](wide, self.FRAME), 0.10)
+        # one piece running through the start post and out the far side
+        through = El([Solid(box_edges(-0.4, 1.45, 19.84, 1.55, 0.0, 0.2))])
+        self.assertAlmostEqual(RV["into_posts"](through, self.FRAME), 0.30)     # the post's whole depth
+
     def test_beside_the_posts_or_no_geometry(self):
         # a member between the posts across (a cross beam between the inner faces) does not count
         between = El([Solid(box_edges(-0.1, -1.4, 0.1, 1.4, 0.0, 0.2))])
         self.assertEqual(RV["into_posts"](between, self.FRAME), 0.0)
-        self.assertEqual(RV["into_posts"](El(None), self.FRAME), 0.0)
+        # no geometry: not measured, which is not the same as clear
+        self.assertIsNone(RV["into_posts"](El(None), self.FRAME))
 
 
 class Report(unittest.TestCase):
 
     def test_named_with_the_depth_and_the_typed_extension(self):
-        res = {"into_posts": [("top_chord:L:0:0", 0.095)], "chord_extension_typed": False}
+        res = {"into_posts": [("top_chord:L:0:0", 0.095)], "chord_extension_typed": False,
+               "post_size": (0.3, 0.2, "geometry")}
         line = SY["problem_line"](res)
         self.assertIn("INTO THE POSTS", line)
         self.assertIn("top_chord:L:0:0 (95 mm)", line)
@@ -223,6 +233,21 @@ class Report(unittest.TestCase):
         res["chord_extension_typed"] = True
         self.assertIn("blank it to stop the chords at the post faces", SY["problem_line"](res))
         self.assertEqual(SY["problem_line"]({}), u"")
+
+    def test_typed_extension_from_the_design_alone(self):
+        # no geometry to measure, but the design says the chords run 140 mm into the posts
+        res = {"into_posts": [], "chord_ext_into": 0.14, "post_size": (0.3, 0.2, "geometry")}
+        line = SY["problem_line"](res)
+        self.assertIn("running the chords 140 mm into the posts", line)
+        self.assertNotIn("INTO THE POSTS - steel", line)
+
+    def test_unmeasured_is_said(self):
+        res = {"post_size": (0.2, 0.2, "parameters")}
+        self.assertIn("the steel at the posts was not checked", SY["problem_line"](res))
+        self.assertEqual(SY["post_line"](res), u"posts 200 x 200 mm (from the type's size parameters)")
+        res = {"post_size": (0.3, 0.2, "geometry"), "steel_unchecked": 2}
+        self.assertIn("the steel of 2 member(s) at the posts could not be read", SY["problem_line"](res))
+        self.assertEqual(SY["post_line"](res), u"posts 300 x 200 mm (measured from their geometry)")
 
 
 if __name__ == "__main__":

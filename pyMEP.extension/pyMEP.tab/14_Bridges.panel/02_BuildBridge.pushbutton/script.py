@@ -248,7 +248,7 @@ eff = BR.effective_frame(design, frame, shared_elev)
 output.print_md("### Build Bridge - {0}".format(name))
 if old and not rebuild:
     output.print_md(u"**Updated in place** - element ids kept: {0}".format(SYNC.summary_line(res)))
-output.print_md(u"**Posts:** {0}".format(posts_note))
+output.print_md(u"**Posts:** {0}; {1}".format(posts_note, SYNC.post_line(res)))
 if rails_made:
     output.print_md(u"**Railings:** {0} placed, {1} hosted on the deck{2}".format(
         rails_made, rails_hosted,

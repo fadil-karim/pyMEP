@@ -666,6 +666,14 @@ class Members(unittest.TestCase):
         fr3 = BR.frame_from_posts(s3, e3)
         self.assertAlmostEqual(fr3["post_size"], 0.2)
         self.assertAlmostEqual(fr3["post_size_t"], 0.2)
+        self.assertEqual(fr["post_from"], "geometry")
+        self.assertEqual(fr3["post_from"], "parameters")
+        # a typed chord extension running the chords into the posts is seen from the design alone
+        self.assertEqual(BR.chord_into_posts(d, fr), 0.0)                                # stops at the faces
+        d0 = BR.normalize_design({"panel_mode": "count", "panels": 4, "chord_extension_m": 0.0})
+        self.assertAlmostEqual(BR.chord_into_posts(d0, fr), 0.15 - 0.01)                 # to the centre, less the cutback
+        dneg = BR.normalize_design({"panel_mode": "count", "panels": 4, "chord_extension_m": -0.2})
+        self.assertEqual(BR.chord_into_posts(dneg, fr), 0.0)                             # short of the faces
         # a record from before keeps working: the across size is the along size
         rec = BR.record("B", d, {}, FRAME, {}, None, "now")
         del rec["frame"]["post_size_t"]

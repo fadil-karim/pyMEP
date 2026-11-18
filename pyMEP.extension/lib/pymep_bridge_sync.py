@@ -71,6 +71,7 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev, others=(
     "rails_made", "rails_hosted"}."""
     res = {"recurved": 0, "retyped": 0, "created": 0, "deleted": 0, "hosted_kept": 0, "ends_moved": [], "not_ours": 0,
            "reseated": 0, "joins_left_off": [], "into_posts": [], "chord_extension_typed": False,
+           "steel_unchecked": 0, "chord_ext_into": 0.0, "post_size": None,
            "hosted_made": 0, "rails_made": 0, "rails_hosted": 0, "failed": [], "deck": u"", "posts": u""}
     old_rec = old_rec or {}
     mems = BR.world_members(design, frame, shared_elev)
@@ -183,11 +184,22 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev, others=(
     for m in placed:
         if not m.get("free_ends"):
             continue
-        el = _el(m)
-        depth = RV.into_posts(el, frame) if el is not None else 0.0
-        if depth > 0.0:
+        try:
+            el = _el(m)
+            depth = RV.into_posts(el, frame) if el is not None else None
+        except Exception:
+            depth = None                     # measuring must never stop a build
+        if depth is None:
+            res["steel_unchecked"] += 1
+        elif depth > 0.0:
             res["into_posts"].append((m["key"], depth))
     res["chord_extension_typed"] = design.get("chord_extension_m") is not None
+    try:
+        res["chord_ext_into"] = BR.chord_into_posts(design, frame)
+    except Exception:
+        res["chord_ext_into"] = 0.0
+    res["post_size"] = (frame.get("post_size", 0.0), BR.post_half_t(frame) * 2.0,
+                        frame.get("post_from", "parameters"))
 
     # the deck: keep, move or (only when its outline, fall or level changed) rebuild
     floor = doc.GetElement(make_id(floor_id)) if floor_id else None
@@ -290,18 +302,40 @@ def problem_line(res):
             len(res["joins_left_off"]), u", ".join(res["joins_left_off"])))
     if res.get("ends_moved"):
         parts.append(u"STILL OFF THEIR LINES - check these: {0}".format(u", ".join(res["ends_moved"])))
-    if res.get("into_posts"):
+    if res.get("into_posts") or res.get("chord_ext_into"):
         parts.append(_into_text(res))
+    if res.get("post_size") and res["post_size"][2] != "geometry":
+        parts.append(u"the posts' geometry could not be read: their size came from the type's parameters "
+                     u"and the steel at the posts was not checked")
+    elif res.get("steel_unchecked"):
+        parts.append(u"the steel of {0} member(s) at the posts could not be read, so was not checked".format(
+            res["steel_unchecked"]))
     return u"; ".join(parts)
 
 
+def post_line(res):
+    """The posts' size along x across the span and where it came from."""
+    ps = res.get("post_size")
+    if not ps:
+        return u""
+    return u"posts {0:.0f} x {1:.0f} mm ({2})".format(
+        ps[0] * 1000.0, ps[1] * 1000.0,
+        u"measured from their geometry" if ps[2] == "geometry" else u"from the type's size parameters")
+
+
 def _into_text(res):
-    line = u"INTO THE POSTS - steel past the post faces: {0}".format(u", ".join(
-        u"{0} ({1:.0f} mm)".format(k, d * 1000.0) for k, d in res["into_posts"]))
-    if res.get("chord_extension_typed"):
-        line += (u" - the chord extension is typed (the 'ext' value on the elevation): blank it to stop "
-                 u"the chords at the post faces")
-    return line
+    parts = []
+    if res.get("into_posts"):
+        parts.append(u"INTO THE POSTS - steel past the post faces: {0}".format(u", ".join(
+            u"{0} ({1:.0f} mm)".format(k, d * 1000.0) for k, d in res["into_posts"])))
+    if res.get("chord_ext_into"):
+        parts.append(u"the chord extension is typed (the 'ext' value on the elevation), running the chords "
+                     u"{0:.0f} mm into the posts: blank it to stop them at the post faces".format(
+                         res["chord_ext_into"] * 1000.0))
+    elif res.get("into_posts") and res.get("chord_extension_typed"):
+        parts.append(u"the chord extension is typed (the 'ext' value on the elevation): blank it to stop "
+                     u"the chords at the post faces")
+    return u" - ".join(parts)
 
 
 def summary_line(res):
@@ -320,8 +354,14 @@ def summary_line(res):
             len(res["joins_left_off"]), u", ".join(res["joins_left_off"]))
     if res.get("ends_moved"):
         line += u"; STILL OFF THEIR LINES - check these: {0}".format(u", ".join(res["ends_moved"]))
-    if res.get("into_posts"):
+    if res.get("into_posts") or res.get("chord_ext_into"):
         line += u"; " + _into_text(res)
+    if post_line(res):
+        line += u"; " + post_line(res)
+    if res.get("post_size") and res["post_size"][2] != "geometry":
+        line += u" - the steel at the posts was not checked"
+    elif res.get("steel_unchecked"):
+        line += u"; the steel of {0} member(s) at the posts could not be read".format(res["steel_unchecked"])
     return line
 
 

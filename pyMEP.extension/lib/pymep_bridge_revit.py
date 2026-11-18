@@ -419,6 +419,11 @@ def _solid_points(el):
     out = []
     try:
         opt = Options()
+        try:
+            from Autodesk.Revit.DB import ViewDetailLevel
+            opt.DetailLevel = ViewDetailLevel.Fine      # framing is only lines at coarse
+        except Exception:
+            pass
         geo = el.get_Geometry(opt)
     except Exception:
         geo = None
@@ -518,29 +523,33 @@ def post_info(el):
 
 def into_posts(el, frame, tol_m=0.005):
     """How far (metres) the element's steel reaches into any of the four
-    posts past their inner faces along the span, judged from its solid
-    geometry in the bridge's plan frame; 0 when it stays clear or Revit
-    gives no geometry."""
+    posts past their inner faces along the span, judged from the extent
+    of its solid geometry in the bridge's plan frame (so a member as wide
+    as the post, or one running right through it, counts too): 0 when it
+    stays clear, None when Revit gives no geometry to measure."""
     pts = _solid_points(el)
     if not pts:
-        return 0.0
+        return None
     ox, oy = frame["origin"]
     ux, uy = frame["u"]
     vx, vy = frame["v"]
     half = frame["post_size"] / 2.0
     half_t = BR.post_half_t(frame)
     span = frame["span"]
-    worst = 0.0
+    ss, ts = [], []
     for p in pts:
         x, y = ft_to_m(p.X) - ox, ft_to_m(p.Y) - oy
-        s, t = x * ux + y * uy, x * vx + y * vy
-        for tc in (frame["tL"], frame["tR"]):
-            if abs(t - tc) >= half_t - tol_m:
-                continue
-            if -half < s < half:
-                worst = max(worst, half - s)          # into a start post past its inner face
-            if span - half < s < span + half:
-                worst = max(worst, s - (span - half))  # into an end post
+        ss.append(x * ux + y * uy)
+        ts.append(x * vx + y * vy)
+    smin, smax, tmin, tmax = min(ss), max(ss), min(ts), max(ts)
+    worst = 0.0
+    for tc in (frame["tL"], frame["tR"]):
+        if tmax <= tc - half_t + tol_m or tmin >= tc + half_t - tol_m:
+            continue                                   # beside this post across
+        if smin < half - tol_m and smax > -half + tol_m:
+            worst = max(worst, min(half - smin, 2.0 * half))                 # a start post
+        if smax > span - half + tol_m and smin < span + half - tol_m:
+            worst = max(worst, min(smax - (span - half), 2.0 * half))        # an end post
     return worst if worst > tol_m else 0.0
 
 

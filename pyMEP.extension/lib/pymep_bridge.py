@@ -235,10 +235,12 @@ def frame_from_posts(start_pair, end_pair):
         rights.append(ts[0])
         lefts.append(ts[1])
     size_s, size_t = post_sizes(start_pair, end_pair, (ux, uy), (vx, vy))
+    measured = all(p.get("section") for p in list(start_pair) + list(end_pair))
     return {"origin": (sx, sy), "u": (ux, uy), "v": (vx, vy), "span": span,
             "angle": math.atan2(uy, ux),
             "tL": _mean(lefts), "tR": _mean(rights),
             "post_size": size_s, "post_size_t": size_t,
+            "post_from": "geometry" if measured else "parameters",
             "z0": _mean(p["z_bottom"] for p in start_pair),
             "z1": _mean(p["z_bottom"] for p in end_pair),
             "post_height": _mean(p["z_top"] - p["z_bottom"] for p in list(start_pair) + list(end_pair)),
@@ -276,6 +278,20 @@ def post_sizes(start_pair, end_pair, u, v):
             return 2.0 * _mean(along), 2.0 * _mean(across)
     s = _mean(p.get("size_m", 0.2) for p in posts)
     return s, s
+
+
+def chord_into_posts(design, frame):
+    """How far (metres) a typed chord extension runs the chords past the
+    posts' inner faces - from the design alone, whatever Revit gives;
+    0 when the chords stop at or short of the faces."""
+    if design.get("chord_extension_m") is None:
+        return 0.0
+    half = frame["post_size"] / 2.0
+    worst = 0.0
+    for role in ("bottom_chord", "top_chord"):
+        a, b = chord_extent(design, frame, role)
+        worst = max(worst, half - a, b - (frame["span"] - half))
+    return worst if worst > 1e-4 else 0.0
 
 
 def post_half_t(frame):
@@ -1243,7 +1259,7 @@ def fill_page(template, data):
     return template.replace(PLACEHOLDER, text, 1)
 
 
-__all__ = ["post_sizes", "post_half_t", "TYPE_ROLES", "TABLE_ROLES", "type_role", "forget_bridge", "deleted_bridge", "post_ids", "LAYOUT_VERSION", "layout_outdated", "post_ends", "cut_points", "piece_spans", "design_differs", "pick_design_file", "deck_motion", "INJECTED_KEYS", "chord_extent", "bridge_on_posts", "bridge_with_source", "truss_height", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
+__all__ = ["chord_into_posts", "post_sizes", "post_half_t", "TYPE_ROLES", "TABLE_ROLES", "type_role", "forget_bridge", "deleted_bridge", "post_ids", "LAYOUT_VERSION", "layout_outdated", "post_ends", "cut_points", "piece_spans", "design_differs", "pick_design_file", "deck_motion", "INJECTED_KEYS", "chord_extent", "bridge_on_posts", "bridge_with_source", "truss_height", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
            "BRACE_ROLES", "TOP_ALIGNED", "DEFAULTS", "normalize_design", "frame_from_posts",
            "frame_from_points", "effective_frame", "planes", "height", "base_z", "to_world",
            "layout", "pieces",
