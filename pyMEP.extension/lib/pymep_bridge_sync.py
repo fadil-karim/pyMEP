@@ -178,29 +178,6 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev, others=(
         RV.set_member_curve(el, m)
         res["joins_left_off"].append(m["key"])
     res["ends_moved"] = [m["key"] for m, el in _off()]
-    # the steel itself, not just its line: any member that meets a post and
-    # still reaches past the post's inner face (a Revit join or extension, a
-    # typed chord extension) is named
-    for m in placed:
-        if not m.get("free_ends"):
-            continue
-        try:
-            el = _el(m)
-            depth = RV.into_posts(el, frame) if el is not None else None
-        except Exception:
-            depth = None                     # measuring must never stop a build
-        if depth is None:
-            res["steel_unchecked"] += 1
-        elif depth > 0.0:
-            res["into_posts"].append((m["key"], depth))
-    res["chord_extension_typed"] = design.get("chord_extension_m") is not None
-    try:
-        res["chord_ext_into"] = BR.chord_into_posts(design, frame)
-    except Exception:
-        res["chord_ext_into"] = 0.0
-    res["post_size"] = (frame.get("post_size", 0.0), BR.post_half_t(frame) * 2.0,
-                        frame.get("post_from", "parameters"))
-
     # the deck: keep, move or (only when its outline, fall or level changed) rebuild
     floor = doc.GetElement(make_id(floor_id)) if floor_id else None
     rebuild = floor is None
@@ -288,6 +265,41 @@ def sync(doc, name, design, source, frame, old_rec, types, shared_elev, others=(
             n, z_start + shared_elev, z_end + shared_elev)
     except Exception as ex:
         res["posts"] = u"posts not adjusted: {0}".format(ex)
+    # moving the posts' tops can drag a chord end joined to a post along with
+    # it: every member is checked against its line once more and put back
+    try:
+        for m, el in _off():
+            RV.set_joins(el, (0, 1), False)
+            RV.set_member_curve(el, m)
+            res["reseated"] += 1
+        res["ends_moved"] = [m["key"] for m, el in _off()]
+    except Exception:
+        pass
+    # the steel itself, not just its line: any member that meets a post and
+    # still reaches past the post's inner face (a Revit join or extension, a
+    # typed chord extension) is named
+    for m in placed:
+        if not m.get("free_ends"):
+            continue
+        if m["role"] in ("top_chord", "bottom_chord") and (design.get(m["role"] + "_end") or "face") != "face":
+            continue                         # set to run into the posts on purpose
+        try:
+            el = _el(m)
+            depth = RV.into_posts(el, frame) if el is not None else None
+        except Exception:
+            depth = None                     # measuring must never stop a build
+        if depth is None:
+            res["steel_unchecked"] += 1
+        elif depth > 0.0:
+            res["into_posts"].append((m["key"], depth))
+    res["chord_extension_typed"] = design.get("chord_extension_m") is not None
+    try:
+        res["chord_ext_into"] = BR.chord_into_posts(design, frame)
+    except Exception:
+        res["chord_ext_into"] = 0.0
+    res["post_size"] = (frame.get("post_size", 0.0), BR.post_half_t(frame) * 2.0,
+                        frame.get("post_from", "parameters"))
+
     res["member_ids"] = member_ids
     res["floor_id"] = floor_id
     res["members"] = mems

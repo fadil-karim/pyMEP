@@ -39,6 +39,10 @@ TRUSSES = (("warren", u"Warren - top nodes at mid-panel, no verticals (as the dr
            ("vierendeel", u"Vierendeel (verticals only)"))
 BRACINGS = (("zigzag", u"one diagonal at a time, alternating, each over brace_bays bays (as the drawing)"),
             ("x", u"X in every bay"), ("none", u"none"))
+# where a chord's ends stop at the posts, top and bottom chords each
+CHORD_ENDS = (("face", u"the post face (the near side of the steel, less the cutback)"),
+              ("centre", u"the post centre (the middle of the post)"),
+              ("outer", u"the far face (the end of the post)"))
 PLANES = (("outside", u"the outside faces of the posts"),
           ("centre", u"the post centrelines"),
           ("inside", u"the inside faces of the posts"))
@@ -71,6 +75,8 @@ DEFAULTS = {
     "bottom_chord_offset_m": None,   # bottom chord top of steel above the post base; None = the chords' centre at the cross beams' centre
     "bottom_chord_cutback_m": 0.01,  # the bottom chords stop this short of each end (the post faces) - a fit-up gap
     "top_chord_cutback_m": 0.01,     # the top chords likewise
+    "top_chord_end": "face",         # where the top chords stop at the posts: "face", "centre" or "outer" (see CHORD_ENDS)
+    "bottom_chord_end": "face",      # the same for the bottom chords
     "crossbeam_depth_m": 0.0,        # replaced by the cross beam type's section depth
     "top_chord_split_m": 0.0,        # longest top chord piece; 0 = one piece
     "bottom_chord_split_m": 0.0,     # longest bottom chord piece; 0 = one piece
@@ -106,9 +112,10 @@ TOL = 1e-6
 # post centrelines, the end clearance cutting the end diagonals back; 3:
 # updates check every member, putting back any a Revit join dragged off its
 # node; 4: the posts' centres and faces from their measured sections, so
-# the chords stop at the real post faces); a bridge built under an older
-# layout is offered for an update
-LAYOUT_VERSION = 4
+# the chords stop at the real post faces; 5: each chord's own end at the
+# posts, and every member checked again after the post tops are set); a
+# bridge built under an older layout is offered for an update
+LAYOUT_VERSION = 5
 
 
 def normalize_design(d):
@@ -127,6 +134,9 @@ def normalize_design(d):
         raise ValueError(u"unknown truss type '{0}'".format(out["truss"]))
     if out["bracing"] not in [k for k, _l in BRACINGS]:
         raise ValueError(u"unknown bracing '{0}'".format(out["bracing"]))
+    for k in ("top_chord_end", "bottom_chord_end"):
+        if out[k] not in [c for c, _l in CHORD_ENDS]:
+            raise ValueError(u"'{0}' must be one of {1}".format(k, u", ".join(c for c, _l in CHORD_ENDS)))
     out["truss_plane"] = "centre"      # the side frames are always on the post centres
     if out["stiffener_mode"] not in ("spacing", "count"):
         raise ValueError(u"stiffener_mode must be 'spacing' or 'count'")
@@ -394,14 +404,25 @@ def to_world(frame, s, t, z_rel=0.0):
 
 
 def chord_extent(design, frame, role):
-    """(s_a, s_b) a chord runs between: the chord ends from the layout
-    (the post faces), each chord cut back from them by its own cutback."""
+    """(s_a, s_b) a chord runs between. Each chord has its own end at the
+    posts (top_chord_end / bottom_chord_end): "face" stops at the posts'
+    inner faces less its cutback, "centre" runs to the post centrelines,
+    "outer" to the posts' far faces (the end of the post). A typed chord
+    extension (from older designs) still sets both chords' ends."""
     lay = layout(design, frame)
     key = {"bottom_chord": "bottom_chord_cutback_m", "top_chord": "top_chord_cutback_m"}.get(role)
     if key is None:
         return lay["s0"], lay["s1"]
     cb = min(design[key], max(0.0, lay["total"] / 2.0 - TOL))
-    return lay["s0"] + cb, lay["s1"] - cb
+    if design.get("chord_extension_m") is not None:
+        return lay["s0"] + cb, lay["s1"] - cb
+    half = frame["post_size"] / 2.0
+    mode = design.get(role + "_end") or "face"
+    if mode == "centre":
+        return 0.0, frame["span"]
+    if mode == "outer":
+        return -half, frame["span"] + half
+    return half + cb, frame["span"] - half - cb
 
 
 def layout(design, frame):
@@ -1259,7 +1280,7 @@ def fill_page(template, data):
     return template.replace(PLACEHOLDER, text, 1)
 
 
-__all__ = ["chord_into_posts", "post_sizes", "post_half_t", "TYPE_ROLES", "TABLE_ROLES", "type_role", "forget_bridge", "deleted_bridge", "post_ids", "LAYOUT_VERSION", "layout_outdated", "post_ends", "cut_points", "piece_spans", "design_differs", "pick_design_file", "deck_motion", "INJECTED_KEYS", "chord_extent", "bridge_on_posts", "bridge_with_source", "truss_height", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
+__all__ = ["CHORD_ENDS", "chord_into_posts", "post_sizes", "post_half_t", "TYPE_ROLES", "TABLE_ROLES", "type_role", "forget_bridge", "deleted_bridge", "post_ids", "LAYOUT_VERSION", "layout_outdated", "post_ends", "cut_points", "piece_spans", "design_differs", "pick_design_file", "deck_motion", "INJECTED_KEYS", "chord_extent", "bridge_on_posts", "bridge_with_source", "truss_height", "resize_variable", "MIN_PIECE_M", "stiffener_positions", "latest_design", "brace_angle", "railing_positions", "bottom_chord_level", "TRUSSES", "BRACINGS", "PLANES", "ROLES", "FRAMING_ROLES", "ROLE_LABELS",
            "BRACE_ROLES", "TOP_ALIGNED", "DEFAULTS", "normalize_design", "frame_from_posts",
            "frame_from_points", "effective_frame", "planes", "height", "base_z", "to_world",
            "layout", "pieces",

@@ -627,6 +627,35 @@ class Members(unittest.TestCase):
         self.assertAlmostEqual(fa["p2"][0], (BR.layout(design(truss="warren"), BR.frame_from_posts(s, e))["points"][0] +
                                              BR.layout(design(truss="warren"), BR.frame_from_posts(s, e))["points"][1]) / 2.0)
 
+    def test_chord_ends_at_the_posts(self):
+        # each chord has its own end at the posts: the face (less its
+        # cutback), the post centre, or the far face - the end of the post
+        base = {"panel_mode": "count", "panels": 4, "bottom_chord_offset_m": 0.0,
+                "top_chord_cutback_m": 0.01, "bottom_chord_cutback_m": 0.02}
+        d = BR.normalize_design(base)
+        self.assertEqual((d["top_chord_end"], d["bottom_chord_end"]), ("face", "face"))
+        self.assertEqual(BR.chord_extent(d, FRAME, "top_chord"), (0.1 + 0.01, 20.0 - 0.1 - 0.01))
+        self.assertEqual(BR.chord_extent(d, FRAME, "bottom_chord"), (0.1 + 0.02, 20.0 - 0.1 - 0.02))
+        mix = BR.normalize_design(dict(base, top_chord_end="outer", bottom_chord_end="centre"))
+        self.assertEqual(BR.chord_extent(mix, FRAME, "top_chord"), (-0.1, 20.1))          # to the end of the post
+        self.assertEqual(BR.chord_extent(mix, FRAME, "bottom_chord"), (0.0, 20.0))        # to the middle
+        mems = BR.members(mix, FRAME)
+        self.assertAlmostEqual(by_key(mems, u"top_chord:L:0:0")["p1"][0], -0.1)
+        self.assertAlmostEqual(by_key(mems, u"bottom_chord:R:0:0")["p2"][0], 20.0)
+        self.assertEqual(by_key(mems, u"top_chord:L:0:0")["free_ends"], [0, 1])         # still no Revit joins there
+        # typed pieces follow the chord's own ends: the variable piece takes the rest
+        pc = BR.members(BR.normalize_design(dict(base, top_chord_end="outer", top_chord_pieces=[6.0, None])), FRAME)
+        self.assertAlmostEqual(by_key(pc, u"top_chord:L:0:0")["p2"][0], -0.1 + 6.0)
+        self.assertAlmostEqual(by_key(pc, u"top_chord:L:1:0")["p2"][0], 20.1)
+        # the diagonals, cross beams and deck do not move with the chord ends
+        for k in (u"diagonal:L:0:0", u"crossbeam:C:0:0"):
+            self.assertEqual(by_key(mems, k)["p1"], by_key(BR.members(d, FRAME), k)["p1"])
+        # an older design's typed extension still sets both
+        old = BR.normalize_design(dict(base, chord_extension_m=0.05, top_chord_end="outer"))
+        self.assertEqual(BR.chord_extent(old, FRAME, "top_chord"), (-0.05 + 0.01, 20.05 - 0.01))
+        with self.assertRaises(ValueError):
+            BR.normalize_design(dict(base, top_chord_end="middle"))
+
     def test_post_sizes_from_measured_sections(self):
         # posts whose geometry gives a section: the chords stop at the real
         # faces along the span, the deck and end cross beams at the real

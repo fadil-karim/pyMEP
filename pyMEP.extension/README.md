@@ -1147,12 +1147,20 @@ chords sit so their centre is at the cross beams' centre, the rest of
 the frame building up from there: the truss height is the bottom chord
 line to the top chord line, so typing it moves the top chord and the
 post tops with the chords; a typed "bottom chord" value on the
-elevation fixes the chord level instead; the top and bottom chords each stop a
-cutback - 10 mm by default, the "top chord cutback" and "bottom chord
-cutback" values on the elevation, "Cutback at posts..." on a chord's
-ring, or Settings - short of the post faces at each end as a fit-up
-gap, and Revit is told not to auto-join the chord ends at the posts so
-a join cannot pull a chord back into a post; the end diagonals and
+elevation fixes the chord level instead; the top and bottom chords each
+have their own end at the posts - the post face (the near side of the
+steel, the default), the post centre (the middle), or the far face (the
+end of the post) - set from the "top chord to the ..." and "bottom chord
+to the ..." values on the elevation, "Ends..." on a chord's ring, or
+Settings; at the face a chord stops its cutback short - 10 mm by
+default, "Cutback at the face..." / "Cutback at posts..." or Settings -
+as a fit-up gap (a chord extension typed in an older design still sets
+both chords' ends and shows in red on the elevation until it is
+cleared). Revit is told not to auto-join the chord ends at the posts so
+a join cannot pull a chord into or back from a post, and after the
+post tops are set every member is checked against its line once more
+(moving a post's top could drag a chord end joined to it) - the steel
+check at the posts then skips a chord set to run into them; the end diagonals and
 the plan braces at the posts are treated the same way - Revit is not
 allowed to join their ends at the posts, the line is put back on its
 node after placing, and each build or update checks it: an end
