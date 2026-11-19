@@ -45,6 +45,7 @@ pyMEP.extension/
     12_Struct.panel/            # Add To Pile Sequence, Number Unmarked Piles
     13_Site.panel/              # Place At Coordinates, Element Coordinates, Move To Coordinates
     14_Bridges.panel/           # Bridge Builder, Build Bridge, Update Bridges, Delete Bridges
+    15_CADCoordination.panel/   # Copy CAD Lines
 ```
 
 Every button has its own icon.
@@ -1262,11 +1263,34 @@ design.
 Railing infill panels are whatever the chosen railing type draws; the
 trusses are the structure above the deck.
 
+### CAD Coordination
+
+**Copy CAD Lines** - copy the lines of a linked or imported CAD (DWG,
+DXF, DGN ...) into Revit. The CAD is the one selected before the click,
+else the only one in the active view, else picked. A dialog lists the
+CAD's layers with how many lines each holds (blocks included; a search
+box finds layers by any words of their name, and "Tick shown" /
+"Untick shown" act on the layers the search shows), the model's line
+styles (the ones a detail or model line can take - <Thin Lines> or the
+one used last time first), and where to make them: **detail lines** in
+the active view (a plan or drafting view) or **model lines** on a level
+picked from the list (the active view's level first). Every line is
+laid flat on the view's plane or the level: lines, arcs, circles and
+splines drawn flat keep their shape, a polyline becomes its segments,
+and a curve with heights becomes straight segments in plan; anything
+shorter than Revit's shortest line is skipped. Everything goes in with
+one undo step, the new lines are left selected, and the output window
+lists them by layer (made, failed, too short) - there is no closing
+dialog unless nothing could be made. The ticked layers, the line style,
+the choice of detail or model lines and the level are remembered for
+next time.
+
 ## Lib modules
 
 | module | purpose |
 | --- | --- |
 | `pymep_config.py` | settings, paths, defaults |
+| `pymep_cad_lines.py` | Copy CAD Lines: layer list and search, line styles, laying lines flat, report |
 | `pymep_csv.py` | CSV read/write helpers |
 | `pymep_revit.py` | unit conversions, element/connector helpers |
 | `pymep_log.py` | tee logging to pyRevit output + log file |

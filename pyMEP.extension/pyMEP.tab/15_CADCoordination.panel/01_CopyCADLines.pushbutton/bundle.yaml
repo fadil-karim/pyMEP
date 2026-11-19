@@ -1,0 +1,2 @@
+title: "Copy CAD\nLines"
+tooltip: "Copy the lines of a linked or imported CAD into Revit: pick the CAD (or have it selected), tick the layers to copy, choose the line style, and make them as detail lines in the active plan or drafting view or as model lines on a level. Arcs and circles stay arcs; splines and polylines come through as they are when drawn flat, else as straight segments. One undo step; the new lines are left selected and the output lists them by layer."
